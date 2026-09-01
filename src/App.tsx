@@ -1,3 +1,4 @@
+// Legacy console retained for reference; src/main.tsx uses App2.tsx.
 import {
   ArrowRight,
   BookOpenText,

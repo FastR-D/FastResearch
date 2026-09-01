@@ -1,1 +1,1 @@
-开发一个简单的控制面板，作为一个入口界面，包含多个工具，这些工具内容基于Token从这个界面点击进入。具体工具内容待定，这里只开发这个入口界面。
+联动 FastInsight 与 FastResearch。FastResearch 提供 Home、FastRead、FastWrite、FastTask、FastNews 入口，项目可直接访问；最近阅读文章整合和 FastInsight 传递的信息必须通过管理员按个人分发的 Key 查看。页面严格按布局.png 的网格结构实现。

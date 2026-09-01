@@ -46,13 +46,8 @@ try {
     let dialog = null
     let credentialsDialog = null
     if (testCase.name === 'mobile') {
-      await page.getByRole('button', { name: '管理员登录' }).click()
-      await page.waitForTimeout(250)
-      await page.getByLabel('管理员账号').fill('admin')
-      await page.getByLabel('管理员密码').fill('admin123456')
-      await page.getByRole('button', { name: '登录后台' }).click()
-      await page.waitForTimeout(400)
-      await page.getByText('Token 管理后台', { exact: true }).waitFor()
+      await page.getByRole('button', { name: '使用个人 Key 查看整合内容' }).click()
+      await page.waitForTimeout(200)
       credentialsDialog = await page.getByRole('dialog').evaluate((element) => {
         const rect = element.getBoundingClientRect()
         return {
@@ -63,10 +58,17 @@ try {
         }
       })
       if (credentialsDialog.left < 0 || credentialsDialog.right > testCase.width) {
-        throw new Error('管理员弹窗超出移动端视口。')
+        throw new Error('个人 Key 弹窗超出移动端视口。')
       }
-      await page.screenshot({ path: path.join(outputDir, 'fastresearch-mobile-credentials-pw.png') })
-      await page.locator('select').selectOption('fast-task')
+      await page.screenshot({ path: path.join(outputDir, 'fastresearch-mobile-key-pw.png') })
+      await page.getByRole('button', { name: '关闭' }).click()
+      await page.getByRole('button', { name: '管理员登录' }).click()
+      await page.getByLabel('管理员账号').fill('admin')
+      await page.getByLabel('管理员密码').fill('admin123456')
+      await page.getByRole('button', { name: '登录后台' }).click()
+      await page.waitForTimeout(400)
+      await page.getByText('个人 Key 管理', { exact: true }).waitFor()
+      await page.getByPlaceholder('成员姓名').fill('视觉测试')
       await page.getByRole('button', { name: '生成' }).click()
       await page.waitForTimeout(250)
       dialog = await page.getByRole('dialog').evaluate((element) => {
@@ -79,19 +81,14 @@ try {
         }
       })
       await page.screenshot({ path: path.join(outputDir, 'fastresearch-mobile-dialog-pw.png') })
-      const token = await page.locator('code').first().textContent()
-      if (!token?.startsWith('fr_')) throw new Error('管理员未生成有效 Token。')
-      await page.getByRole('button', { name: '关闭 Token 提示' }).click()
+      const key = await page.locator('code').first().textContent()
+      if (!key?.startsWith('fk_')) throw new Error('管理员未生成有效个人 Key。')
+      await page.getByRole('button', { name: '关闭 Key 提示' }).click()
       await page.getByRole('button', { name: '关闭' }).click()
-      await page.getByRole('button', { name: '使用 Token 进入 FastTask' }).click()
-      await page.getByRole('textbox', { name: '访问 Token' }).fill(token)
-      await page.getByRole('button', { name: '验证并进入' }).click()
+      await page.getByRole('button', { name: '使用个人 Key 查看整合内容' }).click()
+      await page.getByRole('textbox', { name: '个人 Key' }).fill(key)
+      await page.getByRole('button', { name: '解锁内容' }).click()
       await page.waitForTimeout(300)
-      if (page.url().includes('token=')) {
-        // The configured tool URL receives the validated token.
-      } else {
-        await page.getByRole('status').getByText('FastTask 的入口地址尚未配置', { exact: true }).waitFor()
-      }
       await page.getByRole('button', { name: '切换到深色模式' }).click()
       await page.waitForTimeout(350)
       await page.screenshot({ path: path.join(outputDir, 'fastresearch-mobile-dark-pw.png'), fullPage: true })
