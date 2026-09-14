@@ -1,6 +1,6 @@
 # FastResearch
 
-FastResearch 是一个面向科研阅读与知识工作的工具入口控制台。当前提供 FastRead、FastWrite、FastTask 和 FastNews 四个独立入口，入口可直接访问；最近阅读整合和 FastInsight 分发信息由个人 Key 保护。
+FastResearch 是一个面向科研阅读与知识工作的工具入口控制台。当前提供 FastRead、FastWrite、FastTask、FastNews 和 FastPPT 五个独立入口，以及 FastInsight 信箱（接收飞书经 skill 回传的研究卡片）。FastWrite、FastTask、FastPPT 可直接访问；FastRead、FastNews 和 FastInsight 信箱由个人 Key 保护。FastRead 和 FastNews 都用一次性 SSO 票据进入，直开 :3015 / :4173 会 302 到 Panel。
 
 ## 技术栈
 
@@ -40,20 +40,24 @@ VITE_READ_URL=https://example.com/read
 VITE_WRITE_URL=https://example.com/write
 VITE_FASTTASK_URL=https://example.com/fast-task
 VITE_FASTNEWS_URL=https://example.com/fast-news
+VITE_FASTPPT_URL=https://example.com/fast-ppt
+FASTRESEARCH_PUBLIC_URL=http://127.0.0.1:8787
 
 ```
 
-未配置地址时，对应入口点击后不会跳转。FastTask 和 FastNews 卡片会显示“待配置”。
+未配置地址时，对应入口点击后不会跳转。FastTask、FastPPT 未填地址时会提示待配置。本地未填 `VITE_FASTNEWS_URL` 时，FastNews 默认跳到 `http://127.0.0.1:4173`；未填 `VITE_READ_URL` 时，FastRead 默认跳到 `http://127.0.0.1:3015`。FastPPT 直接跳转，不走 SSO。`FASTRESEARCH_PUBLIC_URL` 是浏览器访问 FastResearch API 的地址，默认 `http://127.0.0.1:8787`。不要填 Vite 开发服务器地址。
 
 ## 访问与个人 Key
 
-FastRead、FastWrite、FastTask 和 FastNews 入口不再需要 Token，点击后直接跳转到配置的地址。只有右侧的“最近阅读的文章整合”和“接收 FastInsight 传递过来的信息”需要个人 Key。
+FastWrite、FastTask、FastPPT 入口点击后直接跳转到配置的地址。FastRead 和 FastNews 需要先用个人 Key 解锁：`/api/sso/launch` 签发一次性票据并 302 到 `{READ|NEWS}?sso=ticket`，再由各模块服务端兑换。直开 FastRead `:3015` 或 FastNews `:4173` 会被送到 Panel。个人 Key 登录与各模块对接见 [docs/key-login.md](docs/key-login.md)，FastRead SSO 补充见 [docs/sso.md](docs/sso.md)。
 
 1. 点击右上角管理员登录按钮，使用管理员账号密码进入个人 Key 管理后台。
-2. 管理员按成员姓名生成 Key，可填写过期时间，也可以随时撤销。
+2. 管理员按成员姓名生成 Key，可填写过期时间，也可以随时删除（删除后列表中不再显示该 Key）。
 3. Key 只在生成成功时显示完整值一次；后端只保存 SHA-256 哈希和内容数据。
-4. 成员点击右侧加密面板，输入个人 Key 后查看自己的阅读整合与 FastInsight 信息。
-5. 管理员会话和个人 Key 仅保存在当前浏览器会话的 `sessionStorage` 中，服务端会话默认 8 小时有效。
+4. 成员点击 ACCESS KEY，输入个人 Key 后解锁 FastInsight 信箱，并建立成员会话。
+5. 已解锁后点击 FastNews 或 FastRead，控制台走同一套 Key + `/api/sso/launch`：两者都带 `?sso=` 票据进入，由各模块服务端兑换后签发登录态（FastNews 用 HttpOnly `fr_session`，FastRead 用 `fastread_session`）。
+6. 关注作者按 Key 保存在 FastResearch 服务端。FastNews 必须用 `python serve.py` 启动，直开静态文件或 `python -m http.server` 无法作为产品入口。
+7. 管理员会话保存在当前浏览器的 `sessionStorage`；成员登录凭证是 HttpOnly Cookie `fr_session`（JWT，8 小时）。不要把原始 Key 长期存在浏览器里。
 
 例如：
 
@@ -63,7 +67,7 @@ https://example.com/fast-task
 
 FastInsight 服务端发布接口为 `POST /api/insight/publish`，请求头使用 `X-FastInsight-Key`，请求体包含 `person` 和 `item`。阅读项目可使用 `POST /api/content/reading/publish` 写入“最近阅读”列表，同样使用服务端发布凭证。
 
-个人 Key 解锁后，页面每 15 秒自动同步一次内容，因此 FastInsight 发布后无需手动刷新浏览器。
+个人 Key 解锁后，页面每 15 秒自动同步一次信箱，因此 FastInsight skill 发布后无需手动刷新浏览器。
 
 ## 可用命令
 
@@ -86,7 +90,10 @@ src/
   index.css     # Tailwind 入口和 FastRead 全局样式
   main.tsx      # React 启动文件
 server/
-  index.mjs     # 管理员登录、个人 Key、内容解锁和 FastInsight 发布 API
+  index.mjs     # 管理员登录、个人 Key、成员会话、FastNews/FastRead SSO 和 FastInsight 发布 API
+docs/
+  key-login.md  # 个人 Key 登录与各模块对接接口（含示例）
+  sso.md        # FastRead SSO 对接补充
 scripts/
   visual-check.mjs  # 浏览器视觉与交互验收脚本
 ```
