@@ -1,1 +1,1 @@
-联动 FastInsight 与 FastResearch。FastResearch 提供 Home、FastRead、FastWrite、FastTask、FastNews 入口，项目可直接访问；最近阅读文章整合和 FastInsight 传递的信息必须通过管理员按个人分发的 Key 查看。页面严格按布局.png 的网格结构实现。
+联动 FastInsight 与 FastResearch。FastResearch 以工作流形式维护任务列表，按任务顺序展示 FastPPT、FastWrite、FastRead、FastNews、FastLab；完成任务后进入下一功能。最近阅读文章整合和 FastInsight 传递的信息必须通过管理员按个人分发的 Key 查看。

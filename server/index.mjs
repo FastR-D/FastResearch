@@ -85,6 +85,15 @@ function defaultData() {
 function ensureKeyCollections(record) {
   if (!Array.isArray(record.followedAuthors)) record.followedAuthors = []
   if (!Array.isArray(record.customResearchTags)) record.customResearchTags = []
+  if (!record.researchImpression || typeof record.researchImpression !== 'object') {
+    record.researchImpression = { text: '', updatedAt: '' }
+  } else {
+    if (typeof record.researchImpression.text !== 'string') record.researchImpression.text = ''
+    if (typeof record.researchImpression.updatedAt !== 'string') record.researchImpression.updatedAt = ''
+  }
+  if (!Array.isArray(record.inbox)) record.inbox = []
+  if (record.workflow != null && (!record.workflow.tasks || !Array.isArray(record.workflow.tasks))) record.workflow = null
+  if (record.workflow === undefined) record.workflow = null
   return record
 }
 
@@ -104,7 +113,13 @@ async function loadData() {
     migrated = true
   }
   for (const record of data.keys) {
-    if (!Array.isArray(record.followedAuthors) || !Array.isArray(record.customResearchTags)) {
+    if (
+      !Array.isArray(record.followedAuthors)
+      || !Array.isArray(record.customResearchTags)
+      || !Array.isArray(record.inbox)
+      || !record.researchImpression
+      || typeof record.researchImpression !== 'object'
+    ) {
       ensureKeyCollections(record)
       migrated = true
     }
@@ -385,6 +400,8 @@ function createMemberSession(record) {
 }
 
 function memberContent(record) {
+  const impression = normalizeImpression(record.researchImpression)
+  const inbox = normalizeInbox(record.inbox)
   return {
     person: record.person,
     keyId: record.id,
@@ -392,6 +409,9 @@ function memberContent(record) {
     insightItems: record.insightItems ?? [],
     authors: record.followedAuthors ?? [],
     customTags: record.customResearchTags ?? [],
+    impression,
+    inboxUnread: inbox.filter((item) => !item.read).length,
+    workflow: workflowView(record.workflow),
   }
 }
 
@@ -439,6 +459,50 @@ function normalizeCustomTags(items) {
   return uniqueStrings(items, 40, 40)
 }
 
+function normalizeImpression(item) {
+  const raw = item && typeof item === 'object' ? item : {}
+  return {
+    text: String(raw.text ?? '').replace(/\r\n/g, '\n').slice(0, 4000),
+    updatedAt: String(raw.updatedAt ?? ''),
+  }
+}
+
+function normalizeInbox(items) {
+  if (!Array.isArray(items)) return []
+  const out = []
+  const seen = new Set()
+  for (const item of items.slice(0, 180)) {
+    if (!item || typeof item !== 'object') continue
+    const date = String(item.date ?? '').trim().slice(0, 10)
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue
+    const kind = String(item.kind ?? 'daily-paper').trim().slice(0, 40) || 'daily-paper'
+    let id = String(item.id ?? '').trim().slice(0, 120)
+    if (!id) id = `inbox-${date}-${out.length + 1}`
+    const key = id.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push({
+      id,
+      date,
+      kind,
+      paperId: String(item.paperId ?? item.paper_id ?? '').trim().slice(0, 180),
+      title: String(item.title ?? '').trim().slice(0, 300),
+      title_zh: String(item.title_zh ?? item.titleZh ?? '').trim().slice(0, 300),
+      summary: String(item.summary ?? '').trim().slice(0, 1200),
+      reason: String(item.reason ?? '').trim().slice(0, 400),
+      url: String(item.url ?? item.link ?? '').trim().slice(0, 1000),
+      venue: String(item.venue ?? '').trim().slice(0, 200),
+      year: String(item.year ?? '').trim().slice(0, 8),
+      authors: String(item.authors ?? item.author ?? '').trim().slice(0, 300),
+      category: String(item.category ?? '').trim().slice(0, 80),
+      source: String(item.source ?? '').trim().slice(0, 80),
+      read: Boolean(item.read),
+      receivedAt: String(item.receivedAt ?? item.received_at ?? new Date().toISOString()).slice(0, 40),
+    })
+  }
+  return out
+}
+
 function normalizeItems(items, source) {
   if (!Array.isArray(items)) return []
   return items.slice(0, 100).map((item, index) => ({
@@ -452,6 +516,101 @@ function normalizeItems(items, source) {
     venue: String(item.venue ?? item.year_venue ?? item.yearVenue ?? '').slice(0, 200) || undefined,
     receivedAt: String(item.receivedAt ?? item.received_at ?? new Date().toISOString()),
   }))
+}
+
+const WORKFLOW_MODULES = {
+  'fast-ppt': 'fast-ppt',
+  fastppt: 'fast-ppt',
+  ppt: 'fast-ppt',
+  'fast-write': 'fast-write',
+  fastwrite: 'fast-write',
+  write: 'fast-write',
+  'fast-read': 'fast-read',
+  fastread: 'fast-read',
+  read: 'fast-read',
+  'fast-news': 'fast-news',
+  fastnews: 'fast-news',
+  news: 'fast-news',
+  'fast-lab': 'fast-lab',
+  fastlab: 'fast-lab',
+  lab: 'fast-lab',
+}
+const MODULE_LABELS = {
+  'fast-ppt': 'FastPPT',
+  'fast-write': 'FastWrite',
+  'fast-read': 'FastRead',
+  'fast-news': 'FastNews',
+  'fast-lab': 'FastLab',
+}
+const DEFAULT_WORKFLOW = {
+  title: '默认研究流',
+  tasks: [
+    { module: 'fast-ppt', title: '整理研究演示', description: '把当前结论快速铺成可讲解的幻灯片。' },
+    { module: 'fast-write', title: '撰写研究内容', description: '在结构化工作区里产出稿件与论证。' },
+    { module: 'fast-read', title: '阅读与检索资料', description: '把论文和资料收进可回溯的阅读脉络。' },
+    { module: 'fast-news', title: '跟踪最新信号', description: '查看与关注方向相关的新论文与资讯。' },
+    { module: 'fast-lab', title: '实验与验证', description: '进入实验室工作区，完成验证与记录。' },
+  ],
+}
+function resolveWorkflowModule(value) {
+  const key = String(value ?? '').trim().toLowerCase().replace(/[\s_]+/g, '-')
+  return WORKFLOW_MODULES[key] ?? WORKFLOW_MODULES[key.replaceAll('-', '')] ?? ''
+}
+function normalizeWorkflow(body, source = 'api') {
+  const raw = body?.default === true ? DEFAULT_WORKFLOW : body
+  const tasksIn = Array.isArray(raw?.tasks) ? raw.tasks : []
+  if (!tasksIn.length) throw new Error('任务列表不能为空')
+  const seen = new Set()
+  const tasks = tasksIn.slice(0, 50).map((item, index) => {
+    const module = resolveWorkflowModule(item?.module ?? item?.tool ?? item?.entry ?? item?.name)
+    if (!module) throw new Error(`第 ${index + 1} 个任务的功能无效，需为 FastPPT / FastWrite / FastRead / FastNews / FastLab`)
+    let id = String(item?.id ?? randomBytes(8).toString('hex')).slice(0, 80)
+    if (!id || seen.has(id)) id = randomBytes(8).toString('hex')
+    seen.add(id)
+    return {
+      id,
+      module,
+      title: String(item?.title ?? item?.name ?? MODULE_LABELS[module]).trim().slice(0, 300) || MODULE_LABELS[module],
+      description: String(item?.description ?? item?.summary ?? '').trim().slice(0, 1200),
+      completedAt: null,
+    }
+  })
+  return {
+    id: String(raw?.id ?? randomBytes(8).toString('hex')).slice(0, 80),
+    title: String(raw?.title ?? raw?.name ?? '研究工作流').trim().slice(0, 200) || '研究工作流',
+    source,
+    receivedAt: new Date().toISOString(),
+    tasks,
+  }
+}
+function workflowView(workflow) {
+  if (!workflow || !Array.isArray(workflow.tasks) || !workflow.tasks.length) return null
+  const currentIndex = workflow.tasks.findIndex((task) => !task.completedAt)
+  const tasks = workflow.tasks.map((task, index) => ({
+    id: task.id,
+    module: task.module,
+    title: task.title,
+    description: task.description ?? '',
+    completedAt: task.completedAt ?? null,
+    status: task.completedAt ? 'done' : currentIndex === index ? 'active' : 'pending',
+  }))
+  const doneCount = tasks.filter((task) => task.status === 'done').length
+  return {
+    id: workflow.id,
+    title: workflow.title,
+    source: workflow.source ?? 'api',
+    receivedAt: workflow.receivedAt,
+    currentIndex: currentIndex === -1 ? tasks.length : currentIndex,
+    doneCount,
+    total: tasks.length,
+    completed: doneCount === tasks.length,
+    currentTask: currentIndex === -1 ? null : tasks[currentIndex],
+    tasks,
+  }
+}
+function matchWorkflowTargets(person) {
+  const requestedPerson = String(person ?? '').trim().toLocaleLowerCase()
+  return data.keys.filter((record) => keyIsActive(record) && (!requestedPerson || record.person.toLocaleLowerCase() === requestedPerson))
 }
 
 async function handle(request, response) {
@@ -529,6 +688,7 @@ async function handle(request, response) {
       insightItems: [],
       followedAuthors: [],
       customResearchTags: [],
+      workflow: null,
     }
     data.keys.unshift(record)
     await persist()
@@ -594,6 +754,52 @@ async function handle(request, response) {
     sendJson(response, 200, {
       authors: member.record.followedAuthors,
       customTags: member.record.customResearchTags,
+    })
+    return
+  }
+
+  if (route === '/api/content/impression' && ['GET', 'PUT'].includes(request.method)) {
+    const member = requireMember(request, response)
+    if (!member) return
+    if (request.method === 'GET') {
+      sendJson(response, 200, { impression: normalizeImpression(member.record.researchImpression) })
+      return
+    }
+    const body = await readBody(request)
+    const impression = normalizeImpression({
+      text: body.text ?? body.impression?.text ?? body.impression,
+      updatedAt: new Date().toISOString(),
+    })
+    member.record.researchImpression = impression
+    await persist()
+    sendJson(response, 200, { impression })
+    return
+  }
+
+  if (route === '/api/content/inbox' && ['GET', 'PUT'].includes(request.method)) {
+    const member = requireMember(request, response)
+    if (!member) return
+    if (request.method === 'GET') {
+      const items = normalizeInbox(member.record.inbox)
+      sendJson(response, 200, {
+        items,
+        unread: items.filter((item) => !item.read).length,
+      })
+      return
+    }
+    const body = await readBody(request)
+    let items = Array.isArray(body.items) ? normalizeInbox(body.items) : normalizeInbox(member.record.inbox)
+    const readIds = new Set(
+      (Array.isArray(body.readIds) ? body.readIds : []).map((id) => String(id ?? '').trim()).filter(Boolean),
+    )
+    if (readIds.size) {
+      items = items.map((item) => (readIds.has(item.id) ? { ...item, read: true } : item))
+    }
+    member.record.inbox = items
+    await persist()
+    sendJson(response, 200, {
+      items,
+      unread: items.filter((item) => !item.read).length,
     })
     return
   }
@@ -693,6 +899,85 @@ async function handle(request, response) {
     return
   }
 
+  if (request.method === 'GET' && route === '/api/workflow') {
+    const member = requireMember(request, response)
+    if (!member) return
+    sendJson(response, 200, { workflow: workflowView(member.record.workflow) })
+    return
+  }
+
+  if (request.method === 'POST' && route === '/api/workflow') {
+    const member = requireMember(request, response)
+    if (!member) return
+    try {
+      member.record.workflow = normalizeWorkflow(await readBody(request), 'member')
+    } catch (error) {
+      sendError(response, 400, error.message || '任务列表无效')
+      return
+    }
+    await persist()
+    sendJson(response, 201, { workflow: workflowView(member.record.workflow) })
+    return
+  }
+
+  if (request.method === 'POST' && route === '/api/workflow/complete') {
+    const member = requireMember(request, response)
+    if (!member) return
+    const workflow = member.record.workflow
+    if (!workflow?.tasks?.length) {
+      sendError(response, 404, '尚未收到任务列表')
+      return
+    }
+    const currentIndex = workflow.tasks.findIndex((task) => !task.completedAt)
+    if (currentIndex === -1) {
+      sendError(response, 400, '任务列表已全部完成')
+      return
+    }
+    const body = await readBody(request)
+    const taskId = String(body.taskId ?? '').trim()
+    const current = workflow.tasks[currentIndex]
+    if (taskId && taskId !== current.id) {
+      sendError(response, 409, '请按任务顺序完成当前功能')
+      return
+    }
+    current.completedAt = new Date().toISOString()
+    await persist()
+    const view = workflowView(workflow)
+    sendJson(response, 200, { workflow: view, nextTask: view.currentTask })
+    return
+  }
+
+  if (request.method === 'POST' && route === '/api/workflow/publish') {
+    const ingestKey = request.headers['x-fastinsight-key'] ?? ''
+    if (!process.env.FASTINSIGHT_INGEST_KEY || ingestKey !== process.env.FASTINSIGHT_INGEST_KEY) {
+      sendError(response, 401, 'FastInsight 发布凭证无效')
+      return
+    }
+    const body = await readBody(request)
+    let workflow
+    try {
+      workflow = normalizeWorkflow(body, 'api')
+    } catch (error) {
+      sendError(response, 400, error.message || '任务列表无效')
+      return
+    }
+    const targets = matchWorkflowTargets(body.person)
+    if (!targets.length) {
+      sendError(response, 404, '没有匹配的成员 Key')
+      return
+    }
+    for (const target of targets) {
+      ensureKeyCollections(target)
+      target.workflow = {
+        ...workflow,
+        id: randomBytes(8).toString('hex'),
+        tasks: workflow.tasks.map((task) => ({ ...task })),
+      }
+    }
+    await persist()
+    sendJson(response, 201, { ok: true, deliveredTo: targets.map((target) => target.person), workflow: workflowView(workflow) })
+    return
+  }
   sendError(response, 404, '接口不存在')
 }
 

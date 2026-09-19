@@ -1,0 +1,118 @@
+name: Deploy FastResearch
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-fastresearch
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      LIVE_ROOT: /home/dev/FastResearch
+      RELEASES_ROOT: /home/dev/ci-releases/fastresearch
+      UNIT: fastresearch.service
+      VITE_API_URL: ""
+      VITE_READ_URL: "https://47.110.133.67:3015"
+      VITE_WRITE_URL: ""
+      VITE_FASTTASK_URL: ""
+      VITE_FASTNEWS_URL: "http://47.110.133.67/news/"
+      VITE_FASTPPT_URL: ""
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install and build
+        run: |
+          npm ci
+          npm run build
+          test -f dist/index.html
+
+      - name: Patch production server
+        run: |
+          python3 - <<'PY'
+          import base64
+          from pathlib import Path
+          Path("patch_research_server.py").write_bytes(base64.b64decode("77u/IiIiTWFrZSBGYXN0UmVzZWFyY2ggc2VydmVyIHByb2R1Y3Rpb24tY2FwYWJsZSB3aXRob3V0IGVkaXRpbmcgdGhlIGdpdCB0cmVlLiIiIgpmcm9tIF9fZnV0dXJlX18gaW1wb3J0IGFubm90YXRpb25zCgppbXBvcnQganNvbgpmcm9tIHBhdGhsaWIgaW1wb3J0IFBhdGgKCkZTX0lNUE9SVF9PTEQgPSAiaW1wb3J0IHsgcmVhZEZpbGVTeW5jIH0gZnJvbSAnbm9kZTpmcyciCkZTX0lNUE9SVF9ORVcgPSAiaW1wb3J0IHsgY3JlYXRlUmVhZFN0cmVhbSwgZXhpc3RzU3luYywgcmVhZEZpbGVTeW5jLCBzdGF0U3luYyB9IGZyb20gJ25vZGU6ZnMnIgoKSE9TVF9CTE9DSyA9ICgKICAgICJjb25zdCBQT1JUID0gTnVtYmVyKHByb2Nlc3MuZW52LlBPUlQgPz8gODc4NylcbiIKICAgICJjb25zdCBIT1NUID0gcHJvY2Vzcy5lbnYuSE9TVCA/PyAnMC4wLjAuMCdcbiIKICAgICJjb25zdCBTVEFUSUNfRElSID0gcGF0aC5yZXNvbHZlKHByb2Nlc3MuZW52LkZBU1RSRVNFQVJDSF9TVEFUSUNfRElSID8/ICdkaXN0JylcbiIKKQoKU0VSVkVfU1RBVElDID0gIiIiCmNvbnN0IFNUQVRJQ19UWVBFUyA9IHsKICAnLmNzcyc6ICd0ZXh0L2NzczsgY2hhcnNldD11dGYtOCcsCiAgJy5odG1sJzogJ3RleHQvaHRtbDsgY2hhcnNldD11dGYtOCcsCiAgJy5pY28nOiAnaW1hZ2UveC1pY29uJywKICAnLmpzJzogJ3RleHQvamF2YXNjcmlwdDsgY2hhcnNldD11dGYtOCcsCiAgJy5qc29uJzogJ2FwcGxpY2F0aW9uL2pzb247IGNoYXJzZXQ9dXRmLTgnLAogICcubWFwJzogJ2FwcGxpY2F0aW9uL2pzb247IGNoYXJzZXQ9dXRmLTgnLAogICcucG5nJzogJ2ltYWdlL3BuZycsCiAgJy5zdmcnOiAnaW1hZ2Uvc3ZnK3htbCcsCiAgJy50eHQnOiAndGV4dC9wbGFpbjsgY2hhcnNldD11dGYtOCcsCiAgJy53b2ZmJzogJ2ZvbnQvd29mZicsCiAgJy53b2ZmMic6ICdmb250L3dvZmYyJywKfQoKZnVuY3Rpb24gc2FmZVN0YXRpY1BhdGgodXJsUGF0aCkgewogIGNvbnN0IGRlY29kZWQgPSBkZWNvZGVVUklDb21wb25lbnQoKHVybFBhdGggfHwgJy8nKS5zcGxpdCgnPycpWzBdIHx8ICcvJykKICBjb25zdCByZWxhdGl2ZSA9IGRlY29kZWQgPT09ICcvJyA/ICdpbmRleC5odG1sJyA6IGRlY29kZWQucmVwbGFjZSgvXlxcLysvLCAnJykKICBjb25zdCBmdWxsID0gcGF0aC5yZXNvbHZlKFNUQVRJQ19ESVIsIHJlbGF0aXZlKQogIGlmIChmdWxsICE9PSBTVEFUSUNfRElSICYmICFmdWxsLnN0YXJ0c1dpdGgoU1RBVElDX0RJUiArIHBhdGguc2VwKSkgcmV0dXJuIG51bGwKICByZXR1cm4gZnVsbAp9CgpmdW5jdGlvbiBzZXJ2ZVN0YXRpYyhyZXF1ZXN0LCByZXNwb25zZSkgewogIGxldCBmaWxlUGF0aCA9IHNhZmVTdGF0aWNQYXRoKG5ldyBVUkwocmVxdWVzdC51cmwsIGBodHRwOi8vJHtyZXF1ZXN0LmhlYWRlcnMuaG9zdCA/PyAnbG9jYWxob3N0J31gKS5wYXRobmFtZSkKICBpZiAoIWZpbGVQYXRoKSByZXR1cm4gZmFsc2UKICB0cnkgewogICAgaWYgKCFleGlzdHNTeW5jKGZpbGVQYXRoKSB8fCBzdGF0U3luYyhmaWxlUGF0aCkuaXNEaXJlY3RvcnkoKSkgewogICAgICBmaWxlUGF0aCA9IHBhdGguam9pbihTVEFUSUNfRElSLCAnaW5kZXguaHRtbCcpCiAgICB9CiAgICBpZiAoIWV4aXN0c1N5bmMoZmlsZVBhdGgpIHx8ICFzdGF0U3luYyhmaWxlUGF0aCkuaXNGaWxlKCkpIHJldHVybiBmYWxzZQogIH0gY2F0Y2ggewogICAgcmV0dXJuIGZhbHNlCiAgfQogIGNvbnN0IGV4dCA9IHBhdGguZXh0bmFtZShmaWxlUGF0aCkudG9Mb3dlckNhc2UoKQogIHJlc3BvbnNlLndyaXRlSGVhZCgyMDAsIHsKICAgICdDb250ZW50LVR5cGUnOiBTVEFUSUNfVFlQRVNbZXh0XSA/PyAnYXBwbGljYXRpb24vb2N0ZXQtc3RyZWFtJywKICAgICdDYWNoZS1Db250cm9sJzogZXh0ID09PSAnLmh0bWwnID8gJ25vLXN0b3JlJyA6ICdwdWJsaWMsIG1heC1hZ2U9MzE1MzYwMDAsIGltbXV0YWJsZScsCiAgfSkKICBpZiAocmVxdWVzdC5tZXRob2QgPT09ICdIRUFEJykgewogICAgcmVzcG9uc2UuZW5kKCkKICAgIHJldHVybiB0cnVlCiAgfQogIGNyZWF0ZVJlYWRTdHJlYW0oZmlsZVBhdGgpLnBpcGUocmVzcG9uc2UpCiAgcmV0dXJuIHRydWUKfQoKIiIiCgpGQUxMQkFDS19PTEQgPSAoCiAgICAiICAgIHNlbmRKc29uKHJlc3BvbnNlLCAyMDEsIHsgb2s6IHRydWUsIGRlbGl2ZXJlZFRvOiB0YXJnZXRzLm1hcCgodGFyZ2V0KSA9PiB0YXJnZXQucGVyc29uKSB9KVxuIgogICAgIiAgICByZXR1cm5cbiIKICAgICIgIH1cbiIKICAgICJcbiIKICAgICIgIHNlbmRFcnJvcihyZXNwb25zZSwgNDA0LCAn5o6l5Y+j5LiN5a2Y5ZyoJylcbiIKICAgICJ9XG4iCikKCkZBTExCQUNLX05FVyA9ICgKICAgICIgICAgc2VuZEpzb24ocmVzcG9uc2UsIDIwMSwgeyBvazogdHJ1ZSwgZGVsaXZlcmVkVG86IHRhcmdldHMubWFwKCh0YXJnZXQpID0+IHRhcmdldC5wZXJzb24pIH0pXG4iCiAgICAiICAgIHJldHVyblxuIgogICAgIiAgfVxuIgogICAgIlxuIgogICAgIiAgaWYgKChyZXF1ZXN0Lm1ldGhvZCA9PT0gJ0dFVCcgfHwgcmVxdWVzdC5tZXRob2QgPT09ICdIRUFEJykgJiYgIXJvdXRlLnN0YXJ0c1dpdGgoJy9hcGknKSkge1xuIgogICAgIiAgICBpZiAoc2VydmVTdGF0aWMocmVxdWVzdCwgcmVzcG9uc2UpKSByZXR1cm5cbiIKICAgICIgIH1cbiIKICAgICJcbiIKICAgICIgIHNlbmRFcnJvcihyZXNwb25zZSwgNDA0LCAn5o6l5Y+j5LiN5a2Y5ZyoJylcbiIKICAgICJ9XG4iCikKCkxJU1RFTl9PTEQgPSAoCiAgICAifSkubGlzdGVuKFBPUlQsICcxMjcuMC4wLjEnLCAoKSA9PiB7XG4iCiAgICAiICBjb25zb2xlLmxvZyhgRmFzdFJlc2VhcmNoIEFQSSBsaXN0ZW5pbmcgb24gaHR0cDovLzEyNy4wLjAuMToke1BPUlR9YClcbiIKICAgICJ9KSIKKQoKTElTVEVOX05FVyA9ICgKICAgICJ9KS5saXN0ZW4oUE9SVCwgSE9TVCwgKCkgPT4ge1xuIgogICAgIiAgY29uc29sZS5sb2coYEZhc3RSZXNlYXJjaCBsaXN0ZW5pbmcgb24gaHR0cDovLyR7SE9TVH06JHtQT1JUfWApXG4iCiAgICAifSkiCikKCgpkZWYgcGF0Y2hfc2VydmVyX3NvdXJjZShzb3VyY2U6IHN0cikgLT4gc3RyOgogICAgaWYgIkZBU1RSRVNFQVJDSF9TVEFUSUNfRElSIiBpbiBzb3VyY2UgYW5kICIubGlzdGVuKFBPUlQsIEhPU1QiIGluIHNvdXJjZToKICAgICAgICByZXR1cm4gc291cmNlCiAgICB0ZXh0ID0gc291cmNlCiAgICBpZiBGU19JTVBPUlRfT0xEIGluIHRleHQ6CiAgICAgICAgdGV4dCA9IHRleHQucmVwbGFjZShGU19JTVBPUlRfT0xELCBGU19JTVBPUlRfTkVXLCAxKQogICAgaWYgImNvbnN0IEhPU1QgPSIgbm90IGluIHRleHQ6CiAgICAgICAgbmVlZGxlID0gImNvbnN0IFBPUlQgPSBOdW1iZXIocHJvY2Vzcy5lbnYuUE9SVCA/PyA4Nzg3KVxuIgogICAgICAgIGlmIG5lZWRsZSBub3QgaW4gdGV4dDoKICAgICAgICAgICAgcmFpc2UgVmFsdWVFcnJvcigiY2Fubm90IGZpbmQgUE9SVCBkZWNsYXJhdGlvbiB0byBwYXRjaCIpCiAgICAgICAgdGV4dCA9IHRleHQucmVwbGFjZShuZWVkbGUsIEhPU1RfQkxPQ0ssIDEpCiAgICBpZiAiZnVuY3Rpb24gc2VydmVTdGF0aWMoIiBub3QgaW4gdGV4dDoKICAgICAgICBtYXJrZXIgPSAiYXN5bmMgZnVuY3Rpb24gaGFuZGxlKHJlcXVlc3QsIHJlc3BvbnNlKSB7IgogICAgICAgIGlmIG1hcmtlciBub3QgaW4gdGV4dDoKICAgICAgICAgICAgcmFpc2UgVmFsdWVFcnJvcigiY2Fubm90IGZpbmQgaGFuZGxlKCkgdG8gaW5zZXJ0IHN0YXRpYyBzZXJ2aW5nIikKICAgICAgICB0ZXh0ID0gdGV4dC5yZXBsYWNlKG1hcmtlciwgU0VSVkVfU1RBVElDICsgbWFya2VyLCAxKQogICAgaWYgRkFMTEJBQ0tfT0xEIGluIHRleHQ6CiAgICAgICAgdGV4dCA9IHRleHQucmVwbGFjZShGQUxMQkFDS19PTEQsIEZBTExCQUNLX05FVywgMSkKICAgIGVsaWYgImlmIChzZXJ2ZVN0YXRpYyhyZXF1ZXN0LCByZXNwb25zZSkpIHJldHVybiIgbm90IGluIHRleHQ6CiAgICAgICAgcmFpc2UgVmFsdWVFcnJvcigiY2Fubm90IHBhdGNoIEFQSSA0MDQgZmFsbGJhY2sgZm9yIHN0YXRpYyBmaWxlcyIpCiAgICBpZiBMSVNURU5fT0xEIGluIHRleHQ6CiAgICAgICAgdGV4dCA9IHRleHQucmVwbGFjZShMSVNURU5fT0xELCBMSVNURU5fTkVXLCAxKQogICAgZWxpZiAiLmxpc3RlbihQT1JULCBIT1NUIiBub3QgaW4gdGV4dDoKICAgICAgICByYWlzZSBWYWx1ZUVycm9yKCJjYW5ub3QgcGF0Y2ggbGlzdGVuKCkgaG9zdCIpCiAgICByZXR1cm4gdGV4dAoKCmRlZiBwYXRjaF9wYWNrYWdlX2pzb24odGV4dDogc3RyKSAtPiBzdHI6CiAgICBkYXRhID0ganNvbi5sb2Fkcyh0ZXh0KQogICAgc2NyaXB0cyA9IGRhdGEuc2V0ZGVmYXVsdCgic2NyaXB0cyIsIHt9KQogICAgc2NyaXB0c1sic3RhcnQiXSA9ICJub2RlIC0tZW52LWZpbGU9LmVudi5wcm9kdWN0aW9uIHNlcnZlci9pbmRleC5tanMiCiAgICByZXR1cm4ganNvbi5kdW1wcyhkYXRhLCBpbmRlbnQ9MikgKyAiXG4iCgoKZGVmIHBhdGNoX3RyZWUocm9vdDogUGF0aCkgLT4gTm9uZToKICAgIHNlcnZlciA9IHJvb3QgLyAic2VydmVyIiAvICJpbmRleC5tanMiCiAgICBwYWNrYWdlID0gcm9vdCAvICJwYWNrYWdlLmpzb24iCiAgICBpZiBub3Qgc2VydmVyLmlzX2ZpbGUoKSBvciBub3QgcGFja2FnZS5pc19maWxlKCk6CiAgICAgICAgcmFpc2UgRmlsZU5vdEZvdW5kRXJyb3IoZiJtaXNzaW5nIHNlcnZlciBvciBwYWNrYWdlLmpzb24gdW5kZXIge3Jvb3R9IikKICAgIHNlcnZlci53cml0ZV90ZXh0KHBhdGNoX3NlcnZlcl9zb3VyY2Uoc2VydmVyLnJlYWRfdGV4dChlbmNvZGluZz0idXRmLTgiKSksIGVuY29kaW5nPSJ1dGYtOCIpCiAgICBwYWNrYWdlLndyaXRlX3RleHQocGF0Y2hfcGFja2FnZV9qc29uKHBhY2thZ2UucmVhZF90ZXh0KGVuY29kaW5nPSJ1dGYtOCIpKSwgZW5jb2Rpbmc9InV0Zi04IikK"))
+          import patch_research_server
+          patch_research_server.patch_tree(Path("."))
+          print("patched FastResearch server and package.json start script")
+          PY
+
+      - name: Pack release
+        run: |
+          rm -rf /tmp/fr-rel
+          mkdir -p /tmp/fr-rel
+          cp -a dist server package.json package-lock.json /tmp/fr-rel/
+          tar -C /tmp/fr-rel -czf /tmp/fastresearch.tar.gz .
+          ls -lh /tmp/fastresearch.tar.gz
+
+      - name: Check deploy secrets
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          missing=0
+          [ -n "$DEPLOY_HOST" ] || { echo "missing secret DEPLOY_HOST"; missing=1; }
+          [ -n "$DEPLOY_USER" ] || { echo "missing secret DEPLOY_USER"; missing=1; }
+          [ -n "$DEPLOY_SSH_KEY" ] || { echo "missing secret DEPLOY_SSH_KEY"; missing=1; }
+          exit "$missing"
+
+      - name: Prepare SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$HOME/.ssh/deploy_key"
+          chmod 600 "$HOME/.ssh/deploy_key"
+          if [ -n "$DEPLOY_KNOWN_HOSTS" ]; then
+            printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          else
+            ssh-keyscan -H "$DEPLOY_HOST" >> "$HOME/.ssh/known_hosts"
+          fi
+          chmod 600 "$HOME/.ssh/known_hosts"
+          {
+            echo "Host deploy"
+            echo "  HostName $DEPLOY_HOST"
+            echo "  User $DEPLOY_USER"
+            echo "  IdentityFile $HOME/.ssh/deploy_key"
+            echo "  IdentitiesOnly yes"
+            echo "  StrictHostKeyChecking yes"
+            echo "  BatchMode yes"
+          } > "$HOME/.ssh/config"
+          chmod 600 "$HOME/.ssh/config"
+
+      - name: Upload and apply
+        env:
+          RELEASE_ID: research-${{ github.run_id }}-${{ github.sha }}
+        run: |
+          python3 - <<'PY'
+          import base64
+          from pathlib import Path
+          Path("/tmp/ci-sync-release.py").write_bytes(base64.b64decode("aW1wb3J0IHNodXRpbAppbXBvcnQgc3lzCmZyb20gcGF0aGxpYiBpbXBvcnQgUGF0aAoKc3JjID0gUGF0aChzeXMuYXJndlsxXSkKZHN0ID0gUGF0aChzeXMuYXJndlsyXSkKZXhjbHVkZXMgPSBzZXQoc3lzLmFyZ3ZbM10uc3BsaXQoIiwiKSkgaWYgbGVuKHN5cy5hcmd2KSA+IDMgYW5kIHN5cy5hcmd2WzNdIGVsc2Ugc2V0KCkKcmVwbGFjZV9kaXJzID0gc2V0KHN5cy5hcmd2WzRdLnNwbGl0KCIsIikpIGlmIGxlbihzeXMuYXJndikgPiA0IGFuZCBzeXMuYXJndls0XSBlbHNlIHNldCgpCnB1cmdlID0gKHN5cy5hcmd2WzVdICE9ICJrZWVwIikgaWYgbGVuKHN5cy5hcmd2KSA+IDUgZWxzZSBUcnVlCgpkZWYgc2tpcHBlZChyZWw6IFBhdGgpIC0+IGJvb2w6CiAgICByZXR1cm4gYW55KHBhcnQgaW4gZXhjbHVkZXMgZm9yIHBhcnQgaW4gcmVsLnBhcnRzKQoKZHN0Lm1rZGlyKHBhcmVudHM9VHJ1ZSwgZXhpc3Rfb2s9VHJ1ZSkKa2VwdCA9IHNldCgpCmZvciBwYXRoIGluIHNyYy5yZ2xvYigiKiIpOgogICAgcmVsID0gcGF0aC5yZWxhdGl2ZV90byhzcmMpCiAgICBpZiBza2lwcGVkKHJlbCk6CiAgICAgICAgY29udGludWUKICAgIHRhcmdldCA9IGRzdCAvIHJlbAogICAgaWYgcGF0aC5pc19kaXIoKToKICAgICAgICB0YXJnZXQubWtkaXIocGFyZW50cz1UcnVlLCBleGlzdF9vaz1UcnVlKQogICAgICAgIGtlcHQuYWRkKHJlbC5hc19wb3NpeCgpKQogICAgICAgIGNvbnRpbnVlCiAgICBpZiBub3QgcGF0aC5pc19maWxlKCk6CiAgICAgICAgY29udGludWUKICAgIHRhcmdldC5wYXJlbnQubWtkaXIocGFyZW50cz1UcnVlLCBleGlzdF9vaz1UcnVlKQogICAgc2h1dGlsLmNvcHkyKHBhdGgsIHRhcmdldCkKICAgIGtlcHQuYWRkKHJlbC5hc19wb3NpeCgpKQogICAga2VwdC51cGRhdGUocGFyZW50LmFzX3Bvc2l4KCkgZm9yIHBhcmVudCBpbiByZWwucGFyZW50cyBpZiBwYXJlbnQuYXNfcG9zaXgoKSAhPSAiLiIpCgpkZWYgc2hvdWxkX3B1cmdlKHJlbDogUGF0aCkgLT4gYm9vbDoKICAgIHBvc2l4ID0gcmVsLmFzX3Bvc2l4KCkKICAgIGlmIHNraXBwZWQocmVsKSBvciBwb3NpeCBpbiBrZXB0OgogICAgICAgIHJldHVybiBGYWxzZQogICAgaWYgcHVyZ2U6CiAgICAgICAgcmV0dXJuIFRydWUKICAgIHJldHVybiBib29sKHJlbC5wYXJ0cykgYW5kIHJlbC5wYXJ0c1swXSBpbiByZXBsYWNlX2RpcnMKCmlmIHB1cmdlIG9yIHJlcGxhY2VfZGlyczoKICAgIGZvciBwYXRoIGluIHNvcnRlZChkc3Qucmdsb2IoIioiKSwgcmV2ZXJzZT1UcnVlKToKICAgICAgICByZWwgPSBwYXRoLnJlbGF0aXZlX3RvKGRzdCkKICAgICAgICBpZiBub3Qgc2hvdWxkX3B1cmdlKHJlbCk6CiAgICAgICAgICAgIGNvbnRpbnVlCiAgICAgICAgaWYgcGF0aC5pc19kaXIoKToKICAgICAgICAgICAgdHJ5OgogICAgICAgICAgICAgICAgcGF0aC5ybWRpcigpCiAgICAgICAgICAgIGV4Y2VwdCBPU0Vycm9yOgogICAgICAgICAgICAgICAgcGFzcwogICAgICAgIGVsaWYgcGF0aC5pc19maWxlKCkgb3IgcGF0aC5pc19zeW1saW5rKCk6CiAgICAgICAgICAgIHBhdGgudW5saW5rKCkKcHJpbnQoInN5bmNlZCIsIGxlbihrZXB0KSwgInBhdGhzIik="))
+          Path("/tmp/ci-health.py").write_bytes(base64.b64decode("aW1wb3J0IHN5cwppbXBvcnQgdXJsbGliLmVycm9yCmltcG9ydCB1cmxsaWIucmVxdWVzdAoKb2tfc3RhdHVzID0gezIwMCwgMzAxLCAzMDIsIDQwMX0KZm9yIHVybCBpbiBzeXMuYXJndlsxOl06CiAgICBzdGF0dXMgPSAwCiAgICBib2R5ID0gYiIiCiAgICB0cnk6CiAgICAgICAgcmVxID0gdXJsbGliLnJlcXVlc3QuUmVxdWVzdCh1cmwsIG1ldGhvZD0iR0VUIikKICAgICAgICB3aXRoIHVybGxpYi5yZXF1ZXN0LnVybG9wZW4ocmVxLCB0aW1lb3V0PTgpIGFzIHJlc3A6CiAgICAgICAgICAgIHN0YXR1cyA9IHJlc3Auc3RhdHVzCiAgICAgICAgICAgIGJvZHkgPSByZXNwLnJlYWQoMTIwKQogICAgZXhjZXB0IHVybGxpYi5lcnJvci5IVFRQRXJyb3IgYXMgZXhjOgogICAgICAgIHN0YXR1cyA9IGV4Yy5jb2RlCiAgICAgICAgdHJ5OgogICAgICAgICAgICBib2R5ID0gZXhjLnJlYWQoMTIwKQogICAgICAgIGV4Y2VwdCBFeGNlcHRpb246CiAgICAgICAgICAgIGJvZHkgPSBiIiIKICAgIGV4Y2VwdCBFeGNlcHRpb24gYXMgZXhjOgogICAgICAgIHByaW50KCJGQUlMIiwgdXJsLCB0eXBlKGV4YykuX19uYW1lX18sIGV4YykKICAgICAgICBzeXMuZXhpdCgxKQogICAgdGV4dCA9IGJvZHkuZGVjb2RlKCJ1dGYtOCIsICJyZXBsYWNlIikKICAgIGlmICIvYXBpL2hlYWx0aCIgaW4gdXJsOgogICAgICAgIGxvd2VyZWQgPSB0ZXh0Lmxvd2VyKCkKICAgICAgICBpZiBzdGF0dXMgIT0gMjAwIG9yICgib2siIG5vdCBpbiBsb3dlcmVkIGFuZCAiaGVhbHRoeSIgbm90IGluIGxvd2VyZWQpOgogICAgICAgICAgICBwcmludCgiRkFJTCIsIHVybCwgc3RhdHVzLCB0ZXh0KQogICAgICAgICAgICBzeXMuZXhpdCgxKQogICAgZWxpZiBzdGF0dXMgbm90IGluIG9rX3N0YXR1czoKICAgICAgICBwcmludCgiRkFJTCIsIHVybCwgc3RhdHVzLCB0ZXh0KQogICAgICAgIHN5cy5leGl0KDEpCiAgICBwcmludCgiT0siLCBzdGF0dXMsIHVybCk="))
+          Path("/tmp/ci-apply.py").write_bytes(base64.b64decode("IyEvdXNyL2Jpbi9lbnYgcHl0aG9uMwoiIiJBcHBseSBhIHBhY2tlZCByZWxlYXNlIG9uIHRoZSBkZXBsb3kgaG9zdC4gVXNlZCBieSBHaXRIdWIgQWN0aW9ucy4iIiIKZnJvbSBfX2Z1dHVyZV9fIGltcG9ydCBhbm5vdGF0aW9ucwoKaW1wb3J0IG9zCmltcG9ydCBzdWJwcm9jZXNzCmltcG9ydCBzeXMKaW1wb3J0IHRpbWUKZnJvbSBwYXRobGliIGltcG9ydCBQYXRoCgoKZGVmIHNoKGFyZ3M6IGxpc3Rbc3RyXSwgdGltZW91dDogaW50ID0gMTgwKSAtPiBzdHI6CiAgICBwcmludCgiKyIsICIgIi5qb2luKGFyZ3MpLCBmbHVzaD1UcnVlKQogICAgcmVzdWx0ID0gc3VicHJvY2Vzcy5ydW4oYXJncywgY2FwdHVyZV9vdXRwdXQ9VHJ1ZSwgdGV4dD1UcnVlLCB0aW1lb3V0PXRpbWVvdXQpCiAgICBvdXQgPSAoKHJlc3VsdC5zdGRvdXQgb3IgIiIpICsgKHJlc3VsdC5zdGRlcnIgb3IgIiIpKS5yc3RyaXAoKQogICAgaWYgb3V0OgogICAgICAgIHByaW50KG91dCwgZmx1c2g9VHJ1ZSkKICAgIGlmIHJlc3VsdC5yZXR1cm5jb2RlICE9IDA6CiAgICAgICAgcmFpc2UgUnVudGltZUVycm9yKGYiY29tbWFuZCBmYWlsZWQgKHtyZXN1bHQucmV0dXJuY29kZX0pOiB7JyAnLmpvaW4oYXJncyl9IikKICAgIHJldHVybiBvdXQKCgpkZWYgbWFpbigpIC0+IGludDoKICAgIHRhcl9wYXRoID0gUGF0aChzeXMuYXJndlsxXSkKICAgIGV4dHJhY3QgPSBQYXRoKHN5cy5hcmd2WzJdKQogICAgbGl2ZSA9IFBhdGgoc3lzLmFyZ3ZbM10pCiAgICBiYWNrdXAgPSBQYXRoKHN5cy5hcmd2WzRdKQogICAgcmVsZWFzZXNfcm9vdCA9IFBhdGgoc3lzLmFyZ3ZbNV0pCiAgICBleGNsdWRlcyA9IHN5cy5hcmd2WzZdCiAgICByZXBsYWNlX2RpcnMgPSBzeXMuYXJndls3XQogICAgbW9kZSA9IHN5cy5hcmd2WzhdCiAgICB1bml0ID0gc3lzLmFyZ3ZbOV0KICAgIGhlYWx0aF91cmxzID0gc3lzLmFyZ3ZbMTA6XQoKICAgIHVpZCA9IG9zLmdldHVpZCgpCiAgICBvcy5lbnZpcm9uLnNldGRlZmF1bHQoIlhER19SVU5USU1FX0RJUiIsIGYiL3J1bi91c2VyL3t1aWR9IikKICAgIG9zLmVudmlyb24uc2V0ZGVmYXVsdCgKICAgICAgICAiREJVU19TRVNTSU9OX0JVU19BRERSRVNTIiwKICAgICAgICBmInVuaXg6cGF0aD17b3MuZW52aXJvblsnWERHX1JVTlRJTUVfRElSJ119L2J1cyIsCiAgICApCgogICAgZXh0cmFjdC5ta2RpcihwYXJlbnRzPVRydWUsIGV4aXN0X29rPVRydWUpCiAgICBiYWNrdXAubWtkaXIocGFyZW50cz1UcnVlLCBleGlzdF9vaz1UcnVlKQogICAgc2goWyJ0YXIiLCAiLXh6ZiIsIHN0cih0YXJfcGF0aCksICItQyIsIHN0cihleHRyYWN0KV0pCiAgICBzaChbInB5dGhvbjMiLCAiL3RtcC9jaS1zeW5jLXJlbGVhc2UucHkiLCBzdHIobGl2ZSksIHN0cihiYWNrdXApLCBleGNsdWRlcywgIiIsICJrZWVwIl0pCiAgICAocmVsZWFzZXNfcm9vdCAvICJsYXN0LWJhY2t1cCIpLndyaXRlX3RleHQoc3RyKGJhY2t1cCkgKyAiXG4iLCBlbmNvZGluZz0idXRmLTgiKQogICAgdHJ5OgogICAgICAgIHNoKAogICAgICAgICAgICBbCiAgICAgICAgICAgICAgICAicHl0aG9uMyIsCiAgICAgICAgICAgICAgICAiL3RtcC9jaS1zeW5jLXJlbGVhc2UucHkiLAogICAgICAgICAgICAgICAgc3RyKGV4dHJhY3QpLAogICAgICAgICAgICAgICAgc3RyKGxpdmUpLAogICAgICAgICAgICAgICAgZXhjbHVkZXMsCiAgICAgICAgICAgICAgICByZXBsYWNlX2RpcnMsCiAgICAgICAgICAgICAgICBtb2RlLAogICAgICAgICAgICBdCiAgICAgICAgKQogICAgICAgIHNoKFsic3lzdGVtY3RsIiwgIi0tdXNlciIsICJyZXN0YXJ0IiwgdW5pdF0pCiAgICAgICAgc2goWyJzeXN0ZW1jdGwiLCAiLS11c2VyIiwgImlzLWFjdGl2ZSIsIHVuaXRdKQogICAgICAgIHRpbWUuc2xlZXAoMykKICAgICAgICBzaChbInB5dGhvbjMiLCAiL3RtcC9jaS1oZWFsdGgucHkiLCAqaGVhbHRoX3VybHNdLCB0aW1lb3V0PTMwKQogICAgICAgIChyZWxlYXNlc19yb290IC8gImN1cnJlbnQiKS53cml0ZV90ZXh0KHN0cih0YXJfcGF0aC5wYXJlbnQpICsgIlxuIiwgZW5jb2Rpbmc9InV0Zi04IikKICAgICAgICBwcmludCgiZGVwbG95IG9rIiwgZmx1c2g9VHJ1ZSkKICAgICAgICByZXR1cm4gMAogICAgZXhjZXB0IEV4Y2VwdGlvbiBhcyBleGM6CiAgICAgICAgcHJpbnQoZiJkZXBsb3kgZmFpbGVkOiB7ZXhjfSIsIGZsdXNoPVRydWUpCiAgICAgICAgcHJpbnQoZiJyb2xsYmFjayBmcm9tIHtiYWNrdXB9IiwgZmx1c2g9VHJ1ZSkKICAgICAgICB0cnk6CiAgICAgICAgICAgIHNoKAogICAgICAgICAgICAgICAgWwogICAgICAgICAgICAgICAgICAgICJweXRob24zIiwKICAgICAgICAgICAgICAgICAgICAiL3RtcC9jaS1zeW5jLXJlbGVhc2UucHkiLAogICAgICAgICAgICAgICAgICAgIHN0cihiYWNrdXApLAogICAgICAgICAgICAgICAgICAgIHN0cihsaXZlKSwKICAgICAgICAgICAgICAgICAgICBleGNsdWRlcywKICAgICAgICAgICAgICAgICAgICByZXBsYWNlX2RpcnMsCiAgICAgICAgICAgICAgICAgICAgbW9kZSwKICAgICAgICAgICAgICAgIF0KICAgICAgICAgICAgKQogICAgICAgICAgICBzaChbInN5c3RlbWN0bCIsICItLXVzZXIiLCAicmVzdGFydCIsIHVuaXRdKQogICAgICAgIGV4Y2VwdCBFeGNlcHRpb24gYXMgcm9sbGJhY2tfZXhjOgogICAgICAgICAgICBwcmludChmInJvbGxiYWNrIGZhaWxlZDoge3JvbGxiYWNrX2V4Y30iLCBmbHVzaD1UcnVlKQogICAgICAgIHJhaXNlCgoKaWYgX19uYW1lX18gPT0gIl9fbWFpbl9fIjoKICAgIHRyeToKICAgICAgICByYWlzZSBTeXN0ZW1FeGl0KG1haW4oKSkKICAgIGV4Y2VwdCBFeGNlcHRpb24gYXMgZXhjOgogICAgICAgIHByaW50KGV4YywgZmlsZT1zeXMuc3RkZXJyKQogICAgICAgIHJhaXNlIFN5c3RlbUV4aXQoMSk="))
+          print("wrote remote helpers")
+          PY
+          scp /tmp/ci-sync-release.py /tmp/ci-health.py /tmp/ci-apply.py deploy:/tmp/
+
+          RELEASE_DIR="$RELEASES_ROOT/$RELEASE_ID"
+          BACKUP_DIR="$RELEASES_ROOT/backups/$RELEASE_ID"
+          ssh deploy "mkdir -p '$RELEASE_DIR/extract' '$RELEASES_ROOT/backups'"
+          scp /tmp/fastresearch.tar.gz deploy:"$RELEASE_DIR/release.tar.gz"
+          ssh deploy "python3 /tmp/ci-apply.py '$RELEASE_DIR/release.tar.gz' '$RELEASE_DIR/extract' '$LIVE_ROOT' '$BACKUP_DIR' '$RELEASES_ROOT' '.git,.env,.env.local,.env.production,data,node_modules' 'dist,server' keep '$UNIT' 'http://127.0.0.1:8787/api/health' 'http://127.0.0.1:8787/' 'http://127.0.0.1/'"

@@ -1,6 +1,6 @@
 # FastResearch 个人 Key 登录接口
 
-本文给 **FastRead / FastNews / FastWrite / FastTask / FastPPT / FastInsight** 等下游模块对接用。Panel（FastResearch）是唯一收集个人 Key 的地方；其他模块通过一次性 SSO 票据获得同一身份。
+本文给 **FastRead / FastNews / FastWrite / FastLab / FastPPT / FastInsight** 等下游模块对接用。Panel（FastResearch）是唯一收集个人 Key 的地方；其他模块通过一次性 SSO 票据获得同一身份。
 
 完整 SSO 时序与 FastRead 落地注意见 [sso.md](sso.md)。本文覆盖 Key 体系、全部相关 HTTP 接口和可复制示例。
 
@@ -105,6 +105,7 @@
 | FastRead | 已实现 | Panel `unlock` → `/api/sso/launch` 302 到 `{READ}?sso=` → **服务端** `consume` → 本模块 Cookie | 不要用邮箱密码替代 Key 身份；不要信 `research_api`；不要在 FastRead 做 Key 输入框 |
 | FastWrite / FastTask | 预留 | 与 FastRead 相同，换 `audience` | 不要各自做 Key 表单 |
 | FastPPT | 直接入口 | Panel 点击后跳转配置的 URL，无 SSO | 不要把 Key 放进 URL |
+| FastLab | 直接入口 | Panel 点击后跳转配置的 URL，无 SSO | 不要把 Key 放进 URL |
 | FastInsight | 发布通道 | 服务号 `X-FastInsight-Key` 写入该成员的 FastInsight 信箱 | 不要用个人 Key 当发布凭证 |
 
 `audience` 必须是下面的精确字符串（大小写敏感）：
@@ -724,6 +725,7 @@ curl -s -X POST "$FR/api/content/unlock" \
 | `FASTINSIGHT_INGEST_KEY` | FastResearch + 发布方 | 服务号写内容 |
 | `FASTRESEARCH_API_URL` | FastRead 等有后端的模块 | **模块自己配置**的 FastResearch 地址，不要用查询参数 |
 | `VITE_FASTPPT_URL` | Panel 前端 | FastPPT 入口，直接跳转，无 SSO |
+| `VITE_FASTLAB_URL` | Panel 前端 | FastLab 入口，直接跳转，无 SSO |
 | `VITE_READ_URL` / `FASTREAD_URL` | Panel / FastResearch | FastRead 入口；launch 未传 `next` 时的回退地址 |
 | `FASTRESEARCH_PANEL_URL` | FastRead | 登录页「打开 FastResearch」链接 |
 | `VITE_WRITE_URL` 等 | Panel 前端 | 其余模块入口 URL |

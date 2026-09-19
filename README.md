@@ -1,6 +1,6 @@
-# FastResearch
+﻿# FastResearch
 
-FastResearch 是一个面向科研阅读与知识工作的工具入口控制台。当前提供 FastRead、FastWrite、FastTask、FastNews 和 FastPPT 五个独立入口，以及 FastInsight 信箱（接收飞书经 skill 回传的研究卡片）。FastWrite、FastTask、FastPPT 可直接访问；FastRead、FastNews 和 FastInsight 信箱由个人 Key 保护。FastRead 和 FastNews 都用一次性 SSO 票据进入，直开 :3015 / :4173 会 302 到 Panel。
+FastResearch 是一个面向科研阅读与知识工作的工作流控制台。它维护一条任务列表，并按任务顺序展示 FastPPT、FastWrite、FastRead、FastNews 和 FastLab；完成当前任务后进入下一功能。FastInsight 信箱仍接收飞书经 skill 回传的研究卡片。FastWrite、FastPPT、FastLab 可直接访问；FastRead、FastNews 和信箱由个人 Key 保护。FastRead 和 FastNews 都用一次性 SSO 票据进入，直开 :3015 / :4173 会 302 到 Panel。
 
 ## 技术栈
 
@@ -38,18 +38,18 @@ npm run dev
 ```env
 VITE_READ_URL=https://example.com/read
 VITE_WRITE_URL=https://example.com/write
-VITE_FASTTASK_URL=https://example.com/fast-task
 VITE_FASTNEWS_URL=https://example.com/fast-news
 VITE_FASTPPT_URL=https://example.com/fast-ppt
+VITE_FASTLAB_URL=https://example.com/fast-lab
 FASTRESEARCH_PUBLIC_URL=http://127.0.0.1:8787
 
 ```
 
-未配置地址时，对应入口点击后不会跳转。FastTask、FastPPT 未填地址时会提示待配置。本地未填 `VITE_FASTNEWS_URL` 时，FastNews 默认跳到 `http://127.0.0.1:4173`；未填 `VITE_READ_URL` 时，FastRead 默认跳到 `http://127.0.0.1:3015`。FastPPT 直接跳转，不走 SSO。`FASTRESEARCH_PUBLIC_URL` 是浏览器访问 FastResearch API 的地址，默认 `http://127.0.0.1:8787`。不要填 Vite 开发服务器地址。
+未配置地址时，对应入口点击后不会跳转。FastPPT、FastLab 未填地址时会提示待配置。本地未填 `VITE_FASTNEWS_URL` 时，FastNews 默认跳到 `http://127.0.0.1:4173`；未填 `VITE_READ_URL` 时，FastRead 默认跳到 `http://127.0.0.1:3015`。FastPPT 直接跳转，不走 SSO。`FASTRESEARCH_PUBLIC_URL` 是浏览器访问 FastResearch API 的地址，默认 `http://127.0.0.1:8787`。不要填 Vite 开发服务器地址。
 
 ## 访问与个人 Key
 
-FastWrite、FastTask、FastPPT 入口点击后直接跳转到配置的地址。FastRead 和 FastNews 需要先用个人 Key 解锁：`/api/sso/launch` 签发一次性票据并 302 到 `{READ|NEWS}?sso=ticket`，再由各模块服务端兑换。直开 FastRead `:3015` 或 FastNews `:4173` 会被送到 Panel。个人 Key 登录与各模块对接见 [docs/key-login.md](docs/key-login.md)，FastRead SSO 补充见 [docs/sso.md](docs/sso.md)。
+FastWrite、FastPPT、FastLab 入口点击后直接跳转到配置的地址。FastRead 和 FastNews 需要先用个人 Key 解锁：`/api/sso/launch` 签发一次性票据并 302 到 `{READ|NEWS}?sso=ticket`，再由各模块服务端兑换。直开 FastRead `:3015` 或 FastNews `:4173` 会被送到 Panel。个人 Key 登录与各模块对接见 [docs/key-login.md](docs/key-login.md)，FastRead SSO 补充见 [docs/sso.md](docs/sso.md)。当前全部 HTTP 接口总览见 [docs/api.md](docs/api.md)。
 
 1. 点击右上角管理员登录按钮，使用管理员账号密码进入个人 Key 管理后台。
 2. 管理员按成员姓名生成 Key，可填写过期时间，也可以随时删除（删除后列表中不再显示该 Key）。
@@ -59,11 +59,23 @@ FastWrite、FastTask、FastPPT 入口点击后直接跳转到配置的地址。F
 6. 关注作者按 Key 保存在 FastResearch 服务端。FastNews 必须用 `python serve.py` 启动，直开静态文件或 `python -m http.server` 无法作为产品入口。
 7. 管理员会话保存在当前浏览器的 `sessionStorage`；成员登录凭证是 HttpOnly Cookie `fr_session`（JWT，8 小时）。不要把原始 Key 长期存在浏览器里。
 
-例如：
+工作流下发接口为 `POST /api/workflow/publish`，请求头同样使用 `X-FastInsight-Key`：
 
-```text
-https://example.com/fast-task
+```json
+{
+  "person": "张三",
+  "title": "课题 A 研究流",
+  "tasks": [
+    { "module": "FastPPT", "title": "整理开题幻灯片" },
+    { "module": "FastWrite", "title": "写相关工作" },
+    { "module": "FastRead", "title": "精读核心论文" },
+    { "module": "FastNews", "title": "跟踪本周新文" },
+    { "module": "FastLab", "title": "复现实验" }
+  ]
+}
 ```
+
+成员也可 `POST /api/workflow` 写入自己的任务列表，或发送 `{ "default": true }` 加载默认研究流。完成当前任务调用 `POST /api/workflow/complete`，界面会进入下一功能。
 
 FastInsight 服务端发布接口为 `POST /api/insight/publish`，请求头使用 `X-FastInsight-Key`，请求体包含 `person` 和 `item`。阅读项目可使用 `POST /api/content/reading/publish` 写入“最近阅读”列表，同样使用服务端发布凭证。
 
