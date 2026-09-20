@@ -6,7 +6,7 @@ import path from 'node:path'
 import process from 'node:process'
 
 function loadEnvFiles() {
-  for (const name of ['.env', '.env.local']) {
+  for (const name of ['.env.production', '.env', '.env.local']) {
     try {
       const text = readFileSync(path.resolve(name), 'utf8')
       for (const raw of text.split(/\r?\n/)) {
@@ -29,6 +29,8 @@ function loadEnvFiles() {
 
 loadEnvFiles()
 const PORT = Number(process.env.PORT ?? 8787)
+const HOST = process.env.HOST ?? '127.0.0.1'
+const STATIC_DIR = path.resolve(process.env.FASTRESEARCH_STATIC_DIR ?? 'dist')
 const DATA_DIR = path.resolve(process.env.FASTRESEARCH_DATA_DIR ?? 'data')
 const DATA_FILE = path.join(DATA_DIR, 'access.json')
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000
@@ -613,6 +615,74 @@ function matchWorkflowTargets(person) {
   return data.keys.filter((record) => keyIsActive(record) && (!requestedPerson || record.person.toLocaleLowerCase() === requestedPerson))
 }
 
+
+const STATIC_TYPES = {
+  '.css': 'text/css; charset=utf-8',
+  '.html': 'text/html; charset=utf-8',
+  '.ico': 'image/x-icon',
+  '.jpg': 'image/jpeg',
+  '.js': 'text/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.map': 'application/json; charset=utf-8',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.txt': 'text/plain; charset=utf-8',
+  '.webp': 'image/webp',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+}
+
+function safeStaticPath(urlPath) {
+  let decoded = '/'
+  try {
+    decoded = decodeURIComponent((urlPath || '/').split('?')[0] || '/')
+  } catch {
+    return null
+  }
+  const relative = decoded === '/' ? 'index.html' : decoded.replace(/^\/+/, '')
+  const full = path.resolve(STATIC_DIR, relative)
+  if (full !== STATIC_DIR && !full.startsWith(STATIC_DIR + path.sep)) return null
+  return full
+}
+
+async function serveStatic(request, response) {
+  const url = new URL(request.url, `http://${request.headers.host ?? 'localhost'}`)
+  let filePath = safeStaticPath(url.pathname)
+  if (!filePath) return false
+  const tryPaths = [filePath]
+  if (!path.extname(filePath)) tryPaths.push(path.join(STATIC_DIR, 'index.html'))
+  for (const candidate of tryPaths) {
+    try {
+      const contents = await readFile(candidate)
+      const ext = path.extname(candidate).toLowerCase()
+      response.writeHead(200, {
+        'Content-Type': STATIC_TYPES[ext] ?? 'application/octet-stream',
+        'Cache-Control': ext === '.html' ? 'no-store' : 'public, max-age=31536000, immutable',
+      })
+      if (request.method === 'HEAD') response.end()
+      else response.end(contents)
+      return true
+    } catch (error) {
+      if (error?.code !== 'ENOENT') {
+        sendError(response, 500, '前端资源读取失败')
+        return true
+      }
+    }
+  }
+  try {
+    const contents = await readFile(path.join(STATIC_DIR, 'index.html'))
+    response.writeHead(200, {
+      'Content-Type': STATIC_TYPES['.html'],
+      'Cache-Control': 'no-store',
+    })
+    if (request.method === 'HEAD') response.end()
+    else response.end(contents)
+    return true
+  } catch {
+    return false
+  }
+}
+
 async function handle(request, response) {
   activeRequest = request
   if (request.method === 'OPTIONS') {
@@ -978,6 +1048,9 @@ async function handle(request, response) {
     sendJson(response, 201, { ok: true, deliveredTo: targets.map((target) => target.person), workflow: workflowView(workflow) })
     return
   }
+  if ((request.method === 'GET' || request.method === 'HEAD') && !route.startsWith('/api')) {
+    if (await serveStatic(request, response)) return
+  }
   sendError(response, 404, '接口不存在')
 }
 
@@ -987,6 +1060,6 @@ createServer((request, response) => {
     activeRequest = request
     sendError(response, 400, error.message || '请求失败')
   })
-}).listen(PORT, '127.0.0.1', () => {
-  console.log(`FastResearch API listening on http://127.0.0.1:${PORT}`)
+}).listen(PORT, HOST, () => {
+  console.log(`FastResearch listening on http://${HOST}:${PORT}`)
 })

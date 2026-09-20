@@ -6,3 +6,4 @@ dist
 *.log
 test-results
 data
+.env.production
