@@ -1,6 +1,12 @@
 import { createServer } from 'node:http'
+import { FastCASService, CASFailure } from './fastcas-service.mjs'
+import { ServiceIngest, ServiceIngestError } from './service-ingest.mjs'
+import { handleFastCAS } from './fastcas-routes.mjs'
 import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
+import { AsyncLocalStorage } from 'node:async_hooks'
+import { AccountStore, TokenStore } from './account-store.mjs'
+import { migrateAccounts } from './account-migration.mjs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import process from 'node:process'
@@ -48,14 +54,18 @@ const SSO_LAUNCH = {
     mode: 'ticket',
   },
 }
-const sessions = new Map()
-const tickets = new Map()
+let sessions
+let tickets
 const COOKIE_NAME = process.env.FASTRESEARCH_COOKIE_NAME ?? 'fr_session'
 const COOKIE_DOMAIN = String(process.env.FASTRESEARCH_COOKIE_DOMAIN ?? '').trim()
 const COOKIE_SAMESITE = String(process.env.FASTRESEARCH_COOKIE_SAMESITE ?? 'Lax').trim() || 'Lax'
 let data
-let writeQueue = Promise.resolve()
-let activeRequest = null
+let requestQueue = Promise.resolve()
+const requestScope = new AsyncLocalStorage()
+let accountStore
+let fastcas
+let serviceIngest
+let dataRevision = 0
 
 function passwordHash(password) {
   const salt = randomBytes(16).toString('hex')
@@ -100,42 +110,42 @@ function ensureKeyCollections(record) {
 }
 
 async function loadData() {
-  await mkdir(DATA_DIR, { recursive: true })
-  try {
-    data = JSON.parse(await readFile(DATA_FILE, 'utf8'))
-  } catch {
-    data = defaultData()
-    await persist()
-  }
-  // Migrate the previous per-entry token store to the new key store without
-  // preserving credentials. Existing users must receive newly issued keys.
-  let migrated = false
-  if (!Array.isArray(data.keys)) {
-    data.keys = []
-    migrated = true
-  }
-  for (const record of data.keys) {
-    if (
-      !Array.isArray(record.followedAuthors)
-      || !Array.isArray(record.customResearchTags)
-      || !Array.isArray(record.inbox)
-      || !record.researchImpression
-      || typeof record.researchImpression !== 'object'
-    ) {
-      ensureKeyCollections(record)
-      migrated = true
+  await mkdir(DATA_DIR, { recursive: true, mode: 0o700 })
+  const database = path.resolve(process.env.FASTRESEARCH_ACCOUNT_DATABASE ?? path.join(DATA_DIR, 'accounts.sqlite'))
+  if (!existsSync(database)) {
+    let initial
+    try { initial = JSON.parse(await readFile(DATA_FILE, 'utf8')) }
+    catch (error) {
+      if (error.code !== 'ENOENT') throw new Error('账号文件无法读取；停止启动以保护原数据')
+      initial = defaultData()
+      initial.jwtSecret = randomBytes(32).toString('hex')
+      await writeFile(DATA_FILE, `${JSON.stringify(initial, null, 2)}\n`, { flag: 'wx', mode: 0o600 })
     }
+    // Migration validates before writing and keeps the original file untouched.
+    migrateAccounts(DATA_FILE, database, { apply: true })
   }
-  if (!data.jwtSecret || typeof data.jwtSecret !== 'string') {
-    data.jwtSecret = randomBytes(32).toString('hex')
-    migrated = true
-  }
-  if (migrated) await persist()
+  accountStore = new AccountStore(database)
+  sessions = new TokenStore(accountStore, 'session')
+  tickets = new TokenStore(accountStore, 'ticket')
+  sessions.prune()
+  fastcas = new FastCASService(accountStore, sessions)
+  serviceIngest = new ServiceIngest()
+  reloadData()
+  for (const record of data.keys) ensureKeyCollections(record)
+  if (!data.jwtSecret || typeof data.jwtSecret !== 'string') data.jwtSecret = randomBytes(32).toString('hex')
+  await persist()
+}
+
+function reloadData() {
+  const snapshot = accountStore.load()
+  data = snapshot.data
+  dataRevision = snapshot.revision
 }
 
 function persist() {
-  writeQueue = writeQueue.then(() => writeFile(DATA_FILE, `${JSON.stringify(data, null, 2)}\n`, 'utf8'))
-  return writeQueue
+  try { dataRevision = accountStore.save(data, dataRevision) }
+  catch (error) { reloadData(); throw error }
+  return Promise.resolve()
 }
 
 function jwtSecret() {
@@ -295,7 +305,7 @@ function sendJson(response, status, payload, extraHeaders = {}) {
   response.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
-    ...corsHeaders(activeRequest),
+    ...corsHeaders(requestScope.getStore()),
     ...extraHeaders,
   })
   response.end(status === 204 ? '' : JSON.stringify(payload))
@@ -306,6 +316,7 @@ function sendError(response, status, message, extraHeaders = {}) {
 }
 
 async function readBody(request) {
+  if (Object.hasOwn(request, 'parsedBody')) return request.parsedBody
   let raw = ''
   for await (const chunk of request) {
     raw += chunk
@@ -327,14 +338,16 @@ function getRequestToken(request) {
 
 function getSession(request) {
   const sessionId = getRequestToken(request)
-  if (!sessionId) return null
+  if (!sessionId || sessions.revoked(sessionId)) return null
   const payload = verifyJwt(sessionId)
-  if (payload?.role === 'member' && payload.keyId) {
+  if (payload?.role === 'member' && payload.keyId && payload.sessionVersion !== 2) {
     return {
       sessionId,
       role: 'member',
       keyId: payload.keyId,
       person: payload.person,
+      credentialVersion: payload.credentialVersion ?? 1,
+      accountId: payload.accountId,
       expiresAt: payload.exp * 1000,
     }
   }
@@ -361,8 +374,9 @@ function requireMember(request, response) {
     sendError(response, 401, '成员登录已失效', clearMemberCookieHeader(request))
     return null
   }
-  const record = data.keys.find((item) => item.id === session.keyId && keyIsActive(item))
-  if (!record) {
+  const record = data.keys.find((item) => item.id === session.keyId)
+  const permitted = record && !record.accountDisabledAt && (session.authSource === 'fastcas' || (keyIsActive(record) && session.credentialVersion === (record.credentialVersion ?? 1)))
+  if (!permitted) {
     sessions.delete(session.sessionId)
     sendError(response, 401, '个人 Key 无效、已撤销或已过期', clearMemberCookieHeader(request))
     return null
@@ -391,14 +405,15 @@ function findKey(key) {
 
 function createMemberSession(record) {
   const expiresAt = Date.now() + SESSION_TTL_MS
-  const session = signJwt({
-    role: 'member',
-    keyId: record.id,
-    person: record.person,
-    iat: Math.floor(Date.now() / 1000),
-    exp: Math.floor(expiresAt / 1000),
-  })
-  return { session, person: record.person, keyId: record.id, expiresAt }
+  const identity = {
+    role: 'member', keyId: record.id, person: record.person,
+    accountId: accountStore.accountIdForKey(record.id), credentialVersion: record.credentialVersion ?? 1,
+    authSource: 'key', authenticatedAt: Date.now(),
+  }
+  const session = signJwt({ ...identity, sessionVersion: 2, jti: randomBytes(24).toString('base64url'),
+    iat: Math.floor(Date.now()/1000), exp: Math.floor(expiresAt/1000) })
+  sessions.set(session, { ...identity, expiresAt })
+  return { session, person: record.person, keyId: record.id, accountId: identity.accountId, expiresAt }
 }
 
 function memberContent(record) {
@@ -407,6 +422,7 @@ function memberContent(record) {
   return {
     person: record.person,
     keyId: record.id,
+    accountId: accountStore.accountIdForKey(record.id),
     recentArticles: record.recentArticles ?? [],
     insightItems: record.insightItems ?? [],
     authors: record.followedAuthors ?? [],
@@ -417,12 +433,7 @@ function memberContent(record) {
   }
 }
 
-function pruneTickets() {
-  const now = Date.now()
-  for (const [id, ticket] of tickets) {
-    if (ticket.expiresAt < now) tickets.delete(id)
-  }
-}
+function pruneTickets() { tickets.prune() }
 
 function uniqueStrings(items, limit, length) {
   const unique = []
@@ -684,7 +695,6 @@ async function serveStatic(request, response) {
 }
 
 async function handle(request, response) {
-  activeRequest = request
   if (request.method === 'OPTIONS') {
     sendJson(response, 204, {})
     return
@@ -692,6 +702,27 @@ async function handle(request, response) {
 
   const url = new URL(request.url, `http://${request.headers.host ?? 'localhost'}`)
   const route = url.pathname.replace(/\/$/, '') || '/'
+
+  const current = getSession(request)
+  const independentEntry = ['/api/content/unlock','/api/content/logout','/api/auth/fastcas/login','/api/auth/fastcas/callback','/api/auth/fastcas/available','/api/auth/fastcas/events','/api/auth/fastcas/backchannel-logout','/api/sso/consume','/api/health','/api/connectors/news/profile'].includes(route)
+  if (current?.authSource === 'fastcas' && !independentEntry && !route.startsWith('/api/admin/')) {
+    try { await fastcas.validateSession(current.sessionId) }
+    catch { sendError(response, 401, 'FastCAS 会话已失效，请使用原 Key 登录', clearMemberCookieHeader(request)); return }
+  }
+  if (await handleFastCAS(request, response, { service: fastcas, route, sendJson, requireMember, readCookies, getRequestToken, memberCookieHeader, cookieName: COOKIE_NAME })) return
+
+  if (route === '/api/connectors/news/profile') {
+    if(request.method!=='GET'){sendError(response,405,'只允许读取');return}
+    try{
+      const accountId=await fastcas.delegatedNewsAccount(String(request.headers.authorization??''))
+      const records=data.keys.filter(record=>accountStore.accountIdForKey(record.id)===accountId)
+      if(records.length!==1){sendError(response,404,'Research 账号内容不可用');return}
+      const record=records[0]
+      sendJson(response,200,{researchAccountId:accountId,authors:record.followedAuthors??[],customTags:record.customResearchTags??[],
+        impression:normalizeImpression(record.researchImpression),inbox:normalizeInbox(record.inbox)})
+    }catch(error){sendError(response,error instanceof CASFailure?error.status:502,'Research 委托认证失败')}
+    return
+  }
 
   if (request.method === 'GET' && route === '/api/health') {
     sendJson(response, 200, { ok: true })
@@ -724,6 +755,22 @@ async function handle(request, response) {
     return
   }
 
+  const rotateRoute = route.match(/^\/api\/admin\/keys\/([^/]+)\/rotate$/)
+  if (rotateRoute && request.method === 'POST') {
+    if (!requireAdmin(request, response)) return
+    const record = data.keys.find(item => item.id === rotateRoute[1])
+    if (!record) { sendError(response, 404, '个人 Key 不存在'); return }
+    const rawKey = `fk_${randomBytes(24).toString('base64url')}`
+    record.keyHash = keyHash(rawKey)
+    record.keyPreview = `${rawKey.slice(0, 9)}...${rawKey.slice(-4)}`
+    record.credentialVersion = (record.credentialVersion ?? 1) + 1
+    record.revokedAt = null
+    record.expiresAt = null
+    await persist()
+    sendJson(response, 200, { key: rawKey, keyId: record.id, accountId: accountStore.accountIdForKey(record.id) })
+    return
+  }
+
   const keyRoute = route.match(/^\/api\/admin\/keys(?:\/([^/]+))?$/)
   if (keyRoute && ['POST', 'DELETE'].includes(request.method)) {
     if (!requireAdmin(request, response)) return
@@ -738,7 +785,7 @@ async function handle(request, response) {
         sendError(response, 404, '个人 Key 不存在')
         return
       }
-      data.keys.splice(index, 1)
+      data.keys[index].revokedAt = new Date().toISOString()
       await persist()
       sendJson(response, 200, { ok: true })
       return
@@ -795,6 +842,8 @@ async function handle(request, response) {
   }
 
   if (request.method === 'POST' && route === '/api/content/logout') {
+    const token = getRequestToken(request)
+    if (token) sessions.delete(token)
     sendJson(response, 200, { ok: true }, clearMemberCookieHeader(request))
     return
   }
@@ -877,6 +926,7 @@ async function handle(request, response) {
   if (request.method === 'POST' && route === '/api/sso/ticket') {
     const member = requireMember(request, response)
     if (!member) return
+    if (member.authSource === 'fastcas') { sendError(response, 409, '请在目标项目使用 FastCAS 登录；旧票据仅用于 Key 登录'); return }
     const body = await readBody(request)
     const audience = String(body.audience ?? '').trim()
     if (!SSO_LAUNCH[audience]) {
@@ -886,7 +936,7 @@ async function handle(request, response) {
     pruneTickets()
     const ticket = randomBytes(24).toString('base64url')
     const expiresAt = Date.now() + TICKET_TTL_MS
-    tickets.set(ticket, { keyId: member.record.id, person: member.record.person, audience, expiresAt })
+    tickets.set(ticket, { keyId: member.record.id, credentialVersion: member.record.credentialVersion ?? 1, person: member.record.person, audience, expiresAt })
     sendJson(response, 200, { ticket, expiresAt, apiUrl: PUBLIC_API_URL })
     return
   }
@@ -896,14 +946,13 @@ async function handle(request, response) {
     const ticketId = String(body.ticket ?? '').trim()
     const audience = String(body.audience ?? '').trim()
     pruneTickets()
-    const ticket = tickets.get(ticketId)
-    if (ticket) tickets.delete(ticketId)
+    const ticket = tickets.take(ticketId)
     if (!ticket || ticket.expiresAt < Date.now() || ticket.audience !== audience) {
       sendError(response, 401, '登录票据无效或已过期')
       return
     }
     const record = data.keys.find((item) => item.id === ticket.keyId && keyIsActive(item))
-    if (!record) {
+    if (!record || ticket.credentialVersion !== (record.credentialVersion ?? 1)) {
       sendError(response, 401, '个人 Key 无效、已撤销或已过期')
       return
     }
@@ -928,16 +977,16 @@ async function handle(request, response) {
       return
     }
     let location = target
-    if (config.mode === 'ticket') {
+    if (config.mode === 'ticket' && member.authSource !== 'fastcas') {
       pruneTickets()
       const ticket = randomBytes(24).toString('base64url')
       const expiresAt = Date.now() + TICKET_TTL_MS
-      tickets.set(ticket, { keyId: member.record.id, person: member.record.person, audience, expiresAt })
+      tickets.set(ticket, { keyId: member.record.id, credentialVersion: member.record.credentialVersion ?? 1, person: member.record.person, audience, expiresAt })
       const nextUrl = new URL(target)
       nextUrl.searchParams.set('sso', ticket)
       location = nextUrl.toString()
     }
-    const auth = createMemberSession(member.record)
+    const auth = { session: member.sessionId, expiresAt: member.expiresAt }
     response.writeHead(302, {
       Location: location,
       'Cache-Control': 'no-store',
@@ -949,20 +998,25 @@ async function handle(request, response) {
   }
 
   if (request.method === 'POST' && ['/api/insight/publish', '/api/content/reading/publish'].includes(route)) {
-    const ingestKey = request.headers['x-fastinsight-key'] ?? ''
-    if (!process.env.FASTINSIGHT_INGEST_KEY || ingestKey !== process.env.FASTINSIGHT_INGEST_KEY) {
-      sendError(response, 401, 'FastInsight 发布凭证无效')
-      return
-    }
     const body = await readBody(request)
-    const requestedPerson = String(body.person ?? '').trim().toLocaleLowerCase()
-    const targets = data.keys.filter((record) => keyIsActive(record) && (!requestedPerson || record.person.toLocaleLowerCase() === requestedPerson))
+    let serviceTargets
+    try { serviceTargets = route === '/api/insight/publish' ? await serviceIngest.targets(request, body, data.keys, accountStore) : null }
+    catch (error) { sendError(response, error instanceof ServiceIngestError ? error.status : 502, '服务投递认证失败'); return }
+    let targets
+    if (serviceTargets) { targets = serviceTargets.targets }
+    else {
+      const ingestKey = request.headers['x-fastinsight-key'] ?? ''
+      if (request.headers.authorization || !process.env.FASTINSIGHT_INGEST_KEY || ingestKey !== process.env.FASTINSIGHT_INGEST_KEY) { sendError(response, 401, 'FastInsight 发布凭证无效'); return }
+      const requestedPerson = String(body.person ?? '').trim().toLocaleLowerCase()
+      targets = data.keys.filter((record) => keyIsActive(record) && (!requestedPerson || record.person.toLocaleLowerCase() === requestedPerson))
+    }
     if (!targets.length) {
       sendError(response, 404, '没有匹配的成员 Key')
       return
     }
     const channel = route.includes('reading') ? 'recentArticles' : 'insightItems'
     const items = normalizeItems([body.item ?? body], route.includes('reading') ? 'FastRead' : 'FastInsight')
+    if (serviceTargets) for (const item of items) item.publisherClientId = serviceTargets.clientId
     for (const target of targets) target[channel] = [...items, ...(target[channel] ?? [])].slice(0, 100)
     await persist()
     sendJson(response, 201, { ok: true, deliveredTo: targets.map((target) => target.person) })
@@ -1055,11 +1109,25 @@ async function handle(request, response) {
 }
 
 await loadData()
-createServer((request, response) => {
-  handle(request, response).catch((error) => {
-    activeRequest = request
-    sendError(response, 400, error.message || '请求失败')
+const server = createServer((request, response) => {
+  requestScope.run(request, async () => {
+    try {
+      // Parse before entering the queue so a slow upload cannot hold the writer.
+      if (['POST','PUT','PATCH','DELETE'].includes(request.method)) {
+        if (String(request.headers['content-type'] ?? '').split(';')[0] === 'application/jwt' ||
+            (new URL(request.url,'http://localhost').pathname==='/api/auth/fastcas/backchannel-logout' && String(request.headers['content-type'] ?? '').split(';')[0] === 'application/x-www-form-urlencoded')) {
+          const chunks = []; let size = 0
+          for await (const chunk of request) { size += chunk.length; if (size > 65536) throw new Error('事件过大'); chunks.push(chunk) }
+          request.rawBody = Buffer.concat(chunks).toString('utf8')
+        } else request.parsedBody = await readBody(request)
+      }
+      const operation = requestQueue.then(async () => { reloadData(); await handle(request, response) })
+      requestQueue = operation.catch(() => {})
+      await operation
+    } catch (error) {
+      sendError(response, 400, error.message || '请求失败')
+    }
   })
 }).listen(PORT, HOST, () => {
-  console.log(`FastResearch listening on http://${HOST}:${PORT}`)
+  console.log(`FastResearch listening on http://${HOST}:${server.address().port}`)
 })

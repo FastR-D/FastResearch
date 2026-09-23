@@ -81,7 +81,7 @@ Base URL：`http://127.0.0.1:8787`（`PORT` / `FASTRESEARCH_PUBLIC_URL`）。
 | POST | `/api/admin/logout` | 任意（无会话也 200） | 200 `{ "ok": true }` | 清管理员会话 |
 | GET | `/api/admin/keys` | 管理员 | 200 `{ "keys": [...] }` | 列出 Key（仅 preview） |
 | POST | `/api/admin/keys` | 管理员 | 201 | 生成 Key，**完整 `key` 只出现一次** |
-| DELETE | `/api/admin/keys/:id` | 管理员 | 200 `{ "ok": true }` | 删除 Key（真正移除） |
+| DELETE | `/api/admin/keys/:id` | 管理员 | 200 `{ "ok": true }` | 撤销 Key，保留账号与个人内容 |
 | POST | `/api/content/unlock` | 无 | 200 | 个人 Key → 成员会话 + 内容 |
 | POST | `/api/content/logout` | 无（清 Cookie） | 200 `{ "ok": true }` | 清 `fr_session` |
 | GET | `/api/content/me` | 成员 | 200 | 身份 + 作者 / 标签 / 研究印象 / 未读私信 |
@@ -662,3 +662,5 @@ FastResearch 旧版 `App.tsx` 中的 `/api/guest/verify` 等同样未使用（`m
 4. `POST /api/related-work` 在配置了 LLM Key 时应返回 `source: "llm"`；否则前端走本地排序。
 5. 启动 FastRead 后端 `:8483` + 前端 `:3015`。`GET /api/health` → `{ "status": "healthy" }`。从 Panel 点 FastRead，`GET /api/auth/me` 带 `research_key_id`。
 6. FastInsight：`publish_to_research.py` 后，该成员 `insightItems` 增加；Panel 每 15 秒同步信箱。
+
+账号存储已升级为 SQLite，迁移/回滚、稳定 accountId、Key 轮换和持久会话说明见 [账号迁移](account-migration.md)。已有 `access.json` 首次升级后保留为原始快照，不再实时写入。

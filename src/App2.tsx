@@ -108,9 +108,11 @@ function App2() {
   // Default to light green academic theme
   const [dark, setDark] = useState(() => localStorage.getItem('fastresearch-theme') === 'dark')
   const [keyOpen, setKeyOpen] = useState(false)
+  const [casEnabled, setCasEnabled] = useState(false)
+  const [casOpen, setCasOpen] = useState(false)
   const [adminOpen, setAdminOpen] = useState(false)
   const [session, setSession] = useState<AdminSession | null>(() => loadStoredSession<AdminSession>(adminStorageKey))
-  const [member, setMember] = useState<MemberSession | null>(() => loadStoredSession<MemberSession>(memberStorageKey))
+  const [member, setMember] = useState<MemberSession | null>(() => new URLSearchParams(window.location.search).get('fastcas') === 'complete' ? null : loadStoredSession<MemberSession>(memberStorageKey))
   const [insightItems, setInsightItems] = useState<InsightItem[]>([])
   const [selectedInsight, setSelectedInsight] = useState<string | null>(null)
   const [readIds, setReadIds] = useState<Set<string>>(() => new Set())
@@ -122,6 +124,19 @@ function App2() {
   const visibleWorkflow = workflow ?? PREVIEW_WORKFLOW
   const selectedTask = visibleWorkflow.tasks.find((task) => task.id === selectedTaskId) ?? visibleWorkflow.tasks.find((task) => task.status === 'active') ?? visibleWorkflow.tasks[0]
   const selectedEntry = selectedTask ? ENTRIES[selectedTask.module] : null
+
+  useEffect(() => {
+    void request<{enabled: boolean}>('/api/auth/fastcas/available').then(value => setCasEnabled(value.enabled)).catch(() => {})
+    const marker = new URLSearchParams(window.location.search).get('fastcas')
+    if (marker === 'complete') {
+      sessionStorage.removeItem(memberStorageKey)
+      void request<{session: string; person: string; keyId: string; expiresAt: number}>('/api/content/me').then(result => {
+        const value = { token: result.session, person: result.person, keyId: result.keyId, expiresAt: result.expiresAt }
+        sessionStorage.setItem(memberStorageKey, JSON.stringify(value)); setMember(value); setToast('FastCAS 操作已完成')
+      }).catch(() => { setMember(null); setToast('请重新登录以确认认证状态') })
+    } else if (marker === 'failed') setToast('FastCAS 操作未完成，请使用原 Key 登录，在账号认证中检查或重试')
+    if (marker) { const url = new URL(window.location.href); url.searchParams.delete('fastcas'); window.history.replaceState(null, '', url.pathname + url.search + url.hash) }
+  }, [])
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark)
@@ -364,6 +379,7 @@ function App2() {
           <span>{new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '.')}</span>
         </div>
         <div className="header-actions">
+          {casEnabled && (member ? <button type="button" className="ghost-button" onClick={() => setCasOpen(true)}>FastCAS 认证</button> : <a className="ghost-button" href={apiUrl('/api/auth/fastcas/login')}>使用 FastCAS 登录</a>)}
           {member && <span className="header-identity" title={`当前认证成员：${member.person}`}>👤 {member.person}</span>}
           <button type="button" className="ghost-button" onClick={() => setKeyOpen(true)}>
             <KeyRound size={14} />
@@ -447,6 +463,7 @@ function App2() {
         <span>专为深度学术研究设计 · 严谨秩序与知识沉淀 <span className="footer-pulse" /></span>
       </footer>
 
+      {casOpen && member && <FastCASDialog member={member} onClose={() => setCasOpen(false)} />}
       {keyOpen && <KeyDialog onClose={closeKeyDialog} onUnlock={unlock} />}
       {adminOpen && (
         <AdminDialog
@@ -936,3 +953,33 @@ function AdminDialog({ session, onLogin, onLogout, onClose }: {
 }
 
 export default App2
+
+function FastCASDialog({member, onClose}: {member: MemberSession; onClose: () => void}) {
+  const [link, setLink] = useState<{state: string} | null>(null)
+  const [loaded, setLoaded] = useState(false)
+  const [key, setKey] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const load = async () => { const value = await request<{link: {state: string} | null}>('/api/auth/fastcas/status', {}, member); setLink(value.link); setLoaded(true) }
+  useEffect(() => { void load().catch(err => setError(err.message)) }, [])
+  async function act(action: 'link' | 'revoke' | 'reconcile') {
+    setBusy(true); setError('')
+    try {
+      const result = await request<{url?: string}>('/api/auth/fastcas/' + action, {method: 'POST', body: JSON.stringify({key})}, member)
+      setKey('')
+      if (result.url) window.location.assign(result.url)
+      else await load()
+    } catch (err) { setError(err instanceof Error ? err.message : '操作未完成') }
+    finally { setBusy(false) }
+  }
+  return <Dialog title="FastCAS 账号认证" onClose={onClose}><div className="dialog-form">
+    <p>{!loaded ? '正在读取状态…' : !link ? '尚未认证' : link.state === 'active' ? '已认证' : '认证待完成'}</p>
+    <p>关联当前项目账号，个人内容保持不变。原 Key 登录继续可用。</p>
+    <label>当前账号的原 Key<input type="password" maxLength={256} autoComplete="off" value={key} onChange={event => setKey(event.target.value)} /></label>
+    {error && <p className="form-error" role="alert">{error}</p>}
+    {loaded && (!link ? <button disabled={busy || !key} onClick={() => void act('link')}>认证当前账号</button> : <>
+      {link.state === 'prepared' && <button disabled={busy} onClick={() => void act('reconcile')}>重试完成认证</button>}
+      <button disabled={busy || !key} onClick={() => void act('revoke')}>解除认证</button>
+    </>)}
+  </div></Dialog>
+}

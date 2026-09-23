@@ -7,3 +7,4 @@ dist
 test-results
 data
 .env.production
+__pycache__/

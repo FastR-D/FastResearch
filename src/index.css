@@ -1631,12 +1631,21 @@ html.dark .workflow-track i {
 
 @media (max-width: 600px) {
   .tech-header {
-    height: 56px;
-    padding: 0 14px;
-    gap: 10px;
+    height: auto;
+    min-height: 56px;
+    padding: 8px 14px;
+    gap: 6px 10px;
+    flex-wrap: wrap;
   }
   .brand-mark small, .header-status {
     display: none;
+  }
+  .header-actions {
+    max-width: 100%;
+    margin-left: auto;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 6px;
   }
   .hero-copy h1 {
     font-size: 28px;

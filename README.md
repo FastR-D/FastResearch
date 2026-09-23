@@ -12,7 +12,7 @@ FastResearch 是一个面向科研阅读与知识工作的工作流控制台。�
 
 ## 快速开始
 
-需要 Node.js 18 或更高版本。
+需要 Node.js 22.13 或更高版本（使用内置 SQLite）。
 
 ```bash
 npm install
@@ -29,7 +29,7 @@ npm run dev
 
 后端 API 默认监听：`http://127.0.0.1:8787`
 
-首次启动会创建 `data/access.json`。默认管理员账号为 `admin`，默认密码为 `admin123456`。生产环境请通过 `ADMIN_USERNAME`、`ADMIN_PASSWORD` 和 `FASTINSIGHT_INGEST_KEY` 环境变量设置凭证。
+首次启动建立 SQLite 账号库；已有 `data/access.json` 将经过校验和备份后迁移。参见 [账号迁移与回滚](docs/account-migration.md)。默认管理员账号为 `admin`，默认密码为 `admin123456`。生产环境请通过 `ADMIN_USERNAME`、`ADMIN_PASSWORD` 和 `FASTINSIGHT_INGEST_KEY` 环境变量设置凭证。
 
 ## 配置工具地址
 

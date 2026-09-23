@@ -197,7 +197,7 @@ DELETE /api/admin/keys/{keyId}
 Authorization: Bearer <管理员会话>
 ```
 
-成功 `200`：`{ "ok": true }`。该 Key 会从存储中移除，不再出现在管理员列表里（不是仅标记撤销）。之后 unlock / 出票 / consume 均失败。不存在则 `404 个人 Key 不存在`。
+成功 `200`：`{ "ok": true }`。该 Key 标记撤销，账号及个人内容保留，管理员列表显示 inactive。之后 unlock / 出票 / consume 均失败。不存在则 `404 个人 Key 不存在`。
 
 ### 4.5 退出
 
@@ -729,3 +729,9 @@ curl -s -X POST "$FR/api/content/unlock" \
 | `VITE_READ_URL` / `FASTREAD_URL` | Panel / FastResearch | FastRead 入口；launch 未传 `next` 时的回退地址 |
 | `FASTRESEARCH_PANEL_URL` | FastRead | 登录页「打开 FastResearch」链接 |
 | `VITE_WRITE_URL` 等 | Panel 前端 | 其余模块入口 URL |
+
+### Key 轮换
+
+`POST /api/admin/keys/{keyId}/rotate` 使用管理员 Bearer 会话，返回一次性完整新 Key、原 keyId 和稳定 accountId。轮换提升凭证版本，使旧 Key、旧成员会话和未消费旧票据失效；个人资料不变。新 Key 清除原失效/撤销状态。成员退出现在在数据库撤销会话，不能再重用该令牌。
+
+FastCAS 登录来源不会转换为 Key 凭证：其 `/api/sso/ticket` 返回 409，`/api/sso/launch` 仅打开已校验的目标地址，交由目标项目登录。Key 来源的旧票据链路保持兼容。
