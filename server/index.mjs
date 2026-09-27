@@ -4,6 +4,17 @@ import { readFileSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import process from 'node:process'
+import { fileURLToPath } from 'node:url'
+import { openAccountStore, assignAccountIds, saveFastCASSession, fastCASSession } from './account-store.mjs'
+import { migrateAccounts, rotateKey } from './account-migration.mjs'
+import { createTransactionStore } from './fastcas-store.mjs'
+import { classifyMember, memberClaims, safeReturnPath } from './runtime.mjs'
+import { handleFastCAS, claimsForService } from './fastcas-http.mjs'
+import { revalidateFastCASSession, shouldRevalidate } from './fastcas-service.mjs'
+import { assessService, accountTargets, legacyPersonTargets, serviceWorkflowTargets } from './service-ingest.mjs'
+import { openWorkflowStore, getWorkflowsByAccount, getWorkflowById } from './workflow-store.mjs'
+import { receiveDispatch, startWorkflow, completeStage, formatWorkflowView } from './fasttask-dispatch.mjs'
+import { createFastWriteClient } from './fastwrite-client.mjs'
 
 function loadEnvFiles() {
   for (const name of ['.env', '.env.local']) {
@@ -31,6 +42,8 @@ loadEnvFiles()
 const PORT = Number(process.env.PORT ?? 8787)
 const DATA_DIR = path.resolve(process.env.FASTRESEARCH_DATA_DIR ?? 'data')
 const DATA_FILE = path.join(DATA_DIR, 'access.json')
+const ACCOUNT_FILE = path.join(DATA_DIR, 'accounts.sqlite')
+const WORKFLOW_FILE = path.join(DATA_DIR, 'workflows.sqlite')
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000
 const TICKET_TTL_MS = 2 * 60 * 1000
 const PUBLIC_API_URL = (process.env.FASTRESEARCH_PUBLIC_URL ?? `http://127.0.0.1:${PORT}`).replace(/\/$/, '')
@@ -54,6 +67,10 @@ const COOKIE_SAMESITE = String(process.env.FASTRESEARCH_COOKIE_SAMESITE ?? 'Lax'
 let data
 let writeQueue = Promise.resolve()
 let activeRequest = null
+let accountDb
+let workflowDb
+let transactions
+let fastWriteClient
 
 function passwordHash(password) {
   const salt = randomBytes(16).toString('hex')
@@ -128,7 +145,21 @@ async function loadData() {
     data.jwtSecret = randomBytes(32).toString('hex')
     migrated = true
   }
+  accountDb = openAccountStore(ACCOUNT_FILE)
+  workflowDb = openWorkflowStore(WORKFLOW_FILE)
+  transactions = createTransactionStore(accountDb)
+  if (migrateAccounts(data, accountDb, { sourceFile: DATA_FILE, backupFile: DATA_FILE + '.bak' })) migrated = true
   if (migrated) await persist()
+
+  // 初始化 FastWrite 客户端
+  const fastWriteUrl = process.env.FASTWRITE_URL || process.env.VITE_WRITE_URL
+  const fastWriteApiKey = process.env.FASTWRITE_API_KEY
+  if (fastWriteUrl && fastWriteApiKey) {
+    fastWriteClient = createFastWriteClient(fastWriteUrl, fastWriteApiKey)
+    console.log('FastWrite 客户端已初始化:', fastWriteUrl)
+  } else {
+    console.log('FastWrite 客户端未配置 (需要 FASTWRITE_URL 和 FASTWRITE_API_KEY)')
+  }
 }
 
 function persist() {
@@ -251,8 +282,12 @@ function isSecureRequest(request) {
 }
 
 function serializeCookie(value, { maxAge, request, sameSite = COOKIE_SAMESITE } = {}) {
+  return namedCookie(COOKIE_NAME, value, { maxAge, request, sameSite })
+}
+
+function namedCookie(name, value, { maxAge, request, sameSite = COOKIE_SAMESITE } = {}) {
   const parts = [
-    `${COOKIE_NAME}=${encodeURIComponent(value)}`,
+    `${name}=${encodeURIComponent(value)}`,
     'Path=/',
     'HttpOnly',
     `Max-Age=${Math.max(0, Math.floor(maxAge ?? 0))}`,
@@ -328,13 +363,8 @@ function getSession(request) {
   if (!sessionId) return null
   const payload = verifyJwt(sessionId)
   if (payload?.role === 'member' && payload.keyId) {
-    return {
-      sessionId,
-      role: 'member',
-      keyId: payload.keyId,
-      person: payload.person,
-      expiresAt: payload.exp * 1000,
-    }
+    const member = classifyMember(payload, accountDb)
+    return member ? { sessionId, ...member } : null
   }
   const session = sessions.get(sessionId)
   if (!session || session.expiresAt < Date.now()) {
@@ -354,17 +384,57 @@ function requireAdmin(request, response) {
 }
 
 function requireMember(request, response) {
-  const session = getSession(request)
-  if (!session || session.role !== 'member') {
+  const member = currentMember(request)
+  if (!member) {
     sendError(response, 401, '成员登录已失效', clearMemberCookieHeader(request))
     return null
   }
-  const record = data.keys.find((item) => item.id === session.keyId && keyIsActive(item))
-  if (!record) {
-    sessions.delete(session.sessionId)
-    sendError(response, 401, '个人 Key 无效、已撤销或已过期', clearMemberCookieHeader(request))
+  return member
+}
+
+async function readRaw(request) {
+  let raw = ''
+  for await (const chunk of request) {
+    raw += chunk
+    if (raw.length > 1024 * 1024) throw new Error('请求内容过大')
+  }
+  return raw
+}
+
+function assertSameOrigin(request) {
+  if (!isAllowedOrigin(String(request.headers.origin ?? ''))) {
+    throw Object.assign(new Error('请求来源无效'), { status: 403 })
+  }
+}
+
+async function serviceCredential(request, response, scope) {
+  const header = String(request.headers.authorization ?? '')
+  if (header) {
+    if (!header.startsWith('Bearer ') || !header.slice(7).trim()) {
+      sendError(response, 401, '服务令牌无效')
+      return null
+    }
+    try {
+      const claims = await claimsForService(header.slice(7).trim(), process.env.FASTRESEARCH_FASTCAS_AUDIENCE || PUBLIC_API_URL, [scope], transactions, PUBLIC_API_URL)
+      if (!claims || claims.service !== true) throw Object.assign(new Error('服务令牌无效'), { status: 401 })
+      return { claims }
+    } catch (error) {
+      sendError(response, error?.status === 403 ? 403 : 401, '服务令牌无效')
+      return null
+    }
+  }
+  if (!process.env.FASTINSIGHT_INGEST_KEY || request.headers['x-fastinsight-key'] !== process.env.FASTINSIGHT_INGEST_KEY) {
+    sendError(response, 401, 'FastInsight 发布凭证无效')
     return null
   }
+  return { legacy: true }
+}
+
+function currentMember(request) {
+  const session = getSession(request)
+  if (!session || session.role !== 'member') return null
+  const record = data.keys.find((item) => item.id === session.keyId && keyIsActive(item))
+  if (!record || (session.accountId && session.accountId !== record.accountId)) return null
   return { ...session, record: ensureKeyCollections(record) }
 }
 
@@ -375,6 +445,7 @@ function keyIsActive(record) {
 function adminKeys() {
   return data.keys.map((record) => ({
     id: record.id,
+    accountId: record.accountId,
     person: record.person,
     keyPreview: record.keyPreview,
     createdAt: record.createdAt,
@@ -387,16 +458,16 @@ function findKey(key) {
   return data.keys.find((record) => record.keyHash === keyHash(key) && keyIsActive(record))
 }
 
-function createMemberSession(record) {
+function createMemberSession(record, extra = {}) {
   const expiresAt = Date.now() + SESSION_TTL_MS
+  const jti = randomBytes(16).toString('hex')
   const session = signJwt({
-    role: 'member',
-    keyId: record.id,
-    person: record.person,
+    ...memberClaims(record, { ...extra, jti }),
     iat: Math.floor(Date.now() / 1000),
     exp: Math.floor(expiresAt / 1000),
   })
-  return { session, person: record.person, keyId: record.id, expiresAt }
+  if (extra.source === 'fastcas') saveFastCASSession(accountDb, { jti, accountId: record.accountId, subject: extra.subject, sid: extra.sid, expiresAt })
+  return { session, person: record.person, keyId: record.id, accountId: record.accountId, source: extra.source || 'key', expiresAt }
 }
 
 function memberContent(record) {
@@ -405,6 +476,7 @@ function memberContent(record) {
   return {
     person: record.person,
     keyId: record.id,
+    accountId: record.accountId,
     recentArticles: record.recentArticles ?? [],
     insightItems: record.insightItems ?? [],
     authors: record.followedAuthors ?? [],
@@ -613,6 +685,17 @@ function matchWorkflowTargets(person) {
   return data.keys.filter((record) => keyIsActive(record) && (!requestedPerson || record.person.toLocaleLowerCase() === requestedPerson))
 }
 
+function allowedServiceTargets(claims) {
+  const clientId = String(claims?.client_id || claims?.sub || '')
+  try {
+    const policy = JSON.parse(process.env.FASTRESEARCH_FASTCAS_ALLOWED_TARGETS || '{}')
+    const targets = policy[clientId]
+    return { targets: Array.isArray(targets) ? targets : [] }
+  } catch {
+    return { targets: [] }
+  }
+}
+
 async function handle(request, response) {
   activeRequest = request
   if (request.method === 'OPTIONS') {
@@ -622,6 +705,19 @@ async function handle(request, response) {
 
   const url = new URL(request.url, `http://${request.headers.host ?? 'localhost'}`)
   const route = url.pathname.replace(/\/$/, '') || '/'
+
+  if (await handleFastCAS(request, response, {
+    route, url, db: accountDb, transactions, publicUrl: PUBLIC_API_URL,
+    cookies: () => readCookies(request), readBody, readRaw, sendJson, sendError,
+    cors: corsHeaders, safeReturnPath, assertSameOrigin,
+    currentMember, requireKeyMember: requireMember,
+    keyMatches: (record, key) => Boolean(key) && record.keyHash === keyHash(String(key).trim()),
+    localSessionId: (member) => member.jti || createHash('sha256').update(member.sessionId).digest('hex'),
+    findByAccount: (id) => data.keys.find((item) => item.accountId === id && keyIsActive(item)),
+    issueSession: createMemberSession, memberCookie: memberCookieHeader,
+    cookieHeader: (name, value, maxAge) => ({ 'Set-Cookie': namedCookie(name, value, { maxAge, request }) }),
+    wantsFormRedirect: (req) => String(req.headers.accept ?? '').includes('text/html'),
+  })) return
 
   if (request.method === 'GET' && route === '/api/health') {
     sendJson(response, 200, { ok: true })
@@ -651,6 +747,18 @@ async function handle(request, response) {
   if (request.method === 'GET' && route === '/api/admin/keys') {
     if (!requireAdmin(request, response)) return
     sendJson(response, 200, { keys: adminKeys() })
+    return
+  }
+
+  const rotateRoute = route.match(/^\/api\/admin\/keys\/([^/]+)\/rotate$/)
+  if (request.method === 'POST' && rotateRoute) {
+    if (!requireAdmin(request, response)) return
+    const record = data.keys.find((item) => item.id === rotateRoute[1])
+    if (!record) return sendError(response, 404, '个人 Key 不存在')
+    const rawKey = `fk_${randomBytes(24).toString('base64url')}`
+    rotateKey(record, { keyHash: keyHash(rawKey), keyPreview: `${rawKey.slice(0, 9)}...${rawKey.slice(-4)}` })
+    await persist()
+    sendJson(response, 200, { key: rawKey, record: adminKeys().find((item) => item.id === record.id) })
     return
   }
 
@@ -690,12 +798,14 @@ async function handle(request, response) {
       customResearchTags: [],
       workflow: null,
     }
+    assignAccountIds([record], accountDb, () => randomBytes(16).toString('hex'))
     data.keys.unshift(record)
     await persist()
     sendJson(response, 201, {
       key: rawKey,
       record: {
         id: record.id,
+        accountId: record.accountId,
         person: record.person,
         keyPreview: record.keyPreview,
         createdAt: record.createdAt,
@@ -732,8 +842,18 @@ async function handle(request, response) {
   if (request.method === 'GET' && route === '/api/content/me') {
     const member = requireMember(request, response)
     if (!member) return
+    if (member.source === 'fastcas') {
+      const stored = fastCASSession(accountDb, member.jti)
+      if (!stored) return sendError(response, 401, '成员登录已失效', clearMemberCookieHeader(request))
+      if (shouldRevalidate(stored.checked_at, Date.now(), Boolean(process.env.FASTRESEARCH_FASTCAS_ISSUER))) {
+        const { loadFastCAS } = await import('./fastcas-service.mjs')
+        const client = await loadFastCAS(process.env, transactions)
+        const result = await revalidateFastCASSession(client, accountDb, member)
+        if (!result.ok) return sendError(response, 401, '成员登录已失效', clearMemberCookieHeader(request))
+      }
+    }
     const auth = { session: member.sessionId, expiresAt: member.expiresAt }
-    sendJson(response, 200, { ...auth, ...memberContent(member.record) }, memberCookieHeader(request, auth.session, auth.expiresAt))
+    sendJson(response, 200, { ...auth, ...memberContent(member.record), source: member.source }, memberCookieHeader(request, auth.session, auth.expiresAt))
     return
   }
 
@@ -816,7 +936,13 @@ async function handle(request, response) {
     pruneTickets()
     const ticket = randomBytes(24).toString('base64url')
     const expiresAt = Date.now() + TICKET_TTL_MS
-    tickets.set(ticket, { keyId: member.record.id, person: member.record.person, audience, expiresAt })
+    tickets.set(ticket, {
+      keyId: member.record.id,
+      accountId: member.record.accountId,
+      person: member.record.person,
+      audience,
+      expiresAt,
+    })
     sendJson(response, 200, { ticket, expiresAt, apiUrl: PUBLIC_API_URL })
     return
   }
@@ -862,7 +988,13 @@ async function handle(request, response) {
       pruneTickets()
       const ticket = randomBytes(24).toString('base64url')
       const expiresAt = Date.now() + TICKET_TTL_MS
-      tickets.set(ticket, { keyId: member.record.id, person: member.record.person, audience, expiresAt })
+      tickets.set(ticket, {
+        keyId: member.record.id,
+        accountId: member.record.accountId,
+        person: member.record.person,
+        audience,
+        expiresAt,
+      })
       const nextUrl = new URL(target)
       nextUrl.searchParams.set('sso', ticket)
       location = nextUrl.toString()
@@ -879,14 +1011,17 @@ async function handle(request, response) {
   }
 
   if (request.method === 'POST' && ['/api/insight/publish', '/api/content/reading/publish'].includes(route)) {
-    const ingestKey = request.headers['x-fastinsight-key'] ?? ''
-    if (!process.env.FASTINSIGHT_INGEST_KEY || ingestKey !== process.env.FASTINSIGHT_INGEST_KEY) {
-      sendError(response, 401, 'FastInsight 发布凭证无效')
-      return
-    }
+    const scope = route.includes('reading') ? 'reading:publish' : 'insight:publish'
+    const credential = await serviceCredential(request, response, scope)
+    if (!credential) return
     const body = await readBody(request)
-    const requestedPerson = String(body.person ?? '').trim().toLocaleLowerCase()
-    const targets = data.keys.filter((record) => keyIsActive(record) && (!requestedPerson || record.person.toLocaleLowerCase() === requestedPerson))
+    const decision = credential.legacy ? null : assessService(credential.claims, body, scope)
+    if (decision?.status) return sendError(response, decision.status, decision.error)
+    const result = credential.legacy
+      ? { targets: legacyPersonTargets(data.keys, body.person, keyIsActive) }
+      : accountTargets(data.keys, decision, keyIsActive)
+    if (result.status) return sendError(response, result.status, result.error)
+    const targets = result.targets
     if (!targets.length) {
       sendError(response, 404, '没有匹配的成员 Key')
       return
@@ -903,6 +1038,21 @@ async function handle(request, response) {
     const member = requireMember(request, response)
     if (!member) return
     sendJson(response, 200, { workflow: workflowView(member.record.workflow) })
+    return
+  }
+
+  if (request.method === 'GET' && route === '/api/workflow/team') {
+    const member = requireMember(request, response)
+    if (!member) return
+    const members = data.keys
+      .filter((record) => keyIsActive(record))
+      .map((record) => ({
+        keyId: record.id,
+        person: record.person,
+        workflow: workflowView(record.workflow),
+      }))
+      .sort((left, right) => left.person.localeCompare(right.person, 'zh-CN'))
+    sendJson(response, 200, { members, currentKeyId: member.keyId })
     return
   }
 
@@ -948,12 +1098,52 @@ async function handle(request, response) {
   }
 
   if (request.method === 'POST' && route === '/api/workflow/publish') {
-    const ingestKey = request.headers['x-fastinsight-key'] ?? ''
-    if (!process.env.FASTINSIGHT_INGEST_KEY || ingestKey !== process.env.FASTINSIGHT_INGEST_KEY) {
-      sendError(response, 401, 'FastInsight 发布凭证无效')
-      return
-    }
+    const credential = await serviceCredential(request, response, 'workflow:publish')
+    if (!credential) return
     const body = await readBody(request)
+
+    // 检查新协议版本
+    if (body.schema_version === 'fasttask-dispatch-v1') {
+      const decision = credential.legacy ? null : assessService(credential.claims, body, 'workflow:publish')
+      if (decision?.status) return sendError(response, decision.status, decision.error)
+      const result = credential.legacy
+        ? { targets: accountTargets(body.receiver_ref, accountDb) }
+        : serviceWorkflowTargets(data.keys, decision, allowedServiceTargets(credential.claims), keyIsActive)
+      if (result.status) return sendError(response, result.status, result.error)
+
+      const targets = result.targets
+      if (!targets.length) {
+        sendError(response, 404, '接收账号未找到或无权限')
+        return
+      }
+
+      const receiverAccountId = targets[0]?.accountId
+      if (!receiverAccountId) {
+        sendError(response, 404, '接收账号映射不存在')
+        return
+      }
+
+      try {
+        const result = receiveDispatch(workflowDb, body, receiverAccountId)
+        sendJson(response, result.duplicate ? 200 : 201, {
+          ok: true,
+          duplicate: result.duplicate,
+          receipt: result.receipt,
+        })
+        return
+      } catch (error) {
+        sendError(response, error.status ?? 500, error.message ?? '发布失败')
+        return
+      }
+    }
+
+    // 旧协议兼容
+    const decision = credential.legacy ? null : assessService(credential.claims, body, 'workflow:publish')
+    if (decision?.status) return sendError(response, decision.status, decision.error)
+    const result = credential.legacy
+      ? { targets: matchWorkflowTargets(body.person) }
+      : serviceWorkflowTargets(data.keys, decision, allowedServiceTargets(credential.claims), keyIsActive)
+    if (result.status) return sendError(response, result.status, result.error)
     let workflow
     try {
       workflow = normalizeWorkflow(body, 'api')
@@ -961,7 +1151,7 @@ async function handle(request, response) {
       sendError(response, 400, error.message || '任务列表无效')
       return
     }
-    const targets = matchWorkflowTargets(body.person)
+    const targets = result.targets
     if (!targets.length) {
       sendError(response, 404, '没有匹配的成员 Key')
       return
@@ -978,15 +1168,264 @@ async function handle(request, response) {
     sendJson(response, 201, { ok: true, deliveredTo: targets.map((target) => target.person), workflow: workflowView(workflow) })
     return
   }
+
+  if (request.method === 'GET' && route === '/api/workflows') {
+    const member = requireMember(request, response)
+    if (!member) return
+
+    const accountId = member.accountId
+    if (!accountId) {
+      sendError(response, 400, '账号映射不存在')
+      return
+    }
+
+    const active = getWorkflowsByAccount(workflowDb, accountId, 'active')
+    const queued = getWorkflowsByAccount(workflowDb, accountId, 'queued')
+    const completed = getWorkflowsByAccount(workflowDb, accountId, 'completed').slice(0, 10)
+
+    sendJson(response, 200, {
+      active: active.map(formatWorkflowView),
+      queued: queued.map(formatWorkflowView),
+      completed: completed.map(formatWorkflowView),
+    })
+    return
+  }
+
+  if (request.method === 'GET' && route.startsWith('/api/workflows/')) {
+    const member = requireMember(request, response)
+    if (!member) return
+
+    const workflowId = route.slice('/api/workflows/'.length)
+    const accountId = member.accountId
+    if (!accountId) {
+      sendError(response, 400, '账号映射不存在')
+      return
+    }
+
+    const workflow = getWorkflowById(workflowDb, workflowId, accountId)
+    if (!workflow) {
+      sendError(response, 404, '流水线不存在')
+      return
+    }
+
+    sendJson(response, 200, { workflow: formatWorkflowView(workflow) })
+    return
+  }
+
+  if (request.method === 'POST' && route.startsWith('/api/workflows/') && route.endsWith('/start')) {
+    const member = requireMember(request, response)
+    if (!member) return
+
+    const workflowId = route.slice('/api/workflows/'.length, -'/start'.length)
+    const accountId = member.accountId
+    if (!accountId) {
+      sendError(response, 400, '账号映射不存在')
+      return
+    }
+
+    try {
+      const result = startWorkflow(workflowDb, workflowId, accountId)
+      sendJson(response, 200, {
+        workflow: formatWorkflowView(result.workflow),
+        alreadyActive: result.alreadyActive,
+      })
+      return
+    } catch (error) {
+      sendError(response, error.status ?? 500, error.message ?? '启动失败')
+      return
+    }
+  }
+
+  if (request.method === 'POST' && route.startsWith('/api/workflows/') && route.includes('/stages/') && route.endsWith('/complete')) {
+    const member = requireMember(request, response)
+    if (!member) return
+
+    const parts = route.split('/')
+    const workflowId = parts[3]
+    const stageId = parts[5]
+    const accountId = member.accountId
+
+    if (!accountId) {
+      sendError(response, 400, '账号映射不存在')
+      return
+    }
+
+    const body = await readBody(request)
+    const operationId = String(body.operation_id ?? randomBytes(12).toString('hex')).slice(0, 80)
+
+    try {
+      const result = completeStage(workflowDb, workflowId, stageId, accountId, body, operationId)
+      sendJson(response, result.duplicate ? 200 : 201, {
+        ok: true,
+        duplicate: result.duplicate,
+        completion: result.completion,
+        workflow: formatWorkflowView(result.workflow),
+      })
+      return
+    } catch (error) {
+      sendError(response, error.status ?? 500, error.message ?? '完成失败')
+      return
+    }
+  }
+
+  // FastWrite 集成端点
+  if (request.method === 'GET' && route === '/api/fastwrite/projects') {
+    const member = requireMember(request, response)
+    if (!member) return
+
+    if (!fastWriteClient) {
+      sendError(response, 503, 'FastWrite 服务未配置')
+      return
+    }
+
+    try {
+      const result = await fastWriteClient.listProjects()
+      sendJson(response, 200, result)
+      return
+    } catch (error) {
+      sendError(response, 500, `获取 FastWrite 项目列表失败: ${error.message}`)
+      return
+    }
+  }
+
+  if (request.method === 'POST' && route === '/api/fastwrite/projects') {
+    const member = requireMember(request, response)
+    if (!member) return
+
+    if (!fastWriteClient) {
+      sendError(response, 503, 'FastWrite 服务未配置')
+      return
+    }
+
+    try {
+      const body = await readBody(request)
+      const result = await fastWriteClient.createProject(body.title, {
+        venue: body.venue,
+        template: body.template,
+      })
+      sendJson(response, 201, result)
+      return
+    } catch (error) {
+      sendError(response, 500, `创建 FastWrite 项目失败: ${error.message}`)
+      return
+    }
+  }
+
+  if (request.method === 'GET' && route.startsWith('/api/fastwrite/projects/') && !route.includes('/compile')) {
+    const member = requireMember(request, response)
+    if (!member) return
+
+    if (!fastWriteClient) {
+      sendError(response, 503, 'FastWrite 服务未配置')
+      return
+    }
+
+    const projectId = route.slice('/api/fastwrite/projects/'.length)
+
+    try {
+      const result = await fastWriteClient.getProject(projectId)
+      sendJson(response, 200, result)
+      return
+    } catch (error) {
+      sendError(response, 404, `获取 FastWrite 项目失败: ${error.message}`)
+      return
+    }
+  }
+
+  if (request.method === 'POST' && route.startsWith('/api/fastwrite/projects/') && route.endsWith('/compile')) {
+    const member = requireMember(request, response)
+    if (!member) return
+
+    if (!fastWriteClient) {
+      sendError(response, 503, 'FastWrite 服务未配置')
+      return
+    }
+
+    const projectId = route.slice('/api/fastwrite/projects/'.length, -'/compile'.length)
+
+    try {
+      const result = await fastWriteClient.compileProject(projectId)
+      sendJson(response, 200, result)
+      return
+    } catch (error) {
+      sendError(response, 500, `编译 FastWrite 项目失败: ${error.message}`)
+      return
+    }
+  }
+
+  if (request.method === 'POST' && route === '/api/fastwrite/login-url') {
+    const member = requireMember(request, response)
+    if (!member) return
+
+    if (!fastWriteClient) {
+      sendError(response, 503, 'FastWrite 服务未配置')
+      return
+    }
+
+    try {
+      const body = await readBody(request)
+      const projectId = body?.projectId || null
+      const accountId = String(member.record.accountId || member.record.id).trim()
+      const loginUrl = await fastWriteClient.generateLoginUrl(projectId, {
+        externalAccountId: accountId,
+        displayName: member.record.person,
+      })
+
+      sendJson(response, 200, {
+        url: loginUrl,
+        message: '已生成自动登录链接'
+      })
+      return
+    } catch (error) {
+      console.error('生成 FastWrite 登录链接失败:', error)
+      sendError(response, 500, error.message || '生成登录链接失败')
+      return
+    }
+  }
+
+  if (request.method === 'GET' && route === '/api/fastwrite/status') {
+    const member = requireMember(request, response)
+    if (!member) return
+
+    const configured = Boolean(fastWriteClient)
+    let healthy = false
+
+    if (configured) {
+      try {
+        healthy = await fastWriteClient.checkHealth()
+      } catch {
+        healthy = false
+      }
+    }
+
+    sendJson(response, 200, {
+      configured,
+      healthy,
+      url: process.env.FASTWRITE_URL || process.env.VITE_WRITE_URL || null,
+    })
+    return
+  }
+
   sendError(response, 404, '接口不存在')
 }
 
-await loadData()
-createServer((request, response) => {
-  handle(request, response).catch((error) => {
-    activeRequest = request
-    sendError(response, 400, error.message || '请求失败')
+export async function startServer(port = PORT) {
+  await loadData()
+  const server = createServer((request, response) => {
+    handle(request, response).catch((error) => {
+      activeRequest = request
+      if (!response.headersSent) sendError(response, error?.status || 400, error.message || '请求失败')
+    })
   })
-}).listen(PORT, '127.0.0.1', () => {
+  server.on('close', () => {
+    accountDb?.close()
+    workflowDb?.close()
+  })
+  await new Promise((resolve) => server.listen(port, '127.0.0.1', resolve))
+  return server
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  await startServer()
   console.log(`FastResearch API listening on http://127.0.0.1:${PORT}`)
-})
+}

@@ -1,6 +1,8 @@
 # FastResearch SSO 接口
 
-全量 Key 登录接口、各模块分工和 curl / Python / JS 示例见 [key-login.md](key-login.md)。本文只写 SSO 票据协议和 FastRead 落地要求。
+给新模块的交接步骤（密钥分发、/api/sso/launch、服务端兑换、FastNews / FastRead 两种会话）见 [module-handoff.md](module-handoff.md)。全量 Key 登录接口和示例见 [key-login.md](key-login.md)。本文只写 SSO 票据协议和 FastRead 落地要求。
+
+浏览器生产路径是 Panel 打开 `GET /api/sso/launch?audience=&next=`，由 FastResearch 302 到 `{模块}?sso=`。`POST /api/sso/ticket` 只给已持有成员会话的联调脚本。个人 Key 前缀是 `fk_`，`keyId` 是 20 位 hex。CORS 回显允许的 Origin，并带 `Access-Control-Allow-Credentials: true`，不是 `*`。
 
 对接模块：FastNews（已上线，服务端 consume + HttpOnly Cookie）、FastRead（已上线，服务端 consume）。直开 Read/News 端口会 302 到 Panel。
 
@@ -12,7 +14,7 @@
 |---|---|
 | Base URL | `FASTRESEARCH_PUBLIC_URL`，默认 `http://127.0.0.1:8787`。必须是浏览器或对接服务能访问的 API 地址，**不要填 Vite `:5173`**。 |
 | Content-Type | `application/json; charset=utf-8` |
-| CORS | `Access-Control-Allow-Origin: *`；允许头 `Content-Type, Authorization, X-FastInsight-Key`；允许方法 `GET, POST, PUT, DELETE, OPTIONS` |
+| CORS | 回显允许的 `Origin`，并 `Access-Control-Allow-Credentials: true`。不是 `*`。允许头 `Content-Type, Authorization, X-FastInsight-Key`；允许方法 `GET, POST, PUT, DELETE, OPTIONS` |
 | 缓存 | 全部接口 `Cache-Control: no-store` |
 | 错误体 | `{ "error": "中文说明" }` |
 
@@ -21,16 +23,17 @@
 
 ## 2. 身份字段
 
-Panel 侧身份如下。下游应用请用 `keyId` 作为稳定主键，不要用姓名。
+Panel 侧身份如下。下游应用请用 `accountId` 作为稳定账户主键，`keyId` 作为当前凭证记录，不要用姓名。
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `keyId` | string | 个人 Key 的内部 ID，撤销前稳定 |
+| `keyId` | string | 个人 Key 的内部 ID，20 位 hex，当前凭证记录 |
+| `accountId` | string | 稳定账户 ID，Key 轮换后保持不变 |
 | `person` | string | 管理员填写的成员显示名，可能重名 |
 | `session` | string | FastResearch 成员会话。FastNews 用来读写关注作者；FastRead **应忽略**，改发自己的登录态 |
 | `expiresAt` | number | 成员会话过期时间，Unix 毫秒 |
 
-原始 Key（`FR-…`）只在 Panel 校验。下游禁止接收、存储、转发原始 Key。
+原始 Key（`fk_…`）只在 Panel 校验。下游禁止接收、存储、转发原始 Key。
 
 ## 3. 登录流程
 
@@ -44,14 +47,13 @@ POST /api/content/unlock          → 成员会话（8h）
 点击 FastNews / FastRead
         │
         ▼
-POST /api/sso/ticket              → { ticket, expiresAt, apiUrl }
-  Authorization: Bearer <成员会话>
-  body: { "audience": "fast-news" | "fast-read" }
+GET /api/sso/launch?audience=fast-news|fast-read&next={模块入口}
+  Cookie: fr_session=<成员 JWT>
         │
         ▼
-浏览器跳转
-  FastNews: {NEWS_URL}?sso={ticket}   （serve.py 兑换后 302 到干净 URL，写入 HttpOnly Cookie）
-  FastRead: {READ_URL}?sso={ticket}
+FastResearch 302
+  FastNews: {NEWS}?sso={ticket}   （serve.py 兑换后 302 到干净 URL，写入 HttpOnly Cookie）
+  FastRead: {READ}?sso={ticket}   （后端兑换后写 fastread_session）
         │
         ▼
 下游兑换
@@ -59,7 +61,7 @@ POST /api/sso/ticket              → { ticket, expiresAt, apiUrl }
   body: { "ticket": "<sso>", "audience": "<与申请时相同>" }
         │
         ▼
-按 keyId 进入该成员数据，并从地址栏删除 sso
+按 keyId 验证当前成员并返回 accountId，供下游映射账户；从地址栏删除 sso
 ```
 
 未解锁就点需要 SSO 的入口时，Panel 先弹出 Key 框，解锁成功后再申请票据并跳转。
@@ -68,7 +70,7 @@ POST /api/sso/ticket              → { ticket, expiresAt, apiUrl }
 
 ### 4.1 申请票据
 
-下游模块不调用本接口。由 Panel 在用户点击入口时调用。
+下游模块不调用本接口。Panel 点击入口时走的是 `GET /api/sso/launch`，不是本接口。本接口留给已经持有成员 Bearer 的联调脚本。
 
 ```http
 POST /api/sso/ticket
@@ -135,7 +137,8 @@ Content-Type: application/json
 {
   "session": "FastResearch成员会话",
   "person": "张三",
-  "keyId": "k_xxx",
+  "keyId": "a1b2c3d4e5f6a7b8c9d0",
+  "accountId": "7f4c2a1e9b8d6c5f0011223344556677",
   "expiresAt": 1710028800000,
   "recentArticles": [],
   "insightItems": [],
@@ -144,7 +147,7 @@ Content-Type: application/json
 }
 ```
 
-FastRead 只需使用 `keyId`、`person`。其余字段是 Panel / FastNews 的内容，可忽略。  
+FastRead 使用 `accountId`、`keyId` 和 `person` 建立本模块登录；其余字段是 Panel / FastNews 的内容，可忽略。
 `session` 是 FastResearch 会话，不是 FastRead 会话；FastRead 应签发自己的 `fastread_session` Cookie。
 
 **失败**
@@ -196,16 +199,17 @@ https://fastread.example/?sso=TICKET
 1. 配置 `FASTRESEARCH_API_URL`（服务端环境变量），不要信任页面上的 `research_api`。
 2. 前端若发现 `?sso=`，把 ticket 交给 FastRead 自己的接口（例如 `POST /api/auth/research`），不要在浏览器请求 FastResearch。
 3. FastRead 后端调用 `POST {FASTRESEARCH_API_URL}/api/sso/consume`，body 为 `{ "ticket", "audience": "fast-read" }`。
-4. 用返回的 `keyId` 查找或创建本地用户与工作区；`person` 仅作显示名 / 工作区名。
+4. 优先用返回的稳定 `accountId` 查找或创建本地用户与工作区；旧 ticket 没有 `accountId` 时回退到 `keyId`，`person` 仅作显示名 / 工作区名。
 5. 签发 FastRead 自己的登录 Cookie（现有 `fastread_session` + csrf），不要保存 FastResearch 的 `session` 或原始 Key。
-6. 同一 `keyId` 必须进入同一工作区；不同 `keyId` 必须隔离。
+6. 同一 `accountId` 必须进入同一工作区；不同 `accountId` 必须隔离。旧 ticket 或旧数据没有 `accountId` 时按 `keyId` 兼容。
 7. 无 `sso`、无 FastRead 会话时，文档请求 302 到 `FASTRESEARCH_PANEL_URL`。不要把 FastRead 当登录页，不要增加「输入个人 Key」，也不再提供邮箱密码登录。票据失败时停留在页上提示从 Panel 重新进入。
 8. 票据失败时停留在登录页，提示：「Panel 登录已过期，请从 FastResearch 重新进入」。
 
 建议的本地用户映射：
 
 ```text
-users.research_key_id  UNIQUE  ← consume 返回的 keyId
+users.research_account_id UNIQUE ← consume 返回的 accountId
+users.research_key_id     UNIQUE ← 旧数据 / 兼容回退的 keyId
 users.display_name             ← person
 占位邮箱（不可密码登录）        ← key-{keyId}@sso.fastresearch.local
 工作区名                       ← person
@@ -248,12 +252,12 @@ curl -s -X POST "$FASTRESEARCH/api/sso/consume" \
 ## 10. 联调清单
 
 1. 有效成员会话 + `audience=fast-read` → 200，得到 ticket。
-2. 立刻 consume，audience 相同 → 200，得到同一 `keyId` / `person`。
+2. 立刻 consume，audience 相同 → 200，得到同一 `accountId` / `keyId` / `person`。
 3. 同一 ticket 再 consume → 401。
 4. audience 写成 `fast-news` 去兑 FastRead 票 → 401。
 5. 超过 2 分钟再兑 → 401。
 6. 撤销 Key 后无法再出票；已发出未使用的票 consume 也是 401。
 7. 无会话申请 ticket → 401。
 8. FastRead 兑换成功后地址栏不再包含 `sso`。
-9. 同一 Key 两次进入 FastRead → 同一工作区。
+9. 同一账户（`accountId`）使用当前或轮换后的 Key 进入 FastRead → 同一工作区。
 10. 直开 FastRead / FastNews（无 sso / 无会话）→ 302 到 FastResearch Panel，不展示产品内容。

@@ -378,6 +378,121 @@ button {
   justify-content: space-between;
 }
 
+.team-progress-panel {
+  min-height: 220px;
+  max-height: 430px;
+  padding: 18px 20px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface);
+  box-shadow: 0 2px 8px rgba(21, 94, 69, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
+}
+
+.team-progress-heading, .team-progress-member-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.team-progress-summary {
+  margin: 12px 0 10px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-family: var(--color-mono);
+}
+
+.team-progress-list {
+  max-height: 325px;
+  overflow-y: auto;
+  padding-right: 3px;
+}
+
+.team-progress-member {
+  padding: 10px 0 11px;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.team-progress-member.is-current-member {
+  margin: 0 -8px;
+  padding: 10px 8px 11px;
+  border-radius: 6px;
+  background: rgba(232, 243, 237, 0.55);
+}
+
+.team-progress-member-heading strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text-main);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.team-progress-member-heading strong small {
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--color-primary-light);
+  color: var(--color-primary-text);
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.team-progress-member-heading > span {
+  flex: none;
+  color: var(--color-text-muted);
+  font-size: 10px;
+  font-family: var(--color-mono);
+}
+
+.team-progress-track {
+  height: 4px;
+  margin: 7px 0 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: #e2ece5;
+}
+
+.team-progress-track i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #155e45;
+  transition: width 0.3s ease;
+}
+
+.team-progress-tasks {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.team-progress-tasks li {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 5px;
+  color: var(--color-text-dim);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.team-progress-tasks li > span:nth-child(2) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.team-progress-tasks li.is-active { color: var(--color-primary-text); }
+.team-progress-tasks li.is-done { color: var(--color-text-muted); }
+.team-task-status { text-align: center; }
+.team-progress-tasks small { font-size: 9px; }
+.team-progress-empty, .team-progress-no-tasks { margin: 8px 0 0; color: var(--color-text-dim); font-size: 11px; }
+
 .workflow-meter-header {
   display: flex;
   align-items: center;
@@ -1555,7 +1670,7 @@ html.dark .primary-button:hover:not(:disabled) {
   background: #4ade80;
 }
 
-html.dark .workflow-board, html.dark .insight-mailbox, html.dark .workflow-meter, html.dark .tech-dialog {
+html.dark .workflow-board, html.dark .insight-mailbox, html.dark .workflow-meter, html.dark .team-progress-panel, html.dark .tech-dialog {
   background: #14221c;
   border-color: #233b30;
 }
@@ -1595,6 +1710,11 @@ html.dark .workflow-track {
 html.dark .workflow-track i {
   background: #34d399;
 }
+
+html.dark .team-progress-member { border-color: #1e332a; }
+html.dark .team-progress-member.is-current-member { background: rgba(25, 50, 38, 0.7); }
+html.dark .team-progress-track { background: #1b2e25; }
+html.dark .team-progress-track i { background: #34d399; }
 
 /* ==========================================================================
    Responsive Adaptations

@@ -2,7 +2,7 @@
 
 本文给 **FastRead / FastNews / FastWrite / FastLab / FastPPT / FastInsight** 等下游模块对接用。Panel（FastResearch）是唯一收集个人 Key 的地方；其他模块通过一次性 SSO 票据获得同一身份。
 
-完整 SSO 时序与 FastRead 落地注意见 [sso.md](sso.md)。本文覆盖 Key 体系、全部相关 HTTP 接口和可复制示例。
+新模块怎样完成交接（FastResearch 要改哪里、模块服务端要实现什么、FastNews 与 FastRead 两种落地）见 [module-handoff.md](module-handoff.md)。本文覆盖 Key 体系、全部相关 HTTP 接口和可复制示例。完整 SSO 时序与 FastRead 落地注意见 [sso.md](sso.md)。
 
 默认 Base URL：`http://127.0.0.1:8787`（环境变量 `FASTRESEARCH_PUBLIC_URL` / `PORT`）。不要填 Vite 开发地址 `:5173`。
 
@@ -11,7 +11,7 @@
 ## 1. 设计原则
 
 1. **个人 Key 只在 Panel 输入一次。** 下游不要做 Key 输入框，不要把 `fk_…` 放进 URL、Cookie、localStorage。
-2. **稳定主键是 `keyId`，不是姓名。** `person` 只用于显示，允许重名。
+2. **跨模块稳定主键是 `accountId`，不是姓名。** `keyId` 标识当前 Key 凭证；`person` 只用于显示，允许重名。
 3. **成员会话和原始 Key 不是一回事。** 解锁后签发 HS256 JWT，写入 HttpOnly Cookie `fr_session`（8 小时）；JSON 里的 `session` 仍可作为 Bearer。服务端只存 Key 的 SHA-256，完整 Key 只在生成时返回一次。
 4. **FastNews 和 FastRead 都走一次性 SSO 票据。** FastNews 由 `serve.py` 服务端兑换后写入 HttpOnly Cookie；不要把凭证放进 URL。
 5. **有后端的模块必须在服务端兑换票据。** FastNews 兑换后用同源 `/api` 反代 + `credentials: include`；不要再把 `research_api` 拼进跳转地址，也不要直开静态站。
@@ -52,6 +52,7 @@
   "session": "成员会话 token",
   "person": "张三",
   "keyId": "a1b2c3d4e5f6a7b8c9d0",
+  "accountId": "7f4c2a1e9b8d6c5f0011223344556677",
   "expiresAt": 1710028800000
 }
 ```
@@ -60,10 +61,13 @@
 |---|---|---|
 | `session` | string | JWT。Panel 可作 Bearer；FastNews 优先用 Cookie，不要把它写进 URL。**FastRead 等有自己账号体系的模块应忽略，改发本模块登录态** |
 | `person` | string | 管理员填写的显示名，最长 80 |
-| `keyId` | string | 20 位 hex，撤销前稳定，下游用户主键 |
+| `keyId` | string | 20 位 hex，当前 Key 凭证记录 ID；撤销前稳定 |
+| `accountId` | string | 稳定账户 ID。Key 轮换后保持不变，FastWrite / FastRead 等下游账户映射使用此字段 |
 | `expiresAt` | number | 本条会话过期时间，Unix **毫秒** |
 
 同一次成功响应还可能带内容字段（见 §6）：`recentArticles`、`insightItems`、`authors`、`customTags`。
+
+成员登录后如需展示团队任务面板，可调用 `GET /api/workflow/team`。该接口沿用成员 Cookie 或 `Authorization: Bearer <session>`，返回所有有效成员的 `keyId`、`person` 和工作流进度；未分配任务的成员 `workflow` 为 `null`。接口不返回任何个人 Key 或其他成员的文献、作者和私信内容。
 
 ### 2.3 个人 Key 形态
 
@@ -95,15 +99,16 @@
         │             │
         ▼             ▼
   Cookie + /me    服务端 consume
-  读写 authors     按 keyId 建本模块用户
+  读写 authors     按 accountId 建本模块用户
 ```
 
 | 模块 | 现状 | 应该怎么登录 | 不要做什么 |
 |---|---|---|---|
 | FastResearch Panel | 已实现 | `unlock` 收集 Key | 不要把原始 Key 写入 `localStorage` |
 | FastNews | 已实现服务端票据登录 | Panel `unlock` → `/api/sso/launch` 302 到 `{NEWS}?sso=` → **serve.py consume** → HttpOnly Cookie | 不要 `python -m http.server`；不要把票据/JWT 放进 URL；不要再要 Key |
-| FastRead | 已实现 | Panel `unlock` → `/api/sso/launch` 302 到 `{READ}?sso=` → **服务端** `consume` → 本模块 Cookie | 不要用邮箱密码替代 Key 身份；不要信 `research_api`；不要在 FastRead 做 Key 输入框 |
-| FastWrite / FastTask | 预留 | 与 FastRead 相同，换 `audience` | 不要各自做 Key 表单 |
+| FastRead | 已实现 | Panel `unlock` → `/api/sso/launch` 302 到 `{READ}?sso=` → **服务端** `consume` → 按 `accountId` 复用本模块工作区并写 Cookie | 不要用邮箱密码替代 Key 身份；不要信 `research_api`；不要在 FastRead 做 Key 输入框 |
+| FastWrite | 已实现 | Panel 验证 Key → 服务端调用 FastWrite `/api/integration/auth/token`，传递 `accountId` → 自动进入对应 FastWrite 账户 | 不要把原始 Key 放进 URL；不要要求用户重复注册 |
+| FastTask | 预留 | 与 FastRead 相同，换 `audience` | 不要各自做 Key 表单 |
 | FastPPT | 直接入口 | Panel 点击后跳转配置的 URL，无 SSO | 不要把 Key 放进 URL |
 | FastLab | 直接入口 | Panel 点击后跳转配置的 URL，无 SSO | 不要把 Key 放进 URL |
 | FastInsight | 发布通道 | 服务号 `X-FastInsight-Key` 写入该成员的 FastInsight 信箱 | 不要用个人 Key 当发布凭证 |
@@ -114,10 +119,10 @@
 |---|---|---|---|
 | `fast-news` | `{NEWS}?sso={ticket}`（经 `/api/sso/launch` 302） | FastNews `serve.py` | **已上线** |
 | `fast-read` | `{READ}?sso={ticket}`（经 `/api/sso/launch` 302） | FastRead 后端 | **已上线** |
-| `fast-write` | `{WRITE}?sso={ticket}` | FastWrite 后端 | 预留 |
+| `fast-write` | `{WRITE}/projects?token={token}` | FastWrite 集成端点按 `externalAccountId` 映射账户 | **已上线** |
 | `fast-task` | `{TASK}?sso={ticket}` | FastTask 后端 | 预留 |
 
-当前服务端白名单为 `fast-news` 和 `fast-read`。其他值申请票据会 `400 不支持的登录入口`。新模块对接前由 FastResearch 把对应 audience 加进白名单，并让 Panel 点击该卡片时走「先 Key 再出票」。
+当前服务端 SSO 票据白名单为 `fast-news` 和 `fast-read`。FastWrite 使用独立的服务级 API Key 账户映射流程，不经过该 SSO 白名单。
 
 ---
 
@@ -436,7 +441,7 @@ Content-Type: application/json
 4. 有后端的模块：浏览器只把 `sso` 交给**同源后端**；由后端请求 FastResearch `consume`。
 5. FastResearch 地址来自服务端配置，不要信任 URL 里的 `research_api`。
 6. 兑换成功后立刻从地址栏去掉 `sso`（及 `research_api`）。
-7. 用 `keyId` 隔离数据；不要用 `person` 当用户主键。
+7. 下游账户用 `accountId` 映射；FastResearch 内部按当前 `keyId` 隔离个人内容。不要用 `person` 当用户主键。
 8. 撤销后的 Key 不能 unlock、不能出票；未使用的旧票 consume 也会 401。
 
 ---
@@ -609,8 +614,12 @@ def login_from_panel(ticket: str) -> dict:
     data = r.json()
     if r.status_code != 200:
         raise PermissionError(data.get("error", "登录票据无效或已过期"))
-    return {"key_id": data["keyId"], "person": data["person"]}
-    # 随后按 key_id upsert 本模块用户，签发本模块 session cookie
+    return {
+        "key_id": data["keyId"],
+        "account_id": data["accountId"],
+        "person": data["person"],
+    }
+    # 随后按 account_id upsert 本模块用户，签发本模块 session cookie
 ```
 
 对应前端只把 ticket 交给自己的后端：
@@ -703,7 +712,7 @@ curl -s -X POST "$FR/api/content/unlock" \
 ## 10. 联调清单
 
 1. 管理员登录 → 为「张三」生成 Key，完整 Key 只出现一次。
-2. `unlock` 该 Key → 得到 `keyId` + `session`。
+2. `unlock` 该 Key → 得到 `accountId` + `keyId` + `session`。
 3. 用该 `session` 申请 `audience=fast-news` 票据 → 跳转 FastNews → consume 一次成功、第二次 401。
 4. FastNews `PUT /api/content/authors` 后，再用同一 Key unlock，作者仍在。
 5. 换另一把 Key → 作者列表为空（隔离）。

@@ -1,111 +1,286 @@
-﻿# FastResearch
+# FastResearch
 
-FastResearch 是一个面向科研阅读与知识工作的工作流控制台。它维护一条任务列表，并按任务顺序展示 FastPPT、FastWrite、FastRead、FastNews 和 FastLab；完成当前任务后进入下一功能。FastInsight 信箱仍接收飞书经 skill 回传的研究卡片。FastWrite、FastPPT、FastLab 可直接访问；FastRead、FastNews 和信箱由个人 Key 保护。FastRead 和 FastNews 都用一次性 SSO 票据进入，直开 :3015 / :4173 会 302 到 Panel。
+科研工作流协调服务，统一管理 FastRead、FastWrite、FastLab、FastNews、FastPPT 等模块的工作流程。
 
-## 技术栈
+## 功能特性
 
-- React 19
-- TypeScript
-- Vite
-- Tailwind CSS
-- lucide-react
+- **个人密钥工作区**: 为每个成员分配独立密钥，管理阅读脉络、关注作者、研究标签
+- **FastInsight 收件箱**: 接收每日论文推送、研究信号，支持标记已读
+- **SSO 单点登录**: 集成 FastCAS 统一身份，一次登录访问所有模块
+- **工作流引擎**: 管理跨模块的研究流水线，顺序执行各环节任务
+- **FastTask 集成**: 接收 FastTask 发布的任务流水线，自动追踪完成进度
 
 ## 快速开始
 
-需要 Node.js 18 或更高版本。
+### 环境要求
+
+- Node.js 23.0+ (支持 SQLite 内置模块)
+- npm 或 pnpm
+
+### 安装与启动
 
 ```bash
+# 克隆仓库
+git clone <repo-url>
+cd FastResearch
+
+# 安装依赖
 npm install
+
+# 配置环境变量（可选）
+cp .env.example .env
+
+# 启动服务
 npm run server
-```
 
-另开一个终端启动前端：
-
-```bash
+# 开发模式（前端 + 后端）
 npm run dev
 ```
 
-启动后访问：`http://127.0.0.1:5173`
+### 环境变量
 
-后端 API 默认监听：`http://127.0.0.1:8787`
+在 `.env` 或 `.env.local` 中配置：
 
-首次启动会创建 `data/access.json`。默认管理员账号为 `admin`，默认密码为 `admin123456`。生产环境请通过 `ADMIN_USERNAME`、`ADMIN_PASSWORD` 和 `FASTINSIGHT_INGEST_KEY` 环境变量设置凭证。
+```bash
+# 服务端口
+PORT=8787
 
-## 配置工具地址
+# 数据目录
+FASTRESEARCH_DATA_DIR=data
 
-复制 `.env.example` 为 `.env.local`，填写对应工具的入口地址：
-
-```env
-VITE_READ_URL=https://example.com/read
-VITE_WRITE_URL=https://example.com/write
-VITE_FASTNEWS_URL=https://example.com/fast-news
-VITE_FASTPPT_URL=https://example.com/fast-ppt
-VITE_FASTLAB_URL=https://example.com/fast-lab
+# 公共访问地址
 FASTRESEARCH_PUBLIC_URL=http://127.0.0.1:8787
 
+# FastCAS 单点登录
+FASTCAS_ISSUER=https://fastcas.example.com
+FASTCAS_CLIENT_ID=fastresearch
+FASTCAS_CLIENT_SECRET=your-client-secret
+
+# 模块地址
+FASTREAD_URL=http://127.0.0.1:3015
+FASTNEWS_URL=http://127.0.0.1:4173
+
+# Cookie 配置
+FASTRESEARCH_COOKIE_NAME=fr_session
+FASTRESEARCH_COOKIE_DOMAIN=
+FASTRESEARCH_COOKIE_SAMESITE=Lax
+
+# CORS 额外来源（逗号分隔）
+FASTRESEARCH_CORS_ORIGINS=
 ```
 
-未配置地址时，对应入口点击后不会跳转。FastPPT、FastLab 未填地址时会提示待配置。本地未填 `VITE_FASTNEWS_URL` 时，FastNews 默认跳到 `http://127.0.0.1:4173`；未填 `VITE_READ_URL` 时，FastRead 默认跳到 `http://127.0.0.1:3015`。FastPPT 直接跳转，不走 SSO。`FASTRESEARCH_PUBLIC_URL` 是浏览器访问 FastResearch API 的地址，默认 `http://127.0.0.1:8787`。不要填 Vite 开发服务器地址。
+## API 文档
 
-## 访问与个人 Key
+### 成员认证
 
-FastWrite、FastPPT、FastLab 入口点击后直接跳转到配置的地址。FastRead 和 FastNews 需要先用个人 Key 解锁：`/api/sso/launch` 签发一次性票据并 302 到 `{READ|NEWS}?sso=ticket`，再由各模块服务端兑换。直开 FastRead `:3015` 或 FastNews `:4173` 会被送到 Panel。个人 Key 登录与各模块对接见 [docs/key-login.md](docs/key-login.md)，FastRead SSO 补充见 [docs/sso.md](docs/sso.md)。当前全部 HTTP 接口总览见 [docs/api.md](docs/api.md)。
+- `POST /api/auth/login-key` - 个人密钥登录
+- `GET /api/fastcas/authorize` - 启动 FastCAS SSO 登录
+- `GET /api/fastcas/callback` - FastCAS 回调处理
+- `POST /api/auth/logout` - 登出
 
-1. 点击右上角管理员登录按钮，使用管理员账号密码进入个人 Key 管理后台。
-2. 管理员按成员姓名生成 Key，可填写过期时间，也可以随时删除（删除后列表中不再显示该 Key）。
-3. Key 只在生成成功时显示完整值一次；后端只保存 SHA-256 哈希和内容数据。
-4. 成员点击 ACCESS KEY，输入个人 Key 后解锁 FastInsight 信箱，并建立成员会话。
-5. 已解锁后点击 FastNews 或 FastRead，控制台走同一套 Key + `/api/sso/launch`：两者都带 `?sso=` 票据进入，由各模块服务端兑换后签发登录态（FastNews 用 HttpOnly `fr_session`，FastRead 用 `fastread_session`）。
-6. 关注作者按 Key 保存在 FastResearch 服务端。FastNews 必须用 `python serve.py` 启动，直开静态文件或 `python -m http.server` 无法作为产品入口。
-7. 管理员会话保存在当前浏览器的 `sessionStorage`；成员登录凭证是 HttpOnly Cookie `fr_session`（JWT，8 小时）。不要把原始 Key 长期存在浏览器里。
+### 个人工作区
 
-工作流下发接口为 `POST /api/workflow/publish`，请求头同样使用 `X-FastInsight-Key`：
+- `GET /api/member` - 获取成员信息（关注作者、研究标签、收件箱）
+- `POST /api/inbox` - 标记收件箱已读
+- `PUT /api/authors` - 更新关注作者
+- `PUT /api/tags` - 更新研究标签
+- `PUT /api/impression` - 更新研究印象
+
+### 工作流（旧版，兼容保留）
+
+- `GET /api/workflow` - 获取当前工作流
+- `POST /api/workflow` - 创建/更新工作流
+- `POST /api/workflow/complete` - 完成当前工序
+- `GET /api/workflow/team` - 团队工作流视图
+
+### 工作流（新版，FastTask 集成）
+
+- `POST /api/workflow/publish` - 接收工作流发布（支持新旧协议）
+- `GET /api/workflows` - 查询流水线列表（活跃、待开始、已完成）
+- `GET /api/workflows/{id}` - 获取流水线详情
+- `POST /api/workflows/{id}/start` - 启动流水线
+- `POST /api/workflows/{id}/stages/{stage_id}/complete` - 完成工序
+
+### 管理接口
+
+- `GET /api/admin/stats` - 系统统计信息
+- `POST /api/admin/migrate-key` - 密钥迁移
+- `POST /api/admin/rotate-key` - 密钥轮换
+
+### 服务集成
+
+- `POST /api/reading/push` - FastRead 推送阅读记录
+- `POST /api/insight/push` - FastInsight 推送研究信号
+
+详细 API 文档见 [docs/api.md](docs/api.md)
+
+## FastTask 集成
+
+FastResearch 实现了与 FastTask 的任务流水线集成，支持接收 FastTask 发布的研究任务，追踪工序完成进度，并回传完成事件。
+
+### 集成架构
+
+```
+FastTask                    FastResearch                各业务模块
+   │                             │                          │
+   │  发布任务流水线              │                          │
+   ├──────────────────────────────>                         │
+   │  (dispatch payload)          │                          │
+   │                              │                          │
+   │  返回接收回执                 │                          │
+   <──────────────────────────────┤                          │
+   │                              │                          │
+   │                              │  用户启动流水线           │
+   │                              ├─────────────────────────>│
+   │                              │                          │
+   │                              │  用户完成工序             │
+   │                              <─────────────────────────┤
+   │                              │                          │
+   │  接收完成事件                 │                          │
+   <──────────────────────────────┤                          │
+   │  (stage completion)          │                          │
+```
+
+### 发布协议
+
+FastTask 使用 `fasttask-dispatch-v1` 协议版本发布任务：
 
 ```json
 {
-  "person": "张三",
-  "title": "课题 A 研究流",
-  "tasks": [
-    { "module": "FastPPT", "title": "整理开题幻灯片" },
-    { "module": "FastWrite", "title": "写相关工作" },
-    { "module": "FastRead", "title": "精读核心论文" },
-    { "module": "FastNews", "title": "跟踪本周新文" },
-    { "module": "FastLab", "title": "复现实验" }
+  "schema_version": "fasttask-dispatch-v1",
+  "dispatch_id": "dispatch-001",
+  "dispatch_revision": 1,
+  "receiver_ref": "account-123",
+  "title": "研究任务标题",
+  "description": "任务描述",
+  "task_id": "task-001",
+  "task_revision": 1,
+  "stages": [
+    {
+      "stage_id": "stage-1",
+      "module": "fast-read",
+      "title": "阅读论文",
+      "description": "阅读相关文献",
+      "success_criteria": "完成精读并标注",
+      "completion_target": "record_progress"
+    }
   ]
 }
 ```
 
-成员也可 `POST /api/workflow` 写入自己的任务列表，或发送 `{ "default": true }` 加载默认研究流。完成当前任务调用 `POST /api/workflow/complete`，界面会进入下一功能。
+### 支持的模块
 
-FastInsight 服务端发布接口为 `POST /api/insight/publish`，请求头使用 `X-FastInsight-Key`，请求体包含 `person` 和 `item`。阅读项目可使用 `POST /api/content/reading/publish` 写入“最近阅读”列表，同样使用服务端发布凭证。
+- `fast-read` - FastRead 阅读与检索
+- `fast-write` - FastWrite 写作工作区
+- `fast-lab` - FastLab 实验与验证
+- `fast-news` - FastNews 资讯跟踪
+- `fast-ppt` - FastPPT 演示制作
 
-个人 Key 解锁后，页面每 15 秒自动同步一次信箱，因此 FastInsight skill 发布后无需手动刷新浏览器。
+### 使用示例
 
-## 可用命令
+详细集成说明和示例代码见：
+
+- [FastTask 集成方案](docs/fasttask-integration.md) - 完整设计文档
+- [集成使用示例](docs/fasttask-integration-example.md) - API 调用示例
+
+## 数据存储
+
+### SQLite 数据库
+
+- `data/accounts.sqlite` - 账号、身份链接、FastCAS 会话
+- `data/workflows.sqlite` - 工作流、工序、完成记录、待回传事件
+
+### JSON 文件
+
+- `data/access.json` - 个人密钥、关注作者、研究标签、收件箱（旧格式，兼容保留）
+
+## 开发
+
+### 项目结构
+
+```
+FastResearch/
+├── server/                    # 服务端代码
+│   ├── index.mjs             # 主服务器
+│   ├── account-store.mjs     # 账号存储
+│   ├── workflow-store.mjs    # 工作流存储
+│   ├── fasttask-dispatch.mjs # FastTask 集成逻辑
+│   ├── fastcas-http.mjs      # FastCAS 认证
+│   └── service-ingest.mjs    # 服务接收校验
+├── src/                       # 前端代码
+│   ├── App2.tsx              # 主应用组件
+│   ├── index.css             # 样式
+│   └── i18n.ts               # 国际化
+├── docs/                      # 文档
+│   ├── api.md                # API 文档
+│   ├── sso.md                # SSO 集成说明
+│   ├── fasttask-integration.md      # FastTask 集成方案
+│   └── fasttask-integration-example.md  # 使用示例
+└── package.json
+```
+
+### 运行测试
 
 ```bash
-npm run server       # 启动个人 Key 管理 API
-npm run dev          # 启动前端开发服务器
-npm run build        # 执行 TypeScript 检查并构建生产版本
-npm run lint         # 执行 ESLint 检查
-npm run preview      # 预览生产构建
-npm run test:visual  # 使用 Edge 验证桌面端、移动端和 Key 交互
+# 运行所有测试
+npm test
+
+# 运行 FastTask 集成测试
+npm run test:fasttask
 ```
 
-`npm run test:visual` 默认使用 Windows Edge。也可以通过 `EDGE_PATH` 指定浏览器路径，并通过 `VISUAL_CHECK_URL` 指定待检查的服务地址。
+### 代码风格
 
-## 目录说明
+- 使用 ESM 模块
+- 服务端使用 Node.js 内置模块优先
+- 前端使用 React + TypeScript
+- 遵循项目现有代码风格
 
-```text
-src/
-  App2.tsx      # 按布局图实现的应用壳、内容解锁和管理员后台
-  index.css     # Tailwind 入口和 FastRead 全局样式
-  main.tsx      # React 启动文件
-server/
-  index.mjs     # 管理员登录、个人 Key、成员会话、FastNews/FastRead SSO 和 FastInsight 发布 API
-docs/
-  key-login.md  # 个人 Key 登录与各模块对接接口（含示例）
-  sso.md        # FastRead SSO 对接补充
-scripts/
-  visual-check.mjs  # 浏览器视觉与交互验收脚本
+## 部署
+
+### 本地部署
+
+```bash
+# 构建前端
+npm run build
+
+# 启动生产服务
+npm run server
 ```
+
+### Docker 部署
+
+```bash
+# 构建镜像
+docker build -t fastresearch .
+
+# 运行容器
+docker run -d \
+  -p 8787:8787 \
+  -v $(pwd)/data:/app/data \
+  -e FASTCAS_ISSUER=https://fastcas.example.com \
+  fastresearch
+```
+
+### Vercel 部署
+
+前端可以单独部署到 Vercel：
+
+```bash
+npm run build
+vercel deploy
+```
+
+后端需要部署到支持 Node.js 的服务器。
+
+## 许可证
+
+[MIT License](LICENSE)
+
+## 相关项目
+
+- [FastRead](https://github.com/example/FastRead) - 论文阅读与检索
+- [FastWrite](https://github.com/example/FastWrite) - 学术写作工作区
+- [FastLab](https://github.com/example/FastLab) - 实验管理平台
+- [FastNews](https://github.com/example/FastNews) - 学术资讯聚合
+- [FastTask](https://github.com/example/FastTask) - 任务与计划管理

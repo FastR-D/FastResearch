@@ -9,6 +9,9 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
+    "test": "node --test server/*.test.mjs",
+    "test:fasttask": "node --test server/fasttask-integration.test.mjs",
+    "test:integration": "node --test server/integration.test.mjs",
     "test:visual": "node scripts/visual-check.mjs"
   },
   "dependencies": {

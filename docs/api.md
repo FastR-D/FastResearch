@@ -33,10 +33,10 @@ audience=fast-news       audience=fast-read
      ▼                       ▼
 FastNews :4173           FastRead :3015 / :8483
 serve.py consume         后端 consume → fastread_session
-Cookie fr_session        工作区按 keyId 隔离
+Cookie fr_session        工作区按 accountId 隔离
 ```
 
-FastWrite / FastPPT / FastLab 目前只是工作流里的跳转地址，本仓库没有它们的 HTTP 服务。任务列表由 FastResearch 维护。
+FastWrite 通过 `FASTWRITE_URL` 与 `FASTWRITE_API_KEY` 接入。FastResearch 验证个人 Key 后调用 FastWrite 集成端点，并以该 Key 的 `accountId` 映射到独立 FastWrite 账户；FastPPT / FastLab 仍只是工作流里的跳转地址。任务列表由 FastResearch 维护。
 
 ---
 
@@ -50,7 +50,7 @@ FastWrite / FastPPT / FastLab 目前只是工作流里的跳转地址，本仓�
 | FastRead `fastread_session` | FastRead 兑换票据后签发 | 7 天 | HttpOnly Cookie；写操作还要 `X-CSRF-Token` |
 | `X-FastInsight-Key` | 环境变量 `FASTINSIGHT_INGEST_KEY` | 长期服务号密钥 | Insight / 最近阅读写入，**不是**个人 Key |
 
-稳定主键是 `keyId`（20 位 hex），不要用姓名。原始个人 Key（`fk_…`）只允许在 Panel 输入，禁止放进 URL、Cookie、localStorage。
+跨模块账户映射的稳定主键是 `accountId`；`keyId`（20 位 hex）标识当前 Key 凭证记录。不要用姓名。原始个人 Key（`fk_…`）只允许在 Panel 输入，禁止放进 URL、Cookie、localStorage。
 
 ---
 
@@ -97,6 +97,7 @@ Base URL：`http://127.0.0.1:8787`（`PORT` / `FASTRESEARCH_PUBLIC_URL`）。
 | POST | `/api/insight/publish` | `X-FastInsight-Key` | 201 | 写入 Insight 信箱 |
 | POST | `/api/content/reading/publish` | 同上 | 201 | 写入最近阅读 |
 | GET | `/api/workflow` | 成员 | 200 | 读取当前任务列表 |
+| GET | `/api/workflow/team` | 成员 | 200 | 查看所有有效成员的任务和完成进度 |
 | POST | `/api/workflow` | 成员 | 201 | 写入/覆盖自己的任务列表；`{ "default": true }` 加载默认研究流 |
 | POST | `/api/workflow/complete` | 成员 | 200 | 完成当前任务并返回下一任务 |
 | POST | `/api/workflow/publish` | `X-FastInsight-Key` | 201 | 向成员下发任务列表 |
@@ -128,6 +129,55 @@ FastResearch 按任务列表顺序展示功能，模块取值只能是 `fast-ppt
 失败：401 发布凭证无效；400 任务列表不能为空 / 功能无效；404 没有匹配的成员 Key。任务最多 50 条。
 
 **读取** `GET /api/workflow`（成员）返回 `{ "workflow": ... | null }`。`GET /api/content/me` 也会带上同一份 `workflow`。
+
+**查看团队进度** `GET /api/workflow/team`（成员）
+
+该接口返回所有当前有效的个人 Key 对应成员，包括当前登录成员自己。接口不会返回个人 Key、`keyPreview` 或其他成员的内容数据，只返回显示名和工作流进度。成员按 `person` 使用 `zh-CN` 排序；尚未分配工作流的成员仍会返回，`workflow` 为 `null`。
+
+```http
+GET /api/workflow/team
+Authorization: Bearer <成员会话>
+```
+
+成功 200：
+
+```json
+{
+  "currentKeyId": "a1b2c3d4e5f6a7b8c9d0",
+  "members": [
+    {
+      "keyId": "a1b2c3d4e5f6a7b8c9d0",
+      "person": "张三",
+      "workflow": {
+        "id": "workflow-id",
+        "title": "课题 A 研究流",
+        "source": "api",
+        "receivedAt": "2026-09-18T12:00:00.000Z",
+        "currentIndex": 1,
+        "doneCount": 1,
+        "total": 5,
+        "completed": false,
+        "currentTask": {
+          "id": "task-id",
+          "module": "fast-write",
+          "title": "写相关工作",
+          "description": "…",
+          "status": "active",
+          "completedAt": null
+        },
+        "tasks": []
+      }
+    },
+    {
+      "keyId": "b2c3d4e5f6a7b8c9d0e1",
+      "person": "李四",
+      "workflow": null
+    }
+  ]
+}
+```
+
+其中 `currentKeyId` 用于标记当前登录成员；`workflow.doneCount / workflow.total` 可用于计算成员完成百分比。没有成员会话时返回 401「成员登录已失效」。
 
 **自己写入** `POST /api/workflow`（成员）body 同 publish 的 `title` + `tasks`，或 `{ "default": true }` 加载默认顺序：FastPPT → FastWrite → FastRead → FastNews → FastLab。
 
@@ -195,6 +245,7 @@ Body：`{ "person": "张三", "expiresAt": null }`。`person` 最长 80，空则
   "session": "JWT",
   "person": "张三",
   "keyId": "20位hex",
+  "accountId": "稳定账户ID",
   "expiresAt": 1710028800000,
   "recentArticles": [],
   "insightItems": [],
@@ -503,10 +554,10 @@ X-FastInsight-Key: <FASTINSIGHT_INGEST_KEY>
 | GET | `/api/health` | 否 | `{ "status": "healthy", "schema": 1 }` |
 | GET | `/api/auth/login-info` | 否 | `{ "mode": "fastresearch-key", "panel_url" }` |
 | POST | `/api/auth/research` | 否 | body `{ "ticket" }`；兑换 FastResearch 票据，Set-Cookie，返回 `{ "csrf" }` |
-| GET | `/api/auth/me` | 是 | 当前用户 / 工作区 / `csrf` / `research_key_id` |
+| GET | `/api/auth/me` | 是 | 当前用户 / 工作区 / `csrf` / `research_key_id` / `research_account_id` |
 | POST | `/api/auth/logout` | 是 | 删会话并清 Cookie，`{ "ok": true }` |
 
-`POST /api/auth/research` 会调用 FastResearch `POST /api/sso/consume`，`audience=fast-read`，按返回的 `keyId` upsert 本地用户与工作区，占位邮箱为 `key-{keyId}@sso.fastresearch.local`。同一 `keyId` 始终进入同一工作区。票据失败：`401 Panel 登录已过期，请从 FastResearch 重新进入`；未配置或连不上 FastResearch：`503`。
+`POST /api/auth/research` 会调用 FastResearch `POST /api/sso/consume`，`audience=fast-read`，优先按返回的稳定 `accountId` upsert 本地用户与工作区，占位邮箱为 `key-{keyId}@sso.fastresearch.local`。同一 `accountId` 始终进入同一工作区；旧 ticket 或旧数据没有 `accountId` 时按 `keyId` 兼容。票据失败：`401 Panel 登录已过期，请从 FastResearch 重新进入`；未配置或连不上 FastResearch：`503`。
 
 `/api/auth/me` 示例：
 
@@ -515,6 +566,7 @@ X-FastInsight-Key: <FASTINSIGHT_INGEST_KEY>
   "email": "key-…@sso.fastresearch.local",
   "display_name": "张三",
   "research_key_id": "…",
+  "research_account_id": "…",
   "workspace_id": "…",
   "role": "owner",
   "csrf": "…",
