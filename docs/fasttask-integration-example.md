@@ -2,6 +2,47 @@
 
 本文档展示 FastTask 如何向 FastResearch 发布任务流水线，以及如何接收和处理工序完成事件。
 
+## 0. FastResearch Key 生成 FastTask 任务
+
+登录 FastResearch 的成员 Key 会绑定一个 FastTask 用户。登录后的 FastResearch
+前端或服务端调用代理接口即可创建目标和任务，FastResearch 会使用该账号对应的
+Pair Key 转发请求，调用方不能在请求体中指定其他用户。
+
+**接口**: `POST /api/fasttask/tasks`
+
+**认证**: FastResearch 成员会话（Cookie 或 `Authorization: Bearer <session>`）。
+
+**请求体**:
+
+```json
+{
+  "goal": {
+    "title": "Transformer 论文研究",
+    "description": "建立阅读、实验和写作任务",
+    "success_criteria": "形成可复用的研究结论"
+  },
+  "tasks": [
+    {
+      "title": "精读论文",
+      "description": "记录核心机制和证据",
+      "success_criteria": "完成论文精读摘要",
+      "minimum_action": "打开论文并记录第一条结论",
+      "estimate_minutes": 30,
+      "priority": 80,
+      "type": "task",
+      "position": 0
+    }
+  ]
+}
+```
+
+也可以使用已有 `goal_id`，此时不传 `goal`。如果不传目标，FastTask 会自动创建
+“FastResearch 任务”目标；`success_criteria` 和 `minimum_action` 缺省时会按任务标题生成默认值。
+
+FastTask 的底层入口为 `POST /api/v1/integrations/fastresearch/tasks`，使用
+`X-API-Key` 头。每个绑定配置一项 `FASTTASK_FASTRESEARCH_BINDINGS`，其中
+`api_key` 与 FastResearch 的成员 Key 对应，`user_id` 指向唯一 FastTask 用户。
+
 ## 1. 从 FastTask 发布任务
 
 ### 1.1 发布请求
@@ -56,7 +97,7 @@
     },
     {
       "stage_id": "stage-experiment",
-      "module": "fast-lab",
+      "module": "fast-news",
       "title": "复现关键实验",
       "description": "使用 PyTorch 实现简化版 Transformer encoder",
       "success_criteria": "代码可运行，输出与论文一致"
@@ -119,7 +160,7 @@
 | 字段 | 必填 | 说明 |
 |------|------|------|
 | `stage_id` | 是 | 工序唯一标识，在同一发布内保持稳定 |
-| `module` | 是 | 执行模块：`fast-read` / `fast-write` / `fast-lab` / `fast-news` / `fast-ppt` |
+| `module` | 是 | 执行模块：`fast-read` / `fast-write` / `fast-news` |
 | `title` | 是 | 工序标题，最多 300 字符 |
 | `description` | 否 | 工序说明，最多 1200 字符 |
 | `success_criteria` | 否 | 验收标准，用于界面提示 |

@@ -295,8 +295,10 @@ export function saveOutboundEvent(db, event) {
 }
 
 export function getPendingEvents(db, limit = 10) {
-  return db.prepare(`SELECT * FROM outbound_events
-    WHERE status = 'pending' AND next_attempt_at <= ?
+  return db.prepare(`SELECT outbound_events.*, workflows.account_id as account_id
+    FROM outbound_events
+    JOIN workflows ON workflows.id = outbound_events.workflow_id
+    WHERE outbound_events.status = 'pending' AND outbound_events.next_attempt_at <= ?
     ORDER BY next_attempt_at LIMIT ?`)
     .all(Date.now(), limit)
     .map(row => ({
@@ -311,8 +313,11 @@ export function markEventSynced(db, eventId, syncedAt = null) {
 }
 
 export function markEventFailed(db, eventId, error, nextAttemptAt = null) {
-  db.prepare(`UPDATE outbound_events SET status = 'failed', attempts = attempts + 1, last_error = ?, next_attempt_at = ? WHERE id = ?`)
-    .run(error, nextAttemptAt, eventId)
+    const status = nextAttemptAt == null ? 'failed' : 'pending'
+    db.prepare(`UPDATE outbound_events
+      SET status = ?, attempts = attempts + 1, last_error = ?, next_attempt_at = ?
+      WHERE id = ?`)
+      .run(status, error, nextAttemptAt, eventId)
 }
 
 export function getActiveWorkflow(db, accountId) {

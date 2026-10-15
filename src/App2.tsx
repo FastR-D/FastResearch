@@ -1,8 +1,8 @@
-import { ArrowUpRight, BookOpenText, Check, CheckCircle2, Circle, CircleDot, ExternalLink, FlaskConical, Inbox, KeyRound, Languages, Layers, ListTodo, LockKeyhole, LogIn, Moon, Newspaper, PenLine, Plus, Presentation, ShieldCheck, Sun, Terminal, Trash2, X } from 'lucide-react'
+import { ArrowUpRight, BookOpenText, Check, CheckCircle2, Circle, CircleDot, ExternalLink, FlaskConical, Inbox, KeyRound, Languages, Layers, ListTodo, LockKeyhole, LogIn, Moon, Newspaper, PenLine, Plus, ShieldCheck, Sun, Terminal, Trash2, UsersRound, X } from 'lucide-react'
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { createTranslator, getInitialLocale, saveLocale, type Locale, type Translate } from './i18n'
 
-type EntryId = 'fast-ppt' | 'fast-write' | 'fast-read' | 'fast-news' | 'fast-lab'
+type EntryId = 'fast-write' | 'fast-read' | 'fast-news'
 type SsoEntryId = 'fast-read' | 'fast-news'
 type Entry = { id: EntryId; name: string; label: string; description: string; Icon: typeof BookOpenText; url?: string; tone: string }
 type BearerSession = { token: string }
@@ -11,6 +11,8 @@ type MemberSession = BearerSession & { person: string; keyId: string; expiresAt:
 type PersonalKey = { id: string; person: string; keyPreview: string; active: boolean; createdAt?: string; expiresAt?: string | null }
 type InsightItem = { id: string; title: string; summary?: string; url?: string; source?: string; direction?: string; authors?: string; venue?: string; receivedAt?: string }
 type TaskStatus = 'pending' | 'active' | 'done'
+type WorkspaceView = 'workflow' | 'insight' | 'team'
+type WorkspaceDirection = 'forward' | 'backward'
 type WorkflowTask = { id: string; module: EntryId; title: string; description: string; status: TaskStatus; completedAt?: string | null }
 type Workflow = { id: string; title: string; source?: string; receivedAt?: string; currentIndex: number; doneCount: number; total: number; completed: boolean; currentTask?: WorkflowTask | null; tasks: WorkflowTask[] }
 type TeamWorkflow = { keyId: string; person: string; workflow: Workflow | null }
@@ -21,13 +23,13 @@ const apiUrl = (path: string) => `${API_BASE}${path}`
 const adminStorageKey = 'fastresearch-admin-session'
 const memberStorageKey = 'fastresearch-member-session'
 const personalKeyStorage = 'fastresearch-personal-key'
+const MODULE_ORDER: EntryId[] = ['fast-news', 'fast-read', 'fast-write']
+const WORKSPACE_VIEWS: WorkspaceView[] = ['workflow', 'insight', 'team']
 const SSO_AUDIENCE: Record<SsoEntryId, 'fast-news' | 'fast-read'> = { 'fast-read': 'fast-read', 'fast-news': 'fast-news' }
 const ENTRY_CONFIG: Record<EntryId, { nameKey: string; labelKey: string; descriptionKey: string; Icon: typeof BookOpenText; url?: string; tone: string }> = {
-  'fast-ppt': { nameKey: 'entry.fast-ppt.name', labelKey: 'entry.fast-ppt.label', descriptionKey: 'entry.fast-ppt.description', Icon: Presentation, url: import.meta.env.VITE_FASTPPT_URL, tone: 'rose' },
-  'fast-write': { nameKey: 'entry.fast-write.name', labelKey: 'entry.fast-write.label', descriptionKey: 'entry.fast-write.description', Icon: PenLine, url: import.meta.env.VITE_WRITE_URL || 'http://127.0.0.1:3003', tone: 'violet' },
-  'fast-read': { nameKey: 'entry.fast-read.name', labelKey: 'entry.fast-read.label', descriptionKey: 'entry.fast-read.description', Icon: BookOpenText, url: import.meta.env.VITE_READ_URL || 'http://127.0.0.1:3015', tone: 'cyan' },
-  'fast-news': { nameKey: 'entry.fast-news.name', labelKey: 'entry.fast-news.label', descriptionKey: 'entry.fast-news.description', Icon: Newspaper, url: import.meta.env.VITE_FASTNEWS_URL || 'http://127.0.0.1:4173', tone: 'amber' },
-  'fast-lab': { nameKey: 'entry.fast-lab.name', labelKey: 'entry.fast-lab.label', descriptionKey: 'entry.fast-lab.description', Icon: FlaskConical, url: import.meta.env.VITE_FASTLAB_URL, tone: 'lime' },
+  'fast-write': { nameKey: 'entry.fast-write.name', labelKey: 'entry.fast-write.label', descriptionKey: 'entry.fast-write.description', Icon: PenLine, url: import.meta.env.VITE_WRITE_URL || 'http://127.0.0.1:3003', tone: 'blue' },
+  'fast-read': { nameKey: 'entry.fast-read.name', labelKey: 'entry.fast-read.label', descriptionKey: 'entry.fast-read.description', Icon: BookOpenText, url: import.meta.env.VITE_READ_URL || 'http://127.0.0.1:3015', tone: 'blue' },
+  'fast-news': { nameKey: 'entry.fast-news.name', labelKey: 'entry.fast-news.label', descriptionKey: 'entry.fast-news.description', Icon: Newspaper, url: import.meta.env.VITE_FASTNEWS_URL || 'http://127.0.0.1:4173', tone: 'blue' },
 }
 
 function createEntries(t: Translate): Record<EntryId, Entry> {
@@ -35,7 +37,7 @@ function createEntries(t: Translate): Record<EntryId, Entry> {
 }
 
 function createPreviewWorkflow(t: Translate): Workflow {
-  const modules: EntryId[] = ['fast-ppt', 'fast-write', 'fast-read', 'fast-news', 'fast-lab']
+  const modules = MODULE_ORDER
   const tasks = modules.map((module, index) => ({ id: `preview-${module}`, module, title: t(`task.${module}.title`), description: t(`task.${module}.description`), status: index === 0 ? 'active' as const : 'pending' as const, completedAt: null }))
   return { id: 'preview', title: t('workflow.defaultTitle'), source: 'preview', currentIndex: 0, doneCount: 0, total: tasks.length, completed: false, tasks }
 }
@@ -91,7 +93,7 @@ function isSsoEntry(id: EntryId): id is SsoEntryId {
 }
 
 function App2() {
-  // Default to light green academic theme
+  // Default to the light BlockSec-inspired blue research theme
   const [dark, setDark] = useState(() => localStorage.getItem('fastresearch-theme') === 'dark')
   const [locale, setLocale] = useState<Locale>(getInitialLocale)
   const [keyOpen, setKeyOpen] = useState(false)
@@ -108,8 +110,12 @@ function App2() {
   const [workflow, setWorkflow] = useState<Workflow | null>(null)
   const [teamWorkflows, setTeamWorkflows] = useState<TeamWorkflow[]>([])
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
+  const [workspaceView, setWorkspaceView] = useState<WorkspaceView>('workflow')
+  const [workspaceDirection, setWorkspaceDirection] = useState<WorkspaceDirection>('forward')
   const [busy, setBusy] = useState(false)
   const pendingLaunch = useRef<PendingLaunch | null>(null)
+  const workspaceRef = useRef<HTMLElement | null>(null)
+  const lastWorkspaceWheel = useRef(0)
   const t = useMemo(() => createTranslator(locale), [locale])
   const entries = useMemo(() => createEntries(t), [t])
   const previewWorkflow = useMemo(() => createPreviewWorkflow(t), [t])
@@ -211,6 +217,44 @@ function App2() {
     if (!visibleWorkflow.tasks.length) return
     setSelectedTaskId((current) => visibleWorkflow.tasks.some((task) => task.id === current) ? current : (visibleWorkflow.tasks.find((task) => task.status === 'active') ?? visibleWorkflow.tasks[0]).id)
   }, [visibleWorkflow])
+
+  useEffect(() => {
+    const root = workspaceRef.current
+    if (!root) return
+    const switchOnWheel = (event: globalThis.WheelEvent) => {
+      if (!(event.target instanceof Element) || Math.abs(event.deltaY) < 8) return
+      if (!root.contains(event.target)) return
+      for (let scrollable: Element | null = event.target; scrollable && scrollable !== root; scrollable = scrollable.parentElement) {
+        const element = scrollable as HTMLElement
+        const overflow = getComputedStyle(element).overflowY
+        if (!['auto', 'scroll'].includes(overflow) || element.scrollHeight <= element.clientHeight + 2) continue
+        if ((event.deltaY > 0 && element.scrollTop + element.clientHeight < element.scrollHeight - 2) ||
+            (event.deltaY < 0 && element.scrollTop > 2)) return
+      }
+      if (Date.now() - lastWorkspaceWheel.current < 450) return
+      event.preventDefault()
+      lastWorkspaceWheel.current = Date.now()
+      const delta = event.deltaY > 0 ? 1 : -1
+      setWorkspaceView((current) => {
+        const currentIndex = WORKSPACE_VIEWS.indexOf(current)
+        const nextIndex = (currentIndex + delta + WORKSPACE_VIEWS.length) % WORKSPACE_VIEWS.length
+        setWorkspaceDirection(delta > 0 ? 'forward' : 'backward')
+        return WORKSPACE_VIEWS[nextIndex]
+      })
+    }
+    root.addEventListener('wheel', switchOnWheel, { passive: false })
+    return () => root.removeEventListener('wheel', switchOnWheel)
+  }, [])
+
+  const setWorkspacePage = (view: WorkspaceView) => {
+    if (view === workspaceView) return
+    const currentIndex = WORKSPACE_VIEWS.indexOf(workspaceView)
+    const nextIndex = WORKSPACE_VIEWS.indexOf(view)
+    const forwardDistance = (nextIndex - currentIndex + WORKSPACE_VIEWS.length) % WORKSPACE_VIEWS.length
+    const backwardDistance = (currentIndex - nextIndex + WORKSPACE_VIEWS.length) % WORKSPACE_VIEWS.length
+    setWorkspaceDirection(forwardDistance <= backwardDistance ? 'forward' : 'backward')
+    setWorkspaceView(view)
+  }
 
   const openInNewTab = (url: string, popup?: Window | null) => {
     if (popup && !popup.closed) {
@@ -425,7 +469,7 @@ function App2() {
         </div>
         <div className="header-actions">
           {member && <span className="header-identity" title={member.person}>👤 {member.person}</span>}
-          <button type="button" className="ghost-button" onClick={() => setKeyOpen(true)}>
+          <button type="button" className="ghost-button" onClick={() => setKeyOpen(true)} aria-label={member ? t('header.keyActive') : t('header.authenticate')} title={member ? t('header.keyActive') : t('header.authenticate')}>
             <KeyRound size={14} />
             <span>{member ? t('header.keyActive') : t('header.authenticate')}</span>
           </button>
@@ -452,50 +496,70 @@ function App2() {
             <h1>{t('hero.title1')}<br /><em>{t('hero.title2')}</em></h1>
             <p>{t('hero.description')}</p>
           </div>
-          <TeamProgressPanel members={teamWorkflows} currentKeyId={member?.keyId ?? null} loading={Boolean(member) && teamWorkflows.length === 0} t={t} />
         </section>
 
-        <div className="section-bar">
-          <span className="section-bar-title">{t('section.pipeline')}</span>
-          <span className="section-bar-meta">{t('section.pipelineMeta')} <ArrowUpRight size={13} /></span>
-        </div>
+        <section className="research-workspace" ref={workspaceRef} aria-label={t('workspace.title')}>
+          <div className="workspace-toolbar">
+            <div className="workspace-heading">
+              <span className="workspace-kicker">FASTRESEARCH / WORKSPACE</span>
+              <h2>{t('workspace.title')}</h2>
+            </div>
+            <div className="workspace-tabs" aria-label={t('workspace.views')}>
+              <button type="button" className={workspaceView === 'workflow' ? 'is-active' : ''} aria-pressed={workspaceView === 'workflow'} onClick={() => setWorkspacePage('workflow')}>
+                <ListTodo size={17} /> <span>{t('workspace.workflow')}</span>
+              </button>
+              <button type="button" className={workspaceView === 'insight' ? 'is-active' : ''} aria-pressed={workspaceView === 'insight'} onClick={() => setWorkspacePage('insight')}>
+                <Inbox size={17} /> <span>{t('workspace.insight')}</span>
+                {member && insightItems.some((item) => !readIds.has(item.id)) && <span className="workspace-unread">{insightItems.filter((item) => !readIds.has(item.id)).length}</span>}
+              </button>
+              <button type="button" className={workspaceView === 'team' ? 'is-active' : ''} aria-pressed={workspaceView === 'team'} onClick={() => setWorkspacePage('team')}>
+                <UsersRound size={17} /> <span>{t('team.label')}</span>
+              </button>
+            </div>
+          </div>
 
-        <WorkflowBoard
-          workflow={visibleWorkflow}
-          entries={entries}
-          t={t}
-          live={Boolean(workflow)}
-          member={member}
-          selectedId={selectedTask?.id ?? null}
-          selectedEntry={selectedEntry}
-          selectedTask={selectedTask}
-          busy={busy}
-          onSelect={selectTask}
-          onOpen={() => selectedEntry && openEntry(selectedEntry)}
-          onComplete={() => selectedTask && completeTask(selectedTask)}
-          onLoadDefault={() => { void loadDefaultWorkflow() }}
-          onUnlock={() => setKeyOpen(true)}
-        />
-
-        <div className="section-bar" id="insight">
-          <span className="section-bar-title">{t('section.insight')}</span>
-          <span className="section-bar-meta">{t('section.insightMeta')} <ArrowUpRight size={13} /></span>
-        </div>
-
-        <InsightMailbox
-          member={member}
-          items={insightItems}
-          selectedId={selectedInsight}
-          readIds={readIds}
-          onSelect={markRead}
-          onUnlock={() => setKeyOpen(true)}
-          t={t}
-        />
+          <div className={`workspace-page workspace-page--${workspaceView} workspace-page--${workspaceDirection}`} key={workspaceView}>
+            {workspaceView === 'workflow' && (
+              <WorkflowBoard
+                workflow={visibleWorkflow}
+                entries={entries}
+                t={t}
+                live={Boolean(workflow)}
+                member={member}
+                selectedId={selectedTask?.id ?? null}
+                selectedEntry={selectedEntry}
+                selectedTask={selectedTask}
+                busy={busy}
+                onSelect={selectTask}
+                onOpen={() => selectedEntry && openEntry(selectedEntry)}
+                onComplete={() => selectedTask && completeTask(selectedTask)}
+                onLoadDefault={() => { void loadDefaultWorkflow() }}
+                onUnlock={() => setKeyOpen(true)}
+              />
+            )}
+            {workspaceView === 'insight' && (
+              <InsightMailbox
+                member={member}
+                items={insightItems}
+                selectedId={selectedInsight}
+                readIds={readIds}
+                onSelect={markRead}
+                onUnlock={() => setKeyOpen(true)}
+                t={t}
+              />
+            )}
+            {workspaceView === 'team' && (
+              <div className="workspace-team-page">
+                <TeamProgressPanel members={teamWorkflows} currentKeyId={member?.keyId ?? null} loading={Boolean(member) && teamWorkflows.length === 0} t={t} />
+              </div>
+            )}
+          </div>
+        </section>
       </main>
 
       <footer className="tech-footer">
-        <span><Terminal size={13} /> {t('footer.left')}</span>
-        <span>{t('footer.right')} <span className="footer-pulse" /></span>
+        <div className="footer-brand"><Terminal size={13} /> <span>{t('footer.left')}</span></div>
+        <div className="footer-tagline"><span>{t('footer.right')}</span><span className="footer-pulse" aria-hidden="true" /></div>
       </footer>
 
       {member && casAvailable && <section className="cas-settings" aria-label={t('cas.settings')}>
@@ -643,6 +707,7 @@ function WorkflowBoard({ workflow, live, member, selectedId, selectedEntry, sele
       </aside>
 
       <article className={`workflow-stage ${selectedEntry ? `tone-${selectedEntry.tone}` : ''}`}>
+        {selectedEntry && <ModuleShowcase entries={entries} selectedId={selectedEntry.id} t={t} />}
         {!live && (
           <div className="workflow-banner">
             <div className="workflow-banner-icon"><Layers size={18} /></div>
@@ -705,6 +770,41 @@ function WorkflowBoard({ workflow, live, member, selectedId, selectedEntry, sele
           </div>
         )}
       </article>
+    </section>
+  )
+}
+
+function ModuleShowcase({ entries, selectedId, t }: { entries: Record<EntryId, Entry>; selectedId: EntryId; t: Translate }) {
+  const [previewId, setPreviewId] = useState<EntryId>(selectedId)
+  useEffect(() => setPreviewId(selectedId), [selectedId])
+  const entry = entries[previewId]
+  const Icon = entry.Icon
+
+  return (
+    <section className="module-showcase" aria-label={t('showcase.title')}>
+      <div className="module-showcase-header">
+        <span className="workspace-kicker">{t('showcase.title')}</span>
+        <div className="module-switcher" aria-label={t('showcase.views')}>
+          {MODULE_ORDER.map((id) => (
+            <button key={id} type="button" className={previewId === id ? 'is-active' : ''} aria-pressed={previewId === id} onClick={() => setPreviewId(id)}>{entries[id].name}</button>
+          ))}
+        </div>
+      </div>
+      <div className="module-showcase-content" key={previewId}>
+        <div className={`module-visual module-visual--${previewId}`} aria-hidden="true">
+          {previewId === 'fast-news' && <><span className="news-orbit orbit-one" /><span className="news-orbit orbit-two" /><span className="news-orbit orbit-three" /><span className="news-sweep" /><span className="news-node node-one" /><span className="news-node node-two" /><span className="news-node node-three" /><span className="visual-center"><Newspaper size={29} /></span></>}
+          {previewId === 'fast-write' && <><span className="write-sheet sheet-back" /><span className="write-sheet sheet-front"><i /><i /><i /><i /><b /></span><span className="visual-center"><PenLine size={25} /></span></>}
+          {previewId === 'fast-read' && <><span className="read-page page-left"><i /><i /><i /><i /></span><span className="read-page page-right"><i /><i /><i /><i /><span className="read-scan" /></span><span className="visual-center"><BookOpenText size={26} /></span></>}
+        </div>
+        <div className="module-overview">
+          <span className="module-overview-index">0{MODULE_ORDER.indexOf(previewId) + 1} / 03</span>
+          <h3><Icon size={23} /> {entry.name}</h3>
+          <p>{t(`showcase.${previewId}.detail`)}</p>
+          <ul>
+            {[1, 2, 3].map((index) => <li key={index}><Check size={13} />{t(`showcase.${previewId}.point${index}`)}</li>)}
+          </ul>
+        </div>
+      </div>
     </section>
   )
 }
@@ -891,7 +991,7 @@ function KeyDialog({ onClose, onUnlock, casAvailable, t }: { onClose: () => void
           {loading ? t('key.verifying') : t('key.submit')} <ArrowUpRight size={15} />
         </button>
       </form>
-      {casAvailable && <a className="outline-button full-button" href={apiUrl('/api/auth/fastcas/login')}>{t('cas.login')}</a>}
+      {casAvailable && <a className="outline-button full-button" href={apiUrl(`/api/auth/fastcas/login?return_to=${encodeURIComponent(window.location.pathname)}`)}>{t('cas.login')}</a>}
     </Dialog>
   )
 }
@@ -903,7 +1003,7 @@ function AdminDialog({ session, onLogin, onLogout, onClose, t }: {
   onClose: () => void
   t: Translate
 }) {
-  const [username, setUsername] = useState('')
+  const [username, setUsername] = useState('admin')
   const [password, setPassword] = useState('')
   const [person, setPerson] = useState('')
   const [keys, setKeys] = useState<PersonalKey[]>([])

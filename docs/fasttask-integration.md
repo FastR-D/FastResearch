@@ -11,7 +11,7 @@
 
 **FastTask 发布任务包 → FastResearch 接收并展示流水线 → 用户进入各模块执行 → 提交工序成果 → FastTask 记录推进或完成任务。**
 
-第一阶段围绕人工推进的科研工作台实施。FastTask 管理业务任务、每日计划、发布记录和完成规则；FastResearch 管理下发后的工序列表、当前执行阶段和成果提交；FastRead、FastWrite、FastLab 等模块提供实际工作空间与产物。
+第一阶段围绕人工推进的科研工作台实施。FastTask 管理业务任务、每日计划、发布记录和完成规则；FastResearch 管理下发后的工序列表、当前执行阶段和成果提交；FastRead、FastWrite、FastNews 等模块提供实际工作空间与产物。
 
 采用 FastTask 服务端主动推送、双方持久化待发送记录、失败重试和定期对账。后台自动执行、执行租约和工具作业调度放到后续自动化阶段。
 
@@ -81,7 +81,7 @@ Dispatch 表示一次明确的发布意图，保存执行配置与来源快照�
 
 FastTask 的 Task 目前没有执行模块字段。第一期将模块选择、排序和来源关联保存到 Dispatch 的执行配置中。
 
-例如“阅读论文 → 复现实验 → 撰写实验分析”可配置为 FastRead → FastLab → FastWrite。现有五模块默认顺序保留为参考模板。
+例如“阅读论文 → 跟踪前沿 → 撰写实验分析”可配置为 FastRead → FastNews → FastWrite。默认顺序为 FastNews → FastRead → FastWrite。
 
 先由用户选择并确认工序；后续可由 Agent 生成建议，再通过用户确认发布。FastTask 当前未批准的任务树提案不应直接触发下发。
 

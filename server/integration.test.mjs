@@ -13,6 +13,7 @@ process.env.FASTRESEARCH_FASTCAS_CLIENT_SECRET = ''
 process.env.FASTRESEARCH_FASTCAS_REDIRECT_URI = ''
 process.env.ADMIN_PASSWORD = 'integration-admin-password'
 process.env.FASTINSIGHT_INGEST_KEY = 'integration-ingest-key'
+process.env.FASTTASK_INGEST_KEY = 'integration-fasttask-key'
 const { startServer } = await import('./index.mjs')
 
 test('Key rotation keeps account and content; invalid Bearer never falls back', async () => {
@@ -30,7 +31,7 @@ test('Key rotation keeps account and content; invalid Bearer never falls back', 
     assert.equal((await call('/api/auth/fastcas/available', 'GET')).body.available, false)
     const admin = await call('/api/admin/login', 'POST', { username: 'admin', password: 'integration-admin-password' })
     assert.equal(admin.status, 200)
-    const created = await call('/api/admin/keys', 'POST', { person: '同名成员' }, admin.body.session)
+    const created = await call('/api/admin/keys', 'POST', { person: '同名成员', fasttask_user_id: 'fasttask-user-1' }, admin.body.session)
     assert.equal(created.status, 201)
     assert.ok(created.body.record.accountId)
     const original = await call('/api/content/unlock', 'POST', { key: created.body.key })
@@ -46,8 +47,33 @@ test('Key rotation keeps account and content; invalid Bearer never falls back', 
     assert.equal(changed.body.record.accountId, accountId)
     assert.equal((await call('/api/content/unlock', 'POST', { key: created.body.key })).status, 401)
     assert.equal((await call('/api/content/unlock', 'POST', { key: changed.body.key })).body.accountId, accountId)
+    assert.equal(changed.body.record.fasttaskUserId, 'fasttask-user-1')
     assert.equal((await call('/api/insight/publish', 'POST', { person: '同名成员' }, 'bad-token', { 'X-FastInsight-Key': 'integration-ingest-key' })).status, 401)
     assert.equal((await call('/api/insight/publish', 'POST', { person: '同名成员' }, '', { 'X-FastInsight-Key': 'integration-ingest-key' })).status, 201)
+    const dispatch = {
+      schema_version: 'fasttask-dispatch-v1',
+      dispatch_id: 'fasttask-integration-001',
+      dispatch_revision: 1,
+      receiver_ref: accountId,
+      title: 'FastTask 研究任务',
+      stages: [{ stage_id: 'stage-1', module: 'fast-read', title: '阅读任务' }],
+    }
+    assert.equal((await call('/api/workflow/publish', 'POST', dispatch, '', { 'X-FastTask-Key': 'wrong' })).status, 401)
+    const fastTaskPublish = await call('/api/workflow/publish', 'POST', dispatch, '', { 'X-FastTask-Key': 'integration-fasttask-key' })
+    assert.equal(fastTaskPublish.status, 201)
+    assert.equal(fastTaskPublish.body.receipt.dispatch_id, dispatch.dispatch_id)
+    const boundDispatch = {
+      schema_version: 'fasttask-dispatch-v1',
+      dispatch_id: 'fasttask-bound-key-001',
+      dispatch_revision: 1,
+      title: 'Key-bound FastTask 任务',
+      stages: [{ stage_id: 'stage-bound', module: 'fast-news', title: 'Key-bound news stage' }],
+    }
+    const bound = await call('/api/workflow/publish', 'POST', boundDispatch, '', { 'X-FastTask-Key': changed.body.key })
+    assert.equal(bound.status, 201)
+    assert.equal(bound.body.receipt.workflow_id.length > 0, true)
+    const wrongTarget = await call('/api/workflow/publish', 'POST', { ...boundDispatch, dispatch_id: 'fasttask-bound-key-002', receiver_ref: 'another-account' }, '', { 'X-FastTask-Key': changed.body.key })
+    assert.equal(wrongTarget.status, 403)
     const stored = JSON.parse(readFileSync(path.join(dir, 'access.json'), 'utf8'))
     assert.equal(stored.keys[0].accountId, accountId)
     assert.equal(stored.keys[0].insightItems.length, 1)

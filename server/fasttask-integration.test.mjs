@@ -112,7 +112,7 @@ describe('FastTask Integration', () => {
       stages: [
         {
           stage_id: 'stage-1',
-          module: 'fast-lab',
+          module: 'fast-news',
           title: '运行实验',
         },
         {

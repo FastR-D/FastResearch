@@ -37,7 +37,7 @@
     },
     {
       "stage_id": "stage-2",
-      "module": "fast-lab",
+      "module": "fast-news",
       "title": "💡 理解核心概念",
       "description": "理解自注意力机制和位置编码"
     },
@@ -90,7 +90,7 @@
 | 协议版本识别 | ✅ | 服务器正确识别 fasttask-dispatch-v1 协议 |
 | 身份认证 | ✅ | x-fastinsight-key 头部认证工作正常 |
 | 数据验证 | ✅ | 服务器验证必填字段（dispatch_id, dispatch_revision, 等） |
-| 模块识别 | ✅ | 正确识别 fast-read, fast-lab, fast-write 模块 |
+| 模块识别 | ✅ | 正确识别 fast-read, fast-news, fast-write 模块 |
 | 幂等性处理 | ✅ | 相同 dispatch_id 不会重复创建工作流 |
 | SQLite 存储 | ✅ | 工作流正确保存到 data/workflows.db |
 | 回执生成 | ✅ | 返回包含 workflow_id 和时间戳的完整回执 |

@@ -87,7 +87,7 @@ async function demo() {
         },
         {
           stage_id: 'stage-code-demo',
-          module: 'fast-lab',
+          module: 'fast-news',
           title: '实现简化版 Transformer Encoder',
           description: '使用 PyTorch 实现一个简化的 Transformer encoder',
           success_criteria: '代码可运行，输出与论文描述一致'
@@ -238,14 +238,14 @@ async function demo() {
       artifacts: [
         {
           type: 'code',
-          url: '/fast-lab/projects/transformer-demo/encoder.py',
+          url: '/fast-news/projects/transformer-demo/encoder.py',
           title: 'Transformer Encoder 实现',
           language: 'python',
           lines: 156
         },
         {
           type: 'notebook',
-          url: '/fast-lab/projects/transformer-demo/demo.ipynb',
+          url: '/fast-news/projects/transformer-demo/demo.ipynb',
           title: '运行演示'
         }
       ]

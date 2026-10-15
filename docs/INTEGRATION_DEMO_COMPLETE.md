@@ -22,9 +22,9 @@
 
 **工序流程**:
 1. 📖 **FastRead** - 精读原始论文
-2. ⚗️ **FastLab** - 探索实现代码
+2. 📰 **FastNews** - 探索前沿资料
 3. ✍️ **FastWrite** - 撰写技术总结
-4. 🎯 **FastPPT** - 制作演讲稿
+4. ✍️ **FastWrite** - 整理研究稿件
 
 #### 工作流 2: 行业动态追踪
 - **工作流 ID**: `178d4d0ccc3042151936d418`
@@ -55,9 +55,9 @@
 ### 支持的模块
 - [x] **FastRead** - 阅读和标注
 - [x] **FastWrite** - 写作和文档
-- [x] **FastLab** - 实验和研究
+- [x] **FastNews** - 前沿和研究
 - [x] **FastNews** - 新闻追踪
-- [x] **FastPPT** - 演示制作
+- [x] **FastWrite** - 稿件整理
 
 ---
 

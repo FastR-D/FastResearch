@@ -58,7 +58,7 @@ async function main() {
       },
       {
         stage_id: 'stage-2',
-        module: 'fast-lab',
+        module: 'fast-news',
         title: '💡 理解核心概念',
         description: '理解自注意力机制和位置编码'
       },

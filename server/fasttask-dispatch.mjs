@@ -11,19 +11,15 @@ import {
 } from './workflow-store.mjs'
 
 const WORKFLOW_MODULES = {
-  'fast-ppt': 'fast-ppt',
   'fast-write': 'fast-write',
   'fast-read': 'fast-read',
   'fast-news': 'fast-news',
-  'fast-lab': 'fast-lab',
 }
 
 const MODULE_LABELS = {
-  'fast-ppt': 'FastPPT',
   'fast-write': 'FastWrite',
   'fast-read': 'FastRead',
   'fast-news': 'FastNews',
-  'fast-lab': 'FastLab',
 }
 
 function resolveModule(value) {

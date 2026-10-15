@@ -12,9 +12,10 @@ import { classifyMember, memberClaims, safeReturnPath } from './runtime.mjs'
 import { handleFastCAS, claimsForService } from './fastcas-http.mjs'
 import { revalidateFastCASSession, shouldRevalidate } from './fastcas-service.mjs'
 import { assessService, accountTargets, legacyPersonTargets, serviceWorkflowTargets } from './service-ingest.mjs'
-import { openWorkflowStore, getWorkflowsByAccount, getWorkflowById } from './workflow-store.mjs'
+import { openWorkflowStore, getWorkflowsByAccount, getWorkflowById, getPendingEvents, markEventSynced, markEventFailed } from './workflow-store.mjs'
 import { receiveDispatch, startWorkflow, completeStage, formatWorkflowView } from './fasttask-dispatch.mjs'
 import { createFastWriteClient } from './fastwrite-client.mjs'
+import { createFastTaskClient } from './fasttask-client.mjs'
 
 function loadEnvFiles() {
   for (const name of ['.env', '.env.local']) {
@@ -71,6 +72,11 @@ let accountDb
 let workflowDb
 let transactions
 let fastWriteClient
+let fastTaskClient
+let fastTaskClients = new Map()
+let fastTaskProvisionClient
+let fastTaskBaseURL = ''
+let fastTaskSyncTimer
 
 function passwordHash(password) {
   const salt = randomBytes(16).toString('hex')
@@ -160,6 +166,93 @@ async function loadData() {
   } else {
     console.log('FastWrite 客户端未配置 (需要 FASTWRITE_URL 和 FASTWRITE_API_KEY)')
   }
+
+  const fastTaskUrl = process.env.FASTTASK_URL || process.env.VITE_FASTTASK_URL
+  fastTaskBaseURL = String(fastTaskUrl ?? '').trim()
+  const fastTaskApiKey = process.env.FASTTASK_API_KEY
+  fastTaskClient = createFastTaskClient(fastTaskUrl, fastTaskApiKey)
+  const fastTaskProvisionKey = process.env.FASTTASK_PROVISION_KEY || fastTaskApiKey
+  fastTaskProvisionClient = createFastTaskClient(fastTaskUrl, fastTaskProvisionKey)
+  fastTaskClients = new Map()
+  const configuredFastTaskKeys = String(process.env.FASTTASK_API_KEYS ?? '').trim()
+  if (configuredFastTaskKeys) {
+    try {
+      const entries = JSON.parse(configuredFastTaskKeys)
+      const list = Array.isArray(entries)
+        ? entries
+        : Object.entries(entries).map(([accountId, value]) => ({ account_id: accountId, ...(value ?? {}) }))
+      for (const entry of list) {
+        const accountId = String(entry?.account_id ?? entry?.accountId ?? '').trim()
+        const apiKey = String(entry?.api_key ?? entry?.apiKey ?? '').trim()
+        const url = String(entry?.url ?? fastTaskUrl ?? '').trim()
+        if (accountId && apiKey && url) fastTaskClients.set(accountId, createFastTaskClient(url, apiKey))
+      }
+    } catch (error) {
+      console.warn('FASTTASK_API_KEYS 配置无效:', error.message)
+    }
+  }
+  if (fastTaskClient || fastTaskProvisionClient || fastTaskClients.size) {
+    console.log('FastTask 客户端已初始化:', fastTaskUrl || `${fastTaskClients.size} 个绑定客户端`)
+    startFastTaskSync()
+  } else {
+    console.log('FastTask 客户端未配置 (需要 FASTTASK_URL 和 FASTTASK_API_KEY)')
+  }
+}
+
+async function syncFastTaskEvents() {
+  if ((!fastTaskClient && !fastTaskProvisionClient && !fastTaskClients.size) || !workflowDb) return
+  const events = getPendingEvents(workflowDb, 10)
+  for (const event of events) {
+    const accountId = String(event.account_id ?? '').trim()
+    const target = fastTaskClientForAccount(accountId)
+    const client = target.client
+    if (!client) continue
+    try {
+      const payload = event.payload ?? {}
+      await client.publishProgress({
+        schema_version: '1.0',
+        trace_id: `fastresearch-${event.id}`,
+        source: { external_id: event.id },
+        kind: 'progress_evidence',
+        title: `FastResearch 工序完成：${payload.stage_id ?? 'stage'}`,
+        description: payload.description ?? '',
+        artifacts: Array.isArray(payload.artifacts) ? payload.artifacts : [],
+        metadata: {
+          event_type: event.event_type,
+          fastresearch_account_id: event.account_id,
+          dispatch_id: payload.dispatch_id,
+          dispatch_revision: payload.dispatch_revision,
+          workflow_id: payload.workflow_id,
+          stage_id: payload.stage_id,
+          completion_type: payload.completion_type,
+          task_id: payload.task_id,
+          task_revision: payload.task_revision,
+          completed_at: payload.completed_at,
+        },
+      }, event.id, target.receiverRef)
+      markEventSynced(workflowDb, event.id)
+    } catch (error) {
+      const attempts = Number(event.attempts ?? 0) + 1
+      const retryAt = Date.now() + Math.min(15 * 60_000, 1000 * (2 ** Math.min(attempts, 9)))
+      markEventFailed(workflowDb, event.id, String(error?.message ?? error).slice(0, 500), retryAt)
+    }
+  }
+}
+
+function fastTaskClientForAccount(accountId) {
+  const direct = fastTaskClients.get(String(accountId ?? '').trim())
+  if (direct) return { client: direct, receiverRef: '' }
+  const record = data?.keys?.find((item) => String(item.accountId ?? '').trim() === String(accountId ?? '').trim())
+  if (record?.fasttaskProvisioned === true && fastTaskProvisionClient) {
+    return { client: fastTaskProvisionClient, receiverRef: String(accountId ?? '').trim() }
+  }
+  return { client: fastTaskClient ?? fastTaskProvisionClient, receiverRef: '' }
+}
+
+function startFastTaskSync() {
+  if (fastTaskSyncTimer) clearInterval(fastTaskSyncTimer)
+  fastTaskSyncTimer = setInterval(() => { void syncFastTaskEvents() }, 5000)
+  void syncFastTaskEvents()
 }
 
 function persist() {
@@ -264,7 +357,7 @@ function isAllowedOrigin(origin) {
 
 function corsHeaders(request) {
   const headers = {
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-FastInsight-Key',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-FastInsight-Key, X-FastTask-Key',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
     Vary: 'Origin',
   }
@@ -423,11 +516,37 @@ async function serviceCredential(request, response, scope) {
       return null
     }
   }
+  if (scope === 'workflow:publish') {
+    const taskKey = String(process.env.FASTTASK_INGEST_KEY ?? '')
+    if (taskKey && request.headers['x-fasttask-key'] === taskKey) {
+      return { legacy: true, source: 'fasttask' }
+    }
+    // FastTask database bindings retain only a hash of each member Key. In
+    // that mode the service uses one provisioning secret plus the stable
+    // receiver_ref, which lets us route the workflow without exposing the
+    // member credential back to FastTask.
+    const provisionKey = String(process.env.FASTTASK_PROVISION_KEY || process.env.FASTTASK_API_KEY || '').trim()
+    const suppliedProvisionKey = String(request.headers['x-fastresearch-provision-key'] ?? '').trim()
+    const provisionReceiver = String(request.headers['x-fastresearch-receiver-ref'] ?? '').trim()
+    if (provisionKey && suppliedProvisionKey === provisionKey && provisionReceiver) {
+      const account = data.keys.find((record) => record.accountId === provisionReceiver && keyIsActive(record))
+      if (account) {
+        return { legacy: true, source: 'fasttask-provision', accountId: account.accountId, keyId: account.id }
+      }
+    }
+    // A personal FastResearch Key is also a scoped dispatch credential. This
+    // binds FastTask's request to the account that owns the Key, so a caller
+    // cannot redirect a task to another member by changing receiver_ref.
+    const memberKey = findKey(String(request.headers['x-fasttask-key'] ?? '').trim())
+    if (memberKey) {
+      return { legacy: true, source: 'fasttask-member-key', accountId: memberKey.accountId, keyId: memberKey.id }
+    }
+  }
   if (!process.env.FASTINSIGHT_INGEST_KEY || request.headers['x-fastinsight-key'] !== process.env.FASTINSIGHT_INGEST_KEY) {
-    sendError(response, 401, 'FastInsight 发布凭证无效')
+    sendError(response, 401, scope === 'workflow:publish' ? 'FastTask 发布凭证无效' : 'FastInsight 发布凭证无效')
     return null
   }
-  return { legacy: true }
+  return { legacy: true, source: 'fastinsight' }
 }
 
 function currentMember(request) {
@@ -442,10 +561,19 @@ function keyIsActive(record) {
   return !record.revokedAt && (!record.expiresAt || new Date(record.expiresAt).getTime() > Date.now())
 }
 
+// FastTask is an optional companion service during local development. A
+// network-level failure means the companion is down, rather than that the
+// requested FastTask operation was rejected. Keep the local Key operation
+// usable in that case; HTTP errors still propagate to the administrator.
+function isFastTaskUnavailable(error) {
+  return !Number.isFinite(Number(error?.status))
+}
+
 function adminKeys() {
   return data.keys.map((record) => ({
     id: record.id,
     accountId: record.accountId,
+    fasttaskUserId: record.fasttaskUserId ?? null,
     person: record.person,
     keyPreview: record.keyPreview,
     createdAt: record.createdAt,
@@ -591,9 +719,6 @@ function normalizeItems(items, source) {
 }
 
 const WORKFLOW_MODULES = {
-  'fast-ppt': 'fast-ppt',
-  fastppt: 'fast-ppt',
-  ppt: 'fast-ppt',
   'fast-write': 'fast-write',
   fastwrite: 'fast-write',
   write: 'fast-write',
@@ -603,25 +728,18 @@ const WORKFLOW_MODULES = {
   'fast-news': 'fast-news',
   fastnews: 'fast-news',
   news: 'fast-news',
-  'fast-lab': 'fast-lab',
-  fastlab: 'fast-lab',
-  lab: 'fast-lab',
 }
 const MODULE_LABELS = {
-  'fast-ppt': 'FastPPT',
   'fast-write': 'FastWrite',
   'fast-read': 'FastRead',
   'fast-news': 'FastNews',
-  'fast-lab': 'FastLab',
 }
 const DEFAULT_WORKFLOW = {
   title: '默认研究流',
   tasks: [
-    { module: 'fast-ppt', title: '整理研究演示', description: '把当前结论快速铺成可讲解的幻灯片。' },
-    { module: 'fast-write', title: '撰写研究内容', description: '在结构化工作区里产出稿件与论证。' },
-    { module: 'fast-read', title: '阅读与检索资料', description: '把论文和资料收进可回溯的阅读脉络。' },
     { module: 'fast-news', title: '跟踪最新信号', description: '查看与关注方向相关的新论文与资讯。' },
-    { module: 'fast-lab', title: '实验与验证', description: '进入实验室工作区，完成验证与记录。' },
+    { module: 'fast-read', title: '阅读与检索资料', description: '把论文和资料收进可回溯的阅读脉络。' },
+    { module: 'fast-write', title: '撰写研究内容', description: '在结构化工作区里产出稿件与论证。' },
   ],
 }
 function resolveWorkflowModule(value) {
@@ -635,7 +753,7 @@ function normalizeWorkflow(body, source = 'api') {
   const seen = new Set()
   const tasks = tasksIn.slice(0, 50).map((item, index) => {
     const module = resolveWorkflowModule(item?.module ?? item?.tool ?? item?.entry ?? item?.name)
-    if (!module) throw new Error(`第 ${index + 1} 个任务的功能无效，需为 FastPPT / FastWrite / FastRead / FastNews / FastLab`)
+    if (!module) throw new Error(`第 ${index + 1} 个任务的功能无效，需为 FastWrite / FastRead / FastNews`)
     let id = String(item?.id ?? randomBytes(8).toString('hex')).slice(0, 80)
     if (!id || seen.has(id)) id = randomBytes(8).toString('hex')
     seen.add(id)
@@ -756,7 +874,22 @@ async function handle(request, response) {
     const record = data.keys.find((item) => item.id === rotateRoute[1])
     if (!record) return sendError(response, 404, '个人 Key 不存在')
     const rawKey = `fk_${randomBytes(24).toString('base64url')}`
+    if (fastTaskProvisionClient && record.accountId && record.fasttaskProvisioned === true) {
+      try {
+        await fastTaskProvisionClient.rotateAccountKey(record.accountId, rawKey)
+      } catch (error) {
+        if (isFastTaskUnavailable(error)) {
+          console.warn(`FastTask 不可达，继续本地轮换 Key: ${error?.message || 'network error'}`)
+          record.fasttaskProvisioned = false
+        } else {
+          const status = Number(error?.status)
+          sendError(response, status >= 400 && status < 500 ? status : 502, error?.message || 'FastTask 账户 Key 轮换失败')
+          return
+        }
+      }
+    }
     rotateKey(record, { keyHash: keyHash(rawKey), keyPreview: `${rawKey.slice(0, 9)}...${rawKey.slice(-4)}` })
+    if (fastTaskBaseURL && record.accountId) fastTaskClients.set(record.accountId, createFastTaskClient(fastTaskBaseURL, rawKey))
     await persist()
     sendJson(response, 200, { key: rawKey, record: adminKeys().find((item) => item.id === record.id) })
     return
@@ -776,7 +909,22 @@ async function handle(request, response) {
         sendError(response, 404, '个人 Key 不存在')
         return
       }
+      const record = data.keys[index]
+      if (fastTaskProvisionClient && record.accountId && record.fasttaskProvisioned === true) {
+        try {
+          await fastTaskProvisionClient.deleteAccount(record.accountId)
+        } catch (error) {
+          if (isFastTaskUnavailable(error)) {
+            console.warn(`FastTask 不可达，继续本地删除 Key: ${error?.message || 'network error'}`)
+          } else {
+            const status = Number(error?.status)
+            sendError(response, status >= 400 && status < 500 ? status : 502, error?.message || 'FastTask 账户删除失败')
+            return
+          }
+        }
+      }
       data.keys.splice(index, 1)
+      if (record.accountId) fastTaskClients.delete(record.accountId)
       await persist()
       sendJson(response, 200, { ok: true })
       return
@@ -797,8 +945,33 @@ async function handle(request, response) {
       followedAuthors: [],
       customResearchTags: [],
       workflow: null,
+      fasttaskUserId: String(body.fasttask_user_id ?? body.fasttaskUserId ?? '').trim().slice(0, 200) || null,
+      fasttaskProvisioned: false,
     }
     assignAccountIds([record], accountDb, () => randomBytes(16).toString('hex'))
+    // A supplied fasttask_user_id is the legacy static-binding escape hatch.
+    // New Panel-created Keys leave it empty and are provisioned automatically.
+    if (fastTaskProvisionClient && !record.fasttaskUserId) {
+      try {
+        const provisioned = await fastTaskProvisionClient.provisionAccount({
+          receiverRef: record.accountId,
+          key: rawKey,
+          displayName: record.person,
+        })
+        record.fasttaskUserId = String(provisioned.user_id ?? provisioned.user?.id ?? '').trim() || null
+        record.fasttaskProvisioned = Boolean(record.fasttaskUserId)
+        if (fastTaskBaseURL && record.accountId) fastTaskClients.set(record.accountId, createFastTaskClient(fastTaskBaseURL, rawKey))
+      } catch (error) {
+        if (isFastTaskUnavailable(error)) {
+          console.warn(`FastTask 不可达，继续创建本地 Key: ${error?.message || 'network error'}`)
+          record.fasttaskProvisioned = false
+        } else {
+          const status = Number(error?.status)
+          sendError(response, status >= 400 && status < 500 ? status : 502, error?.message || 'FastTask 账户创建失败')
+          return
+        }
+      }
+    }
     data.keys.unshift(record)
     await persist()
     sendJson(response, 201, {
@@ -806,6 +979,7 @@ async function handle(request, response) {
       record: {
         id: record.id,
         accountId: record.accountId,
+        fasttaskUserId: record.fasttaskUserId,
         person: record.person,
         keyPreview: record.keyPreview,
         createdAt: record.createdAt,
@@ -924,6 +1098,41 @@ async function handle(request, response) {
     return
   }
 
+  if (request.method === 'POST' && route === '/api/fasttask/tasks') {
+    const member = requireMember(request, response)
+    if (!member) return
+    const accountId = String(member.record.accountId || '').trim()
+    // Once per-account clients are configured, do not fall back to a global
+    // credential for an unmapped member. That keeps one FastResearch account
+    // from creating tasks under another account's FastTask binding.
+    const target = fastTaskClientForAccount(accountId)
+    const client = target.client
+    if (!client) {
+      sendError(response, 503, 'FastTask 服务未配置当前 FastResearch 用户的 Key')
+      return
+    }
+    const body = await readBody(request)
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      sendError(response, 400, '请求体必须是 JSON 对象')
+      return
+    }
+    // The current FastResearch session supplies the account binding. A caller
+    // may choose a goal or task details, but cannot redirect the request.
+    if (body.receiver_ref || body.user_id) {
+      sendError(response, 403, 'FastResearch 当前 Key 不能指定其他账户')
+      return
+    }
+    try {
+      const idempotencyKey = String(request.headers['idempotency-key'] ?? '').trim() || `fastresearch-${member.keyId}-${Date.now()}`
+      const result = await client.createTasks(body, idempotencyKey, target.receiverRef)
+      sendJson(response, 201, result)
+    } catch (error) {
+      const status = Number(error?.status)
+      sendError(response, status >= 400 && status < 500 ? status : 502, error?.message || 'FastTask 请求失败')
+    }
+    return
+  }
+
   if (request.method === 'POST' && route === '/api/sso/ticket') {
     const member = requireMember(request, response)
     if (!member) return
@@ -1019,7 +1228,7 @@ async function handle(request, response) {
     if (decision?.status) return sendError(response, decision.status, decision.error)
     const result = credential.legacy
       ? { targets: legacyPersonTargets(data.keys, body.person, keyIsActive) }
-      : accountTargets(data.keys, decision, keyIsActive)
+      : accountTargets(decision.accountId, data.keys, keyIsActive)
     if (result.status) return sendError(response, result.status, result.error)
     const targets = result.targets
     if (!targets.length) {
@@ -1107,9 +1316,16 @@ async function handle(request, response) {
       const decision = credential.legacy ? null : assessService(credential.claims, body, 'workflow:publish')
       if (decision?.status) return sendError(response, decision.status, decision.error)
       const result = credential.legacy
-        ? { targets: accountTargets(body.receiver_ref, accountDb) }
+        ? credential.accountId
+          ? { targets: accountTargets(credential.accountId, accountDb) }
+          : { targets: accountTargets(body.receiver_ref, accountDb) }
         : serviceWorkflowTargets(data.keys, decision, allowedServiceTargets(credential.claims), keyIsActive)
       if (result.status) return sendError(response, result.status, result.error)
+
+      if (credential.accountId && body.receiver_ref && body.receiver_ref !== credential.accountId) {
+        sendError(response, 403, 'FastResearch Key 只能向其绑定账号分发任务')
+        return
+      }
 
       const targets = result.targets
       if (!targets.length) {
@@ -1124,7 +1340,35 @@ async function handle(request, response) {
       }
 
       try {
-        const result = receiveDispatch(workflowDb, body, receiverAccountId)
+        const dispatchBody = credential.accountId && !body.receiver_ref
+          ? { ...body, receiver_ref: credential.accountId }
+          : body
+        const result = receiveDispatch(workflowDb, dispatchBody, receiverAccountId)
+        // The current member workspace reads its compact workflow projection
+        // from access.json, while the dispatch API keeps the richer workflow
+        // record in SQLite. Mirror the received stages so a Key-authenticated
+        // user sees the same FastTask list immediately in the web UI.
+        const memberRecord = data.keys.find((record) => record.accountId === receiverAccountId && keyIsActive(record))
+        const receivedWorkflow = result.workflow
+        if (memberRecord && receivedWorkflow) {
+          ensureKeyCollections(memberRecord)
+          const receivedStages = Array.isArray(receivedWorkflow.stages) ? receivedWorkflow.stages : []
+          memberRecord.workflow = {
+            id: receivedWorkflow.id,
+            title: receivedWorkflow.title,
+            source: receivedWorkflow.source ?? 'fasttask',
+            receivedAt: receivedWorkflow.receivedAt ?? receivedWorkflow.received_at ?? new Date().toISOString(),
+            tasks: receivedStages.map((stage, index) => ({
+              id: stage.stageId ?? stage.stage_id ?? stage.id,
+              module: stage.module,
+              title: stage.title,
+              description: stage.description ?? '',
+              completedAt: stage.completedAt ?? stage.completed_at ?? (stage.status === 'completed' ? new Date().toISOString() : null),
+              position: stage.position ?? index,
+            })),
+          }
+          await persist()
+        }
         sendJson(response, result.duplicate ? 200 : 201, {
           ok: true,
           duplicate: result.duplicate,
@@ -1141,7 +1385,9 @@ async function handle(request, response) {
     const decision = credential.legacy ? null : assessService(credential.claims, body, 'workflow:publish')
     if (decision?.status) return sendError(response, decision.status, decision.error)
     const result = credential.legacy
-      ? { targets: matchWorkflowTargets(body.person) }
+      ? credential.accountId
+        ? { targets: accountTargets(credential.accountId, accountDb) }
+        : { targets: matchWorkflowTargets(body.person) }
       : serviceWorkflowTargets(data.keys, decision, allowedServiceTargets(credential.claims), keyIsActive)
     if (result.status) return sendError(response, result.status, result.error)
     let workflow
@@ -1418,6 +1664,7 @@ export async function startServer(port = PORT) {
     })
   })
   server.on('close', () => {
+    if (fastTaskSyncTimer) clearInterval(fastTaskSyncTimer)
     accountDb?.close()
     workflowDb?.close()
   })

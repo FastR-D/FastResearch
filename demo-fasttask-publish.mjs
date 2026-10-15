@@ -67,7 +67,7 @@ async function publishWorkflow() {
       },
       {
         stage_id: 'stage-code-demo',
-        module: 'fast-lab',
+        module: 'fast-news',
         title: '实现简化版 Transformer',
         description: '使用 PyTorch 实现一个简化的 Transformer encoder',
         success_criteria: '代码可运行，输出与论文描述一致',

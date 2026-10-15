@@ -86,7 +86,7 @@ async function main() {
         },
         {
           stage_id: 'stage-lab',
-          module: 'fast-lab',
+          module: 'fast-news',
           title: '💻 实现 Transformer Encoder',
           description: '用 PyTorch 实现简化版 Transformer Encoder，验证架构理解',
           success_criteria: '完成代码实现并通过单元测试，能够正确处理序列输入',

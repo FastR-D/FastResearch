@@ -8,7 +8,7 @@ const edgeCandidates = [
   'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
 ].filter(Boolean)
 const executablePath = edgeCandidates.find((candidate) => existsSync(candidate))
-const baseUrl = process.env.VISUAL_CHECK_URL ?? 'http://127.0.0.1:5173'
+const baseUrl = process.env.VISUAL_CHECK_URL ?? 'http://127.0.0.1:5173/workspace'
 const outputDir = path.resolve(process.env.VISUAL_CHECK_OUTPUT ?? 'test-results')
 
 if (!executablePath) throw new Error('未找到 Edge，请通过 EDGE_PATH 指定浏览器路径。')
@@ -46,7 +46,8 @@ try {
     let dialog = null
     let credentialsDialog = null
     if (testCase.name === 'mobile') {
-      await page.getByRole('button', { name: '使用个人 Key 查看整合内容' }).click()
+      await page.getByRole('button', { name: 'FastInsight 信箱' }).click()
+      await page.getByRole('button', { name: '认证并解锁信箱' }).click()
       await page.waitForTimeout(200)
       credentialsDialog = await page.getByRole('dialog').evaluate((element) => {
         const rect = element.getBoundingClientRect()
@@ -63,11 +64,11 @@ try {
       await page.screenshot({ path: path.join(outputDir, 'fastresearch-mobile-key-pw.png') })
       await page.getByRole('button', { name: '关闭' }).click()
       await page.getByRole('button', { name: '管理员登录' }).click()
-      await page.getByLabel('管理员账号').fill('admin')
-      await page.getByLabel('管理员密码').fill('admin123456')
-      await page.getByRole('button', { name: '登录后台' }).click()
+      await page.getByLabel('管理员账号 (USERNAME)').fill('admin')
+      await page.getByLabel('管理员密码 (PASSWORD)').fill('123456')
+      await page.getByRole('button', { name: '登录管理后台' }).click()
       await page.waitForTimeout(400)
-      await page.getByText('个人 Key 管理', { exact: true }).waitFor()
+      await page.getByText('科研凭证管理 · KEY CONTROL', { exact: true }).waitFor()
       await page.getByPlaceholder('成员姓名').fill('视觉测试')
       await page.getByRole('button', { name: '生成' }).click()
       await page.waitForTimeout(250)
@@ -83,13 +84,12 @@ try {
       await page.screenshot({ path: path.join(outputDir, 'fastresearch-mobile-dialog-pw.png') })
       const key = await page.locator('code').first().textContent()
       if (!key?.startsWith('fk_')) throw new Error('管理员未生成有效个人 Key。')
-      await page.getByRole('button', { name: '关闭 Key 提示' }).click()
       await page.getByRole('button', { name: '关闭' }).click()
-      await page.getByRole('button', { name: '使用个人 Key 查看整合内容' }).click()
-      await page.getByRole('textbox', { name: '个人 Key' }).fill(key)
-      await page.getByRole('button', { name: '解锁内容' }).click()
+      await page.getByRole('button', { name: '认证并解锁信箱' }).click()
+      await page.getByRole('textbox', { name: '个人科研凭证 (PERSONAL KEY)' }).fill(key)
+      await page.getByRole('button', { name: '验证凭证并进入工作空间' }).click()
       await page.waitForTimeout(300)
-      await page.getByRole('button', { name: '切换到深色模式' }).click()
+      await page.getByRole('button', { name: '切换为暗色夜间主题' }).click()
       await page.waitForTimeout(350)
       await page.screenshot({ path: path.join(outputDir, 'fastresearch-mobile-dark-pw.png'), fullPage: true })
     }

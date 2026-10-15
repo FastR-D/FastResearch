@@ -29,9 +29,14 @@ export function legacyPersonTargets(records, person, isActive = () => true) {
   return (records ?? []).filter((record) => isActive(record) && (!requested || String(record.person ?? '').toLocaleLowerCase() === requested));
 }
 
-export function accountTargets(receiverRef, accountDb) {
-  // 简化版：直接返回 receiver_ref 作为 accountId
-  return [{ accountId: receiverRef }];
+export function accountTargets(receiverRef, recordsOrDb, isActive = () => true) {
+  const ref = String(receiverRef ?? '').trim()
+  if (Array.isArray(recordsOrDb)) {
+    return recordsOrDb.filter((record) => isActive(record) && String(record.accountId ?? '') === ref)
+  }
+  // Workflow delivery can resolve the stable receiver_ref without loading the
+  // member JSON because the workflow store is keyed by accountId.
+  return [{ accountId: ref }]
 }
 
 /** CAS workflow delivery must name an account that the caller explicitly allowed. */
@@ -41,5 +46,5 @@ export function serviceWorkflowTargets(records, decision, allowed, isActive = ()
   if (!names.includes(String(decision.accountId))) {
     return { status: 403, error: 'receiver_ref is outside allowed targets' };
   }
-  return accountTargets(records, decision, isActive);
+  return accountTargets(decision.accountId, records, isActive);
 }

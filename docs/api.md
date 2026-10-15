@@ -11,7 +11,7 @@ Key 体系与 curl / Python / JS 示例见 [key-login.md](key-login.md)；SSO �
 
 | 服务 | 默认地址 | 入口进程 | 说明 |
 |---|---|---|---|
-| FastResearch Panel | `http://127.0.0.1:5173` | `npm run dev` | 唯一收集个人 Key 的页面 |
+| FastResearch Panel | `http://127.0.0.1:5173/workspace` | `npm run dev` | 唯一收集个人 Key 的页面；根地址默认进入 `/intro` |
 | FastResearch API | `http://127.0.0.1:8787` | `npm run server`（`server/index.mjs`） | 身份、SSO、作者、Insight 信箱 |
 | FastNews | `http://127.0.0.1:4173` | `python serve.py` | SSO 门禁 + 静态报告 + 本地 related-work + 反代 `/api/*` |
 | FastRead 工作台 | `http://127.0.0.1:3015` | Vite / `run.bat` | 须经 Panel 进入；直开无会话会 302 到 Panel |
@@ -36,7 +36,7 @@ serve.py consume         后端 consume → fastread_session
 Cookie fr_session        工作区按 accountId 隔离
 ```
 
-FastWrite 通过 `FASTWRITE_URL` 与 `FASTWRITE_API_KEY` 接入。FastResearch 验证个人 Key 后调用 FastWrite 集成端点，并以该 Key 的 `accountId` 映射到独立 FastWrite 账户；FastPPT / FastLab 仍只是工作流里的跳转地址。任务列表由 FastResearch 维护。
+FastWrite 通过 `FASTWRITE_URL` 与 `FASTWRITE_API_KEY` 接入。FastResearch 验证个人 Key 后调用 FastWrite 集成端点，并以该 Key 的 `accountId` 映射到独立 FastWrite 账户。任务列表由 FastResearch 维护。
 
 ---
 
@@ -49,6 +49,7 @@ FastWrite 通过 `FASTWRITE_URL` 与 `FASTWRITE_API_KEY` 接入。FastResearch �
 | SSO 票据 `?sso=` | `/api/sso/ticket` 或 `/api/sso/launch` | **2 分钟、一次性** | 下游服务端 `POST /api/sso/consume` |
 | FastRead `fastread_session` | FastRead 兑换票据后签发 | 7 天 | HttpOnly Cookie；写操作还要 `X-CSRF-Token` |
 | `X-FastInsight-Key` | 环境变量 `FASTINSIGHT_INGEST_KEY` | 长期服务号密钥 | Insight / 最近阅读写入，**不是**个人 Key |
+| `X-FastTask-Key` | 环境变量 `FASTTASK_INGEST_KEY` | FastTask 工作流发布密钥 | `POST /api/workflow/publish`，**不是**个人 Key |
 
 跨模块账户映射的稳定主键是 `accountId`；`keyId`（20 位 hex）标识当前 Key 凭证记录。不要用姓名。原始个人 Key（`fk_…`）只允许在 Panel 输入，禁止放进 URL、Cookie、localStorage。
 
@@ -64,7 +65,7 @@ Base URL：`http://127.0.0.1:8787`（`PORT` / `FASTRESEARCH_PUBLIC_URL`）。
 | 项 | 值 |
 |---|---|
 | JSON | 请求 `application/json`；响应 `application/json; charset=utf-8` |
-| CORS | 回显允许的 `Origin` + `Access-Control-Allow-Credentials: true`；允许头 `Content-Type, Authorization, X-FastInsight-Key`；允许方法 `GET, POST, PUT, DELETE, OPTIONS` |
+| CORS | 回显允许的 `Origin` + `Access-Control-Allow-Credentials: true`；允许头 `Content-Type, Authorization, X-FastInsight-Key, X-FastTask-Key`；允许方法 `GET, POST, PUT, DELETE, OPTIONS` |
 | 预检 | `OPTIONS` → `204` `{}` |
 | 缓存 | `Cache-Control: no-store` |
 | 错误体 | `{ "error": "中文说明" }` |
@@ -81,7 +82,8 @@ Base URL：`http://127.0.0.1:8787`（`PORT` / `FASTRESEARCH_PUBLIC_URL`）。
 | POST | `/api/admin/logout` | 任意（无会话也 200） | 200 `{ "ok": true }` | 清管理员会话 |
 | GET | `/api/admin/keys` | 管理员 | 200 `{ "keys": [...] }` | 列出 Key（仅 preview） |
 | POST | `/api/admin/keys` | 管理员 | 201 | 生成 Key，**完整 `key` 只出现一次** |
-| DELETE | `/api/admin/keys/:id` | 管理员 | 200 `{ "ok": true }` | 删除 Key（真正移除） |
+| DELETE | `/api/admin/keys/:id` | 管理员 | 200 `{ "ok": true }` | 删除 Key，并删除对应 FastTask 账户 |
+| POST | `/api/admin/keys/:id/rotate` | 管理员 | 200 | 轮换 Key，保留对应 FastTask 账户和任务 |
 | POST | `/api/content/unlock` | 无 | 200 | 个人 Key → 成员会话 + 内容 |
 | POST | `/api/content/logout` | 无（清 Cookie） | 200 `{ "ok": true }` | 清 `fr_session` |
 | GET | `/api/content/me` | 成员 | 200 | 身份 + 作者 / 标签 / 研究印象 / 未读私信 |
@@ -105,7 +107,7 @@ Base URL：`http://127.0.0.1:8787`（`PORT` / `FASTRESEARCH_PUBLIC_URL`）。
 
 ### 3.2.1 工作流
 
-FastResearch 按任务列表顺序展示功能，模块取值只能是 `fast-ppt` / `fast-write` / `fast-read` / `fast-news` / `fast-lab`（也接受 FastPPT、write、lab 等别名）。完成当前任务后，界面切换到下一功能。
+FastResearch 按任务列表顺序展示功能，模块取值只能是 `fast-write` / `fast-read` / `fast-news`（也接受 FastWrite、write 等别名）。完成当前任务后，界面切换到下一功能。
 
 **下发任务列表** `POST /api/workflow/publish`
 
@@ -116,11 +118,9 @@ FastResearch 按任务列表顺序展示功能，模块取值只能是 `fast-ppt
   "person": "张三",
   "title": "课题 A 研究流",
   "tasks": [
-    { "module": "FastPPT", "title": "整理开题幻灯片", "description": "把问题定义做成 8 页演示" },
     { "module": "FastWrite", "title": "写相关工作" },
     { "module": "FastRead", "title": "精读核心论文" },
-    { "module": "FastNews", "title": "跟踪本周新文" },
-    { "module": "FastLab", "title": "复现实验" }
+    { "module": "FastNews", "title": "跟踪本周新文" }
   ]
 }
 ```
@@ -155,7 +155,7 @@ Authorization: Bearer <成员会话>
         "receivedAt": "2026-09-18T12:00:00.000Z",
         "currentIndex": 1,
         "doneCount": 1,
-        "total": 5,
+        "total": 3,
         "completed": false,
         "currentTask": {
           "id": "task-id",
@@ -179,7 +179,7 @@ Authorization: Bearer <成员会话>
 
 其中 `currentKeyId` 用于标记当前登录成员；`workflow.doneCount / workflow.total` 可用于计算成员完成百分比。没有成员会话时返回 401「成员登录已失效」。
 
-**自己写入** `POST /api/workflow`（成员）body 同 publish 的 `title` + `tasks`，或 `{ "default": true }` 加载默认顺序：FastPPT → FastWrite → FastRead → FastNews → FastLab。
+**自己写入** `POST /api/workflow`（成员）body 同 publish 的 `title` + `tasks`，或 `{ "default": true }` 加载默认顺序：FastNews → FastRead → FastWrite。
 
 **完成当前任务** `POST /api/workflow/complete`
 
@@ -200,11 +200,11 @@ Authorization: Bearer <成员会话>
   "receivedAt": "2026-09-18T12:00:00.000Z",
   "currentIndex": 1,
   "doneCount": 1,
-  "total": 5,
+  "total": 3,
   "completed": false,
   "currentTask": { "id": "…", "module": "fast-write", "title": "写相关工作", "status": "active" },
   "tasks": [
-    { "id": "…", "module": "fast-ppt", "title": "整理开题幻灯片", "description": "…", "status": "done", "completedAt": "…" }
+    { "id": "…", "module": "fast-write", "title": "写相关工作", "description": "…", "status": "done", "completedAt": "…" }
   ]
 }
 ```
@@ -222,14 +222,14 @@ Authorization: Bearer <成员会话>
 默认账号来自首次写入 `data/access.json` 的 `ADMIN_USERNAME` / `ADMIN_PASSWORD`（未配置时为 `admin` / `admin123456`）。
 
 **生成 Key** `POST /api/admin/keys`  
-Body：`{ "person": "张三", "expiresAt": null }`。`person` 最长 80，空则「未命名成员」。
+Body：`{ "person": "张三", "fasttask_user_id": "user_…", "expiresAt": null }`。`person` 最长 80，空则「未命名成员」；`fasttask_user_id` 可选，用于记录该个人 Key 对应的 FastTask 用户。
 
 成功 201：
 
 ```json
 {
   "key": "fk_…",
-  "record": { "id", "person", "keyPreview", "createdAt", "expiresAt", "active": true }
+  "record": { "id", "person", "accountId", "fasttaskUserId", "keyPreview", "createdAt", "expiresAt", "active": true }
 }
 ```
 
@@ -391,7 +391,7 @@ X-FastInsight-Key: <FASTINSIGHT_INGEST_KEY>
 | 条件 | 行为 |
 |---|---|
 | `GET/HEAD {path}?sso=ticket` | 服务端 `POST {FASTRESEARCH}/api/sso/consume`，audience=`fast-news`；成功则 Set-Cookie `fr_session`，302 到去掉 `sso` 的同一路径 |
-| 无 Cookie 或会话无效 | 302 到 `FASTRESEARCH_PANEL_URL`（默认 `:5173`） |
+| 无 Cookie 或会话无效 | 302 到 `FASTRESEARCH_PANEL_URL`（应配置为 `:5173/workspace`） |
 | 有有效会话 | 返回静态文件（html/css/js/json/pdf 等白名单后缀） |
 | 其它方法打静态路径 | 405 |
 
@@ -519,7 +519,7 @@ X-FastInsight-Key: <FASTINSIGHT_INGEST_KEY>
 | 错误体 | FastAPI `{ "detail": "…" }`（字符串或校验数组） |
 | 缓存 | `/api/*` 响应 `Cache-Control: no-store` |
 | 跨站 | 非 GET/HEAD/OPTIONS 若带 `Origin`，必须在允许列表内，否则 403「不允许跨站请求」 |
-| 未登录 HTML | 文档 GET 无会话且无 `sso` → 302 `FASTRESEARCH_PANEL_URL` |
+| 未登录 HTML | 文档 GET 无会话且无 `sso` → 302 `FASTRESEARCH_PANEL_URL`（应指向 `/workspace`） |
 | `?sso=` | 中间件在服务端兑换后 302 到干净路径并 Set-Cookie；Vite 开发服务器也会先 `POST /api/auth/research` |
 
 允许 Origin：当前站点、`FASTREAD_PUBLIC_ORIGIN`、`FASTREAD_FRONTEND_ORIGIN`、Panel、`http://127.0.0.1:{前端端口}`。
@@ -690,7 +690,7 @@ FastResearch 旧版 `App.tsx` 中的 `/api/guest/verify` 等同样未使用（`m
 | 变量 | 默认 | 作用 |
 |---|---|---|
 | `FASTRESEARCH_API_URL` | `http://127.0.0.1:8787` | consume / 反代 / `/me` |
-| `FASTRESEARCH_PANEL_URL` | `http://127.0.0.1:5173` | 未登录回跳 |
+| `FASTRESEARCH_PANEL_URL` | `http://127.0.0.1:5173/workspace` | 未登录回跳 |
 | `FASTNEWS_HOST` / `FASTNEWS_PORT` | `127.0.0.1` / `4173` | 监听 |
 | `OPENAI_API_KEY` / `OPENAI_BASE_URL` / `LLM_MODEL` | 见 §4.2 | related-work |
 
@@ -700,7 +700,7 @@ FastResearch 旧版 `App.tsx` 中的 `/api/guest/verify` 等同样未使用（`m
 |---|---|---|
 | `BACKEND_HOST` / `BACKEND_PORT` | `127.0.0.1` / `8483` | API 监听 |
 | `FASTRESEARCH_API_URL` | `http://127.0.0.1:8787` | 服务端 consume |
-| `FASTRESEARCH_PANEL_URL` | `http://127.0.0.1:5173` | 未登录回跳 |
+| `FASTRESEARCH_PANEL_URL` | `http://127.0.0.1:5173/workspace` | 未登录回跳 |
 | `FASTREAD_COOKIE_SECURE` | `true` | Cookie `Secure` 标志 |
 | `VITE_FRONTEND_PORT` | `3015` | 工作台 |
 

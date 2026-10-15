@@ -37,7 +37,7 @@
 
 **已发布的演示工作流**:
 1. **深度学习研究** (workflow_id: 703dbda6c75c8e27c90002b3)
-   - 4 个工序: FastRead → FastLab → FastWrite → FastPPT
+   - 3 个工序: FastWrite → FastRead → FastNews
    
 2. **行业动态追踪** (workflow_id: 178d4d0ccc3042151936d418)
    - 2 个工序: FastNews → FastWrite

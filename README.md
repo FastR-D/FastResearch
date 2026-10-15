@@ -1,6 +1,8 @@
 # FastResearch
 
-科研工作流协调服务，统一管理 FastRead、FastWrite、FastLab、FastNews、FastPPT 等模块的工作流程。
+科研工作流协调服务，统一管理 FastRead、FastWrite、FastNews 等模块的工作流程。
+
+前端根地址默认进入 `/intro` 宣传页；研究工作台位于 `/workspace`。
 
 ## 功能特性
 
@@ -109,6 +111,10 @@ FASTRESEARCH_CORS_ORIGINS=
 
 ### 服务集成
 
+FastTask 可使用 `FASTTASK_INGEST_KEY` 配置专用 `X-FastTask-Key` 发布凭证；该凭证只用于工作流发布，不影响 FastInsight 的 `FASTINSIGHT_INGEST_KEY`。
+
+FastResearch 回传工序完成证据时使用 `FASTTASK_URL` + `FASTTASK_API_KEY`，请求 FastTask 的 `/api/v1/integrations/fastresearch/progress`，并通过 `X-API-Key` 认证。FastTask 对应配置为 `FASTTASK_FASTRESEARCH_INGEST_KEY`；同一工序事件使用稳定 `event_id` 幂等，服务重启后会继续重试待同步事件。
+
 - `POST /api/reading/push` - FastRead 推送阅读记录
 - `POST /api/insight/push` - FastInsight 推送研究信号
 
@@ -172,9 +178,7 @@ FastTask 使用 `fasttask-dispatch-v1` 协议版本发布任务：
 
 - `fast-read` - FastRead 阅读与检索
 - `fast-write` - FastWrite 写作工作区
-- `fast-lab` - FastLab 实验与验证
 - `fast-news` - FastNews 资讯跟踪
-- `fast-ppt` - FastPPT 演示制作
 
 ### 使用示例
 
@@ -281,6 +285,5 @@ vercel deploy
 
 - [FastRead](https://github.com/example/FastRead) - 论文阅读与检索
 - [FastWrite](https://github.com/example/FastWrite) - 学术写作工作区
-- [FastLab](https://github.com/example/FastLab) - 实验管理平台
 - [FastNews](https://github.com/example/FastNews) - 学术资讯聚合
 - [FastTask](https://github.com/example/FastTask) - 任务与计划管理

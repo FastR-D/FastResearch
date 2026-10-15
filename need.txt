@@ -1,1 +1,1 @@
-联动 FastInsight 与 FastResearch。FastResearch 以工作流形式维护任务列表，按任务顺序展示 FastPPT、FastWrite、FastRead、FastNews、FastLab；完成任务后进入下一功能。最近阅读文章整合和 FastInsight 传递的信息必须通过管理员按个人分发的 Key 查看。
+联动 FastInsight 与 FastResearch。FastResearch 以工作流形式维护任务列表，按任务顺序展示 FastWrite、FastRead、FastNews；完成任务后进入下一功能。最近阅读文章整合和 FastInsight 传递的信息必须通过管理员按个人分发的 Key 查看。

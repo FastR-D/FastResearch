@@ -140,7 +140,7 @@ function taskToWorkflowDispatch(task, accountId) {
       },
       {
         stage_id: 'stage-lab',
-        module: 'fast-lab',
+        module: 'fast-news',
         position: 2,
         title: '⚗️ 实验和验证',
         description: '进行实验、测试和数据分析'

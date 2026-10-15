@@ -65,7 +65,7 @@ async function main() {
       },
       {
         stage_id: 'explore-implementations',
-        module: 'fast-lab',
+        module: 'fast-news',
         position: 2,
         title: '⚗️ 探索实现代码',
         description: '研究 PyTorch 和 TensorFlow 中的 Transformer 实现',
@@ -83,7 +83,7 @@ async function main() {
       },
       {
         stage_id: 'create-presentation',
-        module: 'fast-ppt',
+        module: 'fast-write',
         position: 4,
         title: '🎯 制作演讲稿',
         description: '制作面向团队的技术分享 PPT',
