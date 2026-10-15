@@ -6,3 +6,7 @@ dist
 *.log
 test-results
 data
+.env.production
+__pycache__/
+.staging-integration/
+.promo-tmp/

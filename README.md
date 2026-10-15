@@ -16,7 +16,7 @@
 
 ### 环境要求
 
-- Node.js 23.0+ (支持 SQLite 内置模块)
+- Node.js 22.13+（使用内置 SQLite 模块）
 - npm 或 pnpm
 
 ### 安装与启动
@@ -42,6 +42,8 @@ npm run dev
 ### 环境变量
 
 在 `.env` 或 `.env.local` 中配置：
+
+首次启动建立 SQLite 账号库；已有 `data/access.json` 将经过校验和备份后迁移。参见 [账号迁移与回滚](docs/account-migration.md)。默认管理员账号为 `admin`，默认密码为 `admin123456`。生产环境请通过 `ADMIN_USERNAME`、`ADMIN_PASSWORD` 和 `FASTINSIGHT_INGEST_KEY` 环境变量设置凭证。
 
 ```bash
 # 服务端口
@@ -251,6 +253,23 @@ npm run build
 # 启动生产服务
 npm run server
 ```
+
+## 生产部署与自动发布
+
+本仓库 `main` 推送后由 GitHub Actions 工作流 `CD FastResearch` 构建前端；若仓库 Secrets 配好了 SSH，会自动在服务器执行 `scripts/deploy-local.sh`。
+
+服务器本机也有 systemd 定时拉取 `origin/main` 并热更新，不依赖 GitHub Secrets。
+
+生产进程：
+
+```bash
+npm run build
+npm start   # node --env-file=.env.production server/index.mjs
+```
+
+`server/index.mjs` 会同时提供 `/api/*` 与 `dist/` 静态资源。监听地址由 `HOST`/`PORT` 控制，默认 `127.0.0.1:8787`，前面用 nginx 反代 80 端口。
+
+需要的 GitHub Secrets：`DEPLOY_HOST`、`DEPLOY_USER`、`DEPLOY_SSH_KEY`，可选 `DEPLOY_KNOWN_HOSTS`。
 
 ### Docker 部署
 

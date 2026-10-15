@@ -1,0 +1,21 @@
+services:
+  fastresearch:
+    build:
+      context: .
+      args:
+        VITE_API_URL: ${VITE_API_URL:-}
+        VITE_READ_URL: ${VITE_READ_URL:-}
+        VITE_WRITE_URL: ${VITE_WRITE_URL:-}
+        VITE_FASTTASK_URL: ${VITE_FASTTASK_URL:-}
+        VITE_FASTNEWS_URL: ${VITE_FASTNEWS_URL:-http://47.110.133.67/news/}
+        VITE_FASTPPT_URL: ${VITE_FASTPPT_URL:-}
+    restart: unless-stopped
+    ports:
+      - "8787:8787"
+    env_file:
+      - .env.production
+    volumes:
+      - fastresearch-data:/app/data
+
+volumes:
+  fastresearch-data:

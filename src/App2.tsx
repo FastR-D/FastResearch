@@ -97,12 +97,11 @@ function App2() {
   const [dark, setDark] = useState(() => localStorage.getItem('fastresearch-theme') === 'dark')
   const [locale, setLocale] = useState<Locale>(getInitialLocale)
   const [keyOpen, setKeyOpen] = useState(false)
+  const [casEnabled, setCasEnabled] = useState(false)
+  const [casOpen, setCasOpen] = useState(false)
   const [adminOpen, setAdminOpen] = useState(false)
   const [session, setSession] = useState<AdminSession | null>(() => loadStoredSession<AdminSession>(adminStorageKey))
-  const [member, setMember] = useState<MemberSession | null>(() => loadStoredSession<MemberSession>(memberStorageKey))
-  const [casAvailable, setCasAvailable] = useState(false)
-  const [casLinked, setCasLinked] = useState(false)
-  const [casKey, setCasKey] = useState('')
+  const [member, setMember] = useState<MemberSession | null>(() => new URLSearchParams(window.location.search).get('fastcas') === 'complete' ? null : loadStoredSession<MemberSession>(memberStorageKey))
   const [insightItems, setInsightItems] = useState<InsightItem[]>([])
   const [selectedInsight, setSelectedInsight] = useState<string | null>(null)
   const [readIds, setReadIds] = useState<Set<string>>(() => new Set())
@@ -130,12 +129,24 @@ function App2() {
   }
 
   useEffect(() => {
+    void request<{enabled: boolean}>('/api/auth/fastcas/available').then(value => setCasEnabled(value.enabled)).catch(() => {})
+    const marker = new URLSearchParams(window.location.search).get('fastcas')
+    if (marker === 'complete') {
+      sessionStorage.removeItem(memberStorageKey)
+      void request<{session: string; person: string; keyId: string; expiresAt: number}>('/api/content/me').then(result => {
+        const value = { token: result.session, person: result.person, keyId: result.keyId, expiresAt: result.expiresAt }
+        sessionStorage.setItem(memberStorageKey, JSON.stringify(value)); setMember(value); setToast('FastCAS 操作已完成')
+      }).catch(() => { setMember(null); setToast('请重新登录以确认认证状态') })
+    } else if (marker === 'failed') setToast('FastCAS 操作未完成，请使用原 Key 登录，在账号认证中检查或重试')
+    if (marker) { const url = new URL(window.location.href); url.searchParams.delete('fastcas'); window.history.replaceState(null, '', url.pathname + url.search + url.hash) }
+  }, [])
+
+  useEffect(() => {
     document.documentElement.classList.toggle('dark', dark)
     localStorage.setItem('fastresearch-theme', dark ? 'dark' : 'light')
   }, [dark])
 
   useEffect(() => {
-    void request<{ available: boolean }>('/api/auth/fastcas/available').then((result) => setCasAvailable(result.available)).catch(() => {})
     const flag = new URLSearchParams(window.location.search).get('fastcas')
     if (!flag) return
     const url = new URL(window.location.href)
@@ -152,11 +163,6 @@ function App2() {
       setToast(flag === 'linked' ? t('cas.linked') : t('toast.unlocked', { person: result.person }))
     }).catch(() => setToast(t('error.memberExpired')))
   }, [t])
-
-  useEffect(() => {
-    if (!member || !casAvailable) return
-    void request<{ linked: boolean }>('/api/auth/fastcas/status', {}, member).then((result) => setCasLinked(result.linked)).catch(() => setCasLinked(false))
-  }, [member, casAvailable])
 
   useEffect(() => {
     if (!session) return
@@ -468,8 +474,9 @@ function App2() {
           <span>{new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '.')}</span>
         </div>
         <div className="header-actions">
-          {member && <span className="header-identity" title={member.person}>👤 {member.person}</span>}
-          <button type="button" className="ghost-button" onClick={() => setKeyOpen(true)} aria-label={member ? t('header.keyActive') : t('header.authenticate')} title={member ? t('header.keyActive') : t('header.authenticate')}>
+          {casEnabled && (member ? <button type="button" className="ghost-button" onClick={() => setCasOpen(true)}>FastCAS 认证</button> : <a className="ghost-button" href={apiUrl('/api/auth/fastcas/login')}>使用 FastCAS 登录</a>)}
+          {member && <span className="header-identity" title={`当前认证成员：${member.person}`}>👤 {member.person}</span>}
+          <button type="button" className="ghost-button" onClick={() => setKeyOpen(true)}>
             <KeyRound size={14} />
             <span>{member ? t('header.keyActive') : t('header.authenticate')}</span>
           </button>
@@ -562,24 +569,8 @@ function App2() {
         <div className="footer-tagline"><span>{t('footer.right')}</span><span className="footer-pulse" aria-hidden="true" /></div>
       </footer>
 
-      {member && casAvailable && <section className="cas-settings" aria-label={t('cas.settings')}>
-        <strong>{t('cas.settings')}</strong>
-        <span>{casLinked ? t('cas.linked') : t('cas.unlinked')}</span>
-        {member.source !== 'fastcas' && <form onSubmit={(event) => {
-          event.preventDefault()
-          const path = casLinked ? '/api/auth/fastcas/unlink' : '/api/auth/fastcas/link'
-          void request<{ url?: string }>(path, { method: 'POST', body: JSON.stringify({ key: casKey }) }, member).then((result) => {
-            setCasKey('')
-            if (result.url) window.location.assign(result.url)
-            else setCasLinked(false)
-          }).catch((error) => setToast(error instanceof Error ? error.message : t('cas.failed')))
-        }}>
-          <input type="password" value={casKey} onChange={(event) => setCasKey(event.target.value)} placeholder={t('key.label')} required />
-          <button type="submit" className="outline-button">{casLinked ? t('cas.unlink') : t('cas.link')}</button>
-        </form>}
-      </section>}
-
-      {keyOpen && <KeyDialog onClose={closeKeyDialog} onUnlock={unlock} casAvailable={casAvailable} t={t} />}
+      {casOpen && member && <FastCASDialog member={member} onClose={() => setCasOpen(false)} t={t} />}
+      {keyOpen && <KeyDialog onClose={closeKeyDialog} onUnlock={unlock} casAvailable={casEnabled} t={t} />}
       {adminOpen && (
         <AdminDialog
           session={session}
@@ -1176,3 +1167,33 @@ function AdminDialog({ session, onLogin, onLogout, onClose, t }: {
 }
 
 export default App2
+
+function FastCASDialog({member, onClose, t}: {member: MemberSession; onClose: () => void; t: Translate}) {
+  const [link, setLink] = useState<{state: string} | null>(null)
+  const [loaded, setLoaded] = useState(false)
+  const [key, setKey] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const load = async () => { const value = await request<{link: {state: string} | null}>('/api/auth/fastcas/status', {}, member); setLink(value.link); setLoaded(true) }
+  useEffect(() => { void load().catch(err => setError(err.message)) }, [])
+  async function act(action: 'link' | 'revoke' | 'reconcile') {
+    setBusy(true); setError('')
+    try {
+      const result = await request<{url?: string}>('/api/auth/fastcas/' + action, {method: 'POST', body: JSON.stringify({key})}, member)
+      setKey('')
+      if (result.url) window.location.assign(result.url)
+      else await load()
+    } catch (err) { setError(err instanceof Error ? err.message : '操作未完成') }
+    finally { setBusy(false) }
+  }
+  return <Dialog title="FastCAS 账号认证" onClose={onClose} t={t}><div className="dialog-form">
+    <p>{!loaded ? '正在读取状态…' : !link ? '尚未认证' : link.state === 'active' ? '已认证' : '认证待完成'}</p>
+    <p>关联当前项目账号，个人内容保持不变。原 Key 登录继续可用。</p>
+    <label>当前账号的原 Key<input type="password" maxLength={256} autoComplete="off" value={key} onChange={event => setKey(event.target.value)} /></label>
+    {error && <p className="form-error" role="alert">{error}</p>}
+    {loaded && (!link ? <button disabled={busy || !key} onClick={() => void act('link')}>认证当前账号</button> : <>
+      {link.state === 'prepared' && <button disabled={busy} onClick={() => void act('reconcile')}>重试完成认证</button>}
+      <button disabled={busy || !key} onClick={() => void act('revoke')}>解除认证</button>
+    </>)}
+  </div></Dialog>
+}

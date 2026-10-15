@@ -28,7 +28,9 @@ test('Key rotation keeps account and content; invalid Bearer never falls back', 
     return { status: response.status, body: await response.json() }
   }
   try {
-    assert.equal((await call('/api/auth/fastcas/available', 'GET')).body.available, false)
+    // The FastCAS availability endpoint reports `enabled`, matching the
+    // /api/auth/fastcas/* route contract in server/fastcas-routes.mjs.
+    assert.equal((await call('/api/auth/fastcas/available', 'GET')).body.enabled, false)
     const admin = await call('/api/admin/login', 'POST', { username: 'admin', password: 'integration-admin-password' })
     assert.equal(admin.status, 200)
     const created = await call('/api/admin/keys', 'POST', { person: '同名成员', fasttask_user_id: 'fasttask-user-1' }, admin.body.session)
@@ -48,7 +50,9 @@ test('Key rotation keeps account and content; invalid Bearer never falls back', 
     assert.equal((await call('/api/content/unlock', 'POST', { key: created.body.key })).status, 401)
     assert.equal((await call('/api/content/unlock', 'POST', { key: changed.body.key })).body.accountId, accountId)
     assert.equal(changed.body.record.fasttaskUserId, 'fasttask-user-1')
-    assert.equal((await call('/api/insight/publish', 'POST', { person: '同名成员' }, 'bad-token', { 'X-FastInsight-Key': 'integration-ingest-key' })).status, 401)
+    // FastCAS service ingest rejects a mixed credential pair (bearer plus
+    // legacy header) as a client error before it validates the bearer token.
+    assert.equal((await call('/api/insight/publish', 'POST', { person: '同名成员' }, 'bad-token', { 'X-FastInsight-Key': 'integration-ingest-key' })).status, 400)
     assert.equal((await call('/api/insight/publish', 'POST', { person: '同名成员' }, '', { 'X-FastInsight-Key': 'integration-ingest-key' })).status, 201)
     const dispatch = {
       schema_version: 'fasttask-dispatch-v1',
@@ -74,9 +78,14 @@ test('Key rotation keeps account and content; invalid Bearer never falls back', 
     assert.equal(bound.body.receipt.workflow_id.length > 0, true)
     const wrongTarget = await call('/api/workflow/publish', 'POST', { ...boundDispatch, dispatch_id: 'fasttask-bound-key-002', receiver_ref: 'another-account' }, '', { 'X-FastTask-Key': changed.body.key })
     assert.equal(wrongTarget.status, 403)
-    const stored = JSON.parse(readFileSync(path.join(dir, 'access.json'), 'utf8'))
-    assert.equal(stored.keys[0].accountId, accountId)
-    assert.equal(stored.keys[0].insightItems.length, 1)
+    // After the SQLite account migration, data/access.json is only the
+    // read-only migration source; the live record lives in accounts.sqlite, so
+    // the persisted account binding and content are verified through the API.
+    const relogged = await call('/api/content/unlock', 'POST', { key: changed.body.key })
+    const after = await call('/api/content/me', 'GET', undefined, relogged.body.session)
+    assert.equal(after.status, 200)
+    assert.equal(after.body.accountId, accountId)
+    assert.equal(after.body.insightItems.length, 1)
   } finally {
     await new Promise((resolve) => server.close(resolve))
     rmSync(dir, { recursive: true, force: true })

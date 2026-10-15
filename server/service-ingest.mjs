@@ -1,50 +1,43 @@
-function scopesOf(claims) {
-  return new Set(String(claims?.scope ?? '').split(' ').filter(Boolean));
+export class ServiceIngestError extends Error {
+  constructor(status, message) { super(message); this.status = status }
 }
 
-/** Service tokens name a local account. A display name is not a receiver. */
-export function assessService(claims, body, scope) {
-  if (claims?.token_use && claims.token_use !== 'access') return { status: 401, error: 'API access token required' };
-  if (!scopesOf(claims).has(scope)) return { status: 403, error: 'Required permission missing' };
-  const ref = String(body?.receiver_ref ?? '').trim();
-  if (!ref) return { status: 400, error: 'receiver_ref required' };
-  if (!claims?.sub) return { status: 401, error: 'subject required' };
-  return { accountId: ref, subject: claims.sub };
-}
-
-export function assessInsight(claims, body) {
-  return assessService(claims, body, 'insight:publish');
-}
-
-export function assessRead(claims) {
-  if (claims?.token_use && claims.token_use !== 'access') return { status: 401, error: 'API access token required' };
-  if (!scopesOf(claims).has('research:read')) return { status: 403, error: 'Required permission missing' };
-  if (!claims?.sub) return { status: 401, error: 'subject required' };
-  return { subject: claims.sub };
-}
-
-/** Legacy ingest keys still match a display name. An empty name reaches every active record. */
-export function legacyPersonTargets(records, person, isActive = () => true) {
-  const requested = String(person ?? '').trim().toLocaleLowerCase();
-  return (records ?? []).filter((record) => isActive(record) && (!requested || String(record.person ?? '').toLocaleLowerCase() === requested));
-}
-
-export function accountTargets(receiverRef, recordsOrDb, isActive = () => true) {
-  const ref = String(receiverRef ?? '').trim()
-  if (Array.isArray(recordsOrDb)) {
-    return recordsOrDb.filter((record) => isActive(record) && String(record.accountId ?? '') === ref)
+// Machine publishing is separate from browser login and the legacy ingest key.
+// A service credential never grants a member session or permission to choose a
+// recipient by display name.
+export class ServiceIngest {
+  constructor({env=process.env, sdk}={}) {
+    this.issuer = env.FASTRESEARCH_FASTCAS_INGEST_ISSUER ?? ''
+    this.clientId = env.FASTRESEARCH_FASTCAS_INGEST_CLIENT_ID ?? ''
+    this.allowedAccountIds = new Set((env.FASTRESEARCH_FASTCAS_INGEST_ALLOWED_ACCOUNT_IDS ?? '').split(',').map(x=>x.trim()).filter(Boolean))
+    const values = [this.issuer, this.clientId, this.allowedAccountIds.size]
+    if (values.some(Boolean) && !values.every(Boolean)) throw new Error('FastCAS service ingest requires issuer, client ID and explicit allowed account IDs')
+    this.enabled = values.every(Boolean)
+    this.sdkInstance = sdk
+    this.allowLoopbackHTTP = env.FASTRESEARCH_FASTCAS_ALLOW_LOOPBACK_HTTP === 'true'
   }
-  // Workflow delivery can resolve the stable receiver_ref without loading the
-  // member JSON because the workflow store is keyed by accountId.
-  return [{ accountId: ref }]
-}
-
-/** CAS workflow delivery must name an account that the caller explicitly allowed. */
-export function serviceWorkflowTargets(records, decision, allowed, isActive = () => true) {
-  if (!decision || decision.status) return decision;
-  const names = Array.isArray(allowed?.targets) ? allowed.targets.map((item) => String(item)) : [];
-  if (!names.includes(String(decision.accountId))) {
-    return { status: 403, error: 'receiver_ref is outside allowed targets' };
+  async sdk() {
+    if (!this.sdkInstance) {
+      this.sdkPromise ??= import('@fastrd/fastcas/server').then(({FastCAS}) => new FastCAS({issuer:this.issuer,clientId:this.clientId,redirectUri:this.issuer+'/console/',allowLoopbackHTTP:this.allowLoopbackHTTP}, {put:async()=>{throw Error('service verifier cannot start login')},take:async()=>{throw Error('service verifier cannot finish login')}}))
+      try { this.sdkInstance=await this.sdkPromise } catch(error) { this.sdkPromise=undefined;throw error }
+    }
+    return this.sdkInstance
   }
-  return accountTargets(decision.accountId, records, isActive);
+  async targets(request, body, records, accountStore) {
+    const authorization=String(request.headers.authorization??'')
+    if (!authorization) return null
+    if (request.headers['x-fastinsight-key']) throw new ServiceIngestError(400,'只能使用一种发布凭证')
+    if (!this.enabled) throw new ServiceIngestError(401,'此部署未启用 FastCAS 服务投递')
+    const match=/^Bearer ([A-Za-z0-9._~-]+)$/.exec(authorization)
+    if (!match) throw new ServiceIngestError(401,'服务令牌格式无效')
+    let claims
+    try { claims=await(await this.sdk()).verifyAccessToken(match[1],'research-api',['insight:publish']) }
+    catch { throw new ServiceIngestError(401,'服务令牌无效或权限不足') }
+    if (claims.service!==true || claims.sub!==this.clientId || claims.client_id!==this.clientId) throw new ServiceIngestError(403,'服务身份不匹配')
+    const accountId=String(body.receiver_ref??'').trim()
+    if (!accountId || !this.allowedAccountIds.has(accountId)) throw new ServiceIngestError(403,'收件人不在服务授权范围')
+    const targets=records.filter(record=>!record.accountDisabledAt&&accountStore.accountIdForKey(record.id)===accountId)
+    if(targets.length!==1)throw new ServiceIngestError(404,'收件账号不存在或不可用')
+    return {targets,clientId:this.clientId,accountId}
+  }
 }
