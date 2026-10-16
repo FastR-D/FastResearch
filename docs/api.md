@@ -84,6 +84,8 @@ Base URL：`http://127.0.0.1:8787`（`PORT` / `FASTRESEARCH_PUBLIC_URL`）。
 | POST | `/api/admin/keys` | 管理员 | 201 | 生成 Key，**完整 `key` 只出现一次** |
 | DELETE | `/api/admin/keys/:id` | 管理员 | 200 `{ "ok": true }` | 撤销 Key，保留账号与个人内容（并删除对应 FastTask 账户） |
 | POST | `/api/admin/keys/:id/rotate` | 管理员 | 200 | 轮换 Key，保留对应 FastTask 账户和任务 |
+| GET | `/api/admin/fastinsight/roster` | 管理员 | 200 | 读取 FastInsight `colleagues.yaml` 与版本号 |
+| PUT | `/api/admin/fastinsight/roster` | 管理员 | 200 | 校验并原子保存 FastInsight 分发名册 |
 | POST | `/api/content/unlock` | 无 | 200 | 个人 Key → 成员会话 + 内容 |
 | POST | `/api/content/logout` | 无（清 Cookie） | 200 `{ "ok": true }` | 清 `fr_session` |
 | GET | `/api/content/me` | 成员 | 200 | 身份 + 作者 / 标签 / 研究印象 / 未读私信 |
@@ -236,6 +238,8 @@ Body：`{ "person": "张三", "fasttask_user_id": "user_…", "expiresAt": null 
 **列出** 只返回 `id / person / keyPreview / createdAt / expiresAt / active`，不含完整 Key。  
 **删除** 不存在则 `404 个人 Key 不存在`。删除后 unlock / 出票 / consume 均失败。
 
+**FastInsight 分发名册** `GET /api/admin/fastinsight/roster` 返回 `{ "roster", "revision", "file" }`。`PUT` 请求提交 `{ "roster", "revision" }`，服务端校验研究领域、关键词、`owners` 与 `default_owner`，保存前将旧文件写入 `colleagues.yaml.bak`。`revision` 不一致返回 `409`，要求前端刷新后再合并修改。
+
 ### 3.4 成员会话与内容
 
 解锁、consume、`/me` 成功时的身份字段：
@@ -375,9 +379,10 @@ X-FastInsight-Key: <FASTINSIGHT_INGEST_KEY>
 
 | 状态 | error |
 |---|---|
-| 400 | 个人 Key 不能为空 / 不支持的登录入口 / FastNews 或 FastRead 地址无效 / 请求格式无效 / 请求内容过大 / 缺少个人 Key |
+| 400 | 个人 Key 不能为空 / 不支持的登录入口 / FastNews 或 FastRead 地址无效 / 请求格式无效 / 请求内容过大 / 缺少个人 Key / FastInsight 名册字段无效 |
 | 401 | 管理员账号或密码错误 / 管理员登录已失效 / 成员登录已失效 / 个人 Key 无效、已撤销或已过期 / 登录票据无效或已过期 / FastInsight 发布凭证无效 |
 | 404 | 个人 Key 不存在 / 没有匹配的成员 Key / 接口不存在 |
+| 409 | FastInsight 名册已被其他会话修改 |
 
 ---
 
@@ -682,6 +687,7 @@ FastResearch 旧版 `App.tsx` 中的 `/api/guest/verify` 等同样未使用（`m
 | `FASTRESEARCH_PUBLIC_URL` | `http://127.0.0.1:8787` | ticket 响应里的 `apiUrl` |
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` | `admin` / `admin123456` | 首次写入 `data/access.json` |
 | `FASTINSIGHT_INGEST_KEY` | （必填才允许发布） | 服务号写入 |
+| `FASTINSIGHT_ROSTER` | `../fastinsight/assets/colleagues.yaml` | 工作台编辑的 FastInsight 分发名册 |
 | `FASTRESEARCH_JWT_SECRET` | 数据文件内随机值 | 成员 JWT |
 | `VITE_FASTNEWS_URL` / `VITE_READ_URL` | `:4173` / `:3015` | launch 回退目标 |
 

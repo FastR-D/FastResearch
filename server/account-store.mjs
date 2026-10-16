@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { DatabaseSync } from 'node:sqlite'
 import { chmodSync } from 'node:fs'
-import { planAccounts, readLegacySnapshot } from './account-migration.mjs'
+import { legacyAccountsTable, planAccounts, readLegacySnapshot } from './account-migration.mjs'
 
 export class AccountStore {
   constructor(filename) {
@@ -25,14 +25,15 @@ export class AccountStore {
   }
   save(data, expectedRevision) {
     const plan = planAccounts(data)
+    const accountTable = legacyAccountsTable(this.db)
     this.db.exec('BEGIN IMMEDIATE')
     try {
       const revision = Number(this.db.prepare("SELECT value FROM metadata WHERE key='runtime-revision'").get().value)
       if (revision !== expectedRevision) throw new Error('账号资料已在另一进程更新，请刷新后重试')
       const ids = new Set(plan.accounts.map(account => account.id))
-      if (this.db.prepare('SELECT id FROM accounts').all().some(row => !ids.has(row.id))) throw new Error('删除凭证不能删除本地账号，请使用撤销')
+      if (this.db.prepare(`SELECT id FROM ${accountTable}`).all().some(row => !ids.has(row.id))) throw new Error('删除凭证不能删除本地账号，请使用撤销')
       for (const account of plan.accounts) {
-        this.db.prepare('INSERT INTO accounts VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET content=excluded.content').run(account.id, account.legacyKeyId, JSON.stringify(account.content))
+        this.db.prepare(`INSERT INTO ${accountTable} VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET content=excluded.content`).run(account.id, account.legacyKeyId, JSON.stringify(account.content))
         this.db.prepare('INSERT INTO credentials VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET credential=excluded.credential').run('key_'+account.legacyKeyId, account.id, account.legacyKeyId, JSON.stringify(account.credential))
       }
       this.db.prepare("UPDATE metadata SET value=? WHERE key='legacy-root'").run(JSON.stringify(plan.metadata))

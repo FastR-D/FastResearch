@@ -49,3 +49,45 @@ test('FastWrite login URL does not hide an external-account authentication failu
     globalThis.fetch = originalFetch
   }
 })
+
+test('FastWrite login URL opens a specific project workspace', async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => new Response(JSON.stringify({ token: 'session-token' }), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  })
+
+  try {
+    const client = new FastWriteClient('http://127.0.0.1:3003', 'service-key')
+    const url = await client.generateLoginUrl('project/123', {
+      externalAccountId: 'account-123',
+      displayName: '研究账户 A',
+    })
+    assert.equal(url, 'http://127.0.0.1:3003/projects/project%2F123?token=session-token')
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('FastWrite login URL uses the public browser URL for the handoff', async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => new Response(JSON.stringify({ token: 'session-token' }), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  })
+
+  try {
+    const client = new FastWriteClient(
+      'http://127.0.0.1:3003',
+      'service-key',
+      'https://fastrd.io/write',
+    )
+    const url = await client.generateLoginUrl(null, {
+      externalAccountId: 'account-123',
+      displayName: '研究账户 A',
+    })
+    assert.equal(url, 'https://fastrd.io/write/projects?token=session-token')
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})

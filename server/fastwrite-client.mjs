@@ -3,9 +3,10 @@
  */
 
 export class FastWriteClient {
-  constructor(baseURL, apiKey) {
+  constructor(baseURL, apiKey, publicURL = baseURL) {
     this.baseURL = baseURL.replace(/\/$/, '')
     this.apiKey = apiKey
+    this.publicBaseURL = publicURL.replace(/\/$/, '')
   }
 
   /**
@@ -82,15 +83,17 @@ export class FastWriteClient {
   async generateLoginUrl(projectId = null, identity = {}) {
     try {
       const { token } = await this.getAuthToken(identity)
-      let path = projectId ? `/projects/${projectId}` : '/projects'
-      return `${this.baseURL}${path}?token=${encodeURIComponent(token)}`
+      const path = projectId ? `/projects/${encodeURIComponent(String(projectId))}` : '/projects'
+      return `${this.publicBaseURL}${path}?token=${encodeURIComponent(token)}`
     } catch (error) {
       // An external identity must never silently fall back to an anonymous page.
       // That would make a failed account handoff look like a successful login.
       if (identity.externalAccountId) throw error
       // Preserve the legacy service-link behavior for callers without identity.
       console.warn('Failed to get auth token:', error.message)
-      return projectId ? `${this.baseURL}/projects/${projectId}` : `${this.baseURL}/projects`
+      return projectId
+        ? `${this.publicBaseURL}/projects/${encodeURIComponent(String(projectId))}`
+        : `${this.publicBaseURL}/projects`
     }
   }
 
@@ -110,9 +113,9 @@ export class FastWriteClient {
 /**
  * 创建 FastWrite 客户端实例
  */
-export function createFastWriteClient(baseURL, apiKey) {
+export function createFastWriteClient(baseURL, apiKey, publicURL = baseURL) {
   if (!baseURL || !apiKey) {
     return null
   }
-  return new FastWriteClient(baseURL, apiKey)
+  return new FastWriteClient(baseURL, apiKey, publicURL)
 }

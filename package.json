@@ -19,7 +19,8 @@
     "@fastrd/fastcas": "file:../FastCAS/sdk/typescript",
     "lucide-react": "^0.468.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "yaml": "^2.8.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",

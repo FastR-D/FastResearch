@@ -15,6 +15,8 @@ import { openWorkflowStore, getWorkflowsByAccount, getWorkflowById, getPendingEv
 import { receiveDispatch, startWorkflow, completeStage, formatWorkflowView } from './fasttask-dispatch.mjs'
 import { createFastWriteClient } from './fastwrite-client.mjs'
 import { createFastTaskClient } from './fasttask-client.mjs'
+import { RosterConflictError, RosterValidationError, readRoster, writeRoster } from './fastinsight-roster.mjs'
+import { handleFastReadProxy, isFastReadProxyPath } from './fastread-proxy.mjs'
 
 function loadEnvFiles() {
   for (const name of ['.env.production', '.env', '.env.local']) {
@@ -45,6 +47,7 @@ const STATIC_DIR = path.resolve(process.env.FASTRESEARCH_STATIC_DIR ?? 'dist')
 const DATA_DIR = path.resolve(process.env.FASTRESEARCH_DATA_DIR ?? 'data')
 const DATA_FILE = path.join(DATA_DIR, 'access.json')
 const WORKFLOW_FILE = path.join(DATA_DIR, 'workflows.sqlite')
+const FASTINSIGHT_ROSTER_FILE = path.resolve(process.env.FASTINSIGHT_ROSTER ?? '../fastinsight/assets/colleagues.yaml')
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000
 const TICKET_TTL_MS = 2 * 60 * 1000
 const PUBLIC_API_URL = (process.env.FASTRESEARCH_PUBLIC_URL ?? `http://127.0.0.1:${PORT}`).replace(/\/$/, '')
@@ -80,17 +83,17 @@ let fastTaskProvisionClient
 let fastTaskBaseURL = ''
 let fastTaskSyncTimer
 
-// The account ID is derived from the stable Key ID, never from the display
-// name, so it matches what AccountStore recomputes for the same record.
+// Pre-account snapshots need a deterministic fallback that never uses display
+// names, which may be duplicated across members.
 function derivedAccountId(keyId) {
   return 'account_' + createHash('sha256').update('FastResearch:legacy:' + keyId).digest('hex').slice(0, 32)
 }
 
 function accountIdOf(record) {
   if (!record?.id) return ''
-  // Always the value AccountStore recomputes for this Key, so records written
-  // before the migration cannot advertise a stale account ID.
-  return derivedAccountId(record.id)
+  // Preserve the stable ID already used by FastRead/FastWrite. Only records
+  // from pre-account snapshots receive a deterministic derived fallback.
+  return String(record.accountId ?? '').trim() || derivedAccountId(record.id)
 }
 
 function passwordHash(password) {
@@ -166,9 +169,10 @@ async function loadData() {
   workflowDb = openWorkflowStore(WORKFLOW_FILE)
 
   const fastWriteUrl = process.env.FASTWRITE_URL || process.env.VITE_WRITE_URL
+  const fastWritePublicUrl = process.env.FASTWRITE_PUBLIC_URL || process.env.VITE_WRITE_URL || fastWriteUrl
   const fastWriteApiKey = process.env.FASTWRITE_API_KEY
   if (fastWriteUrl && fastWriteApiKey) {
-    fastWriteClient = createFastWriteClient(fastWriteUrl, fastWriteApiKey)
+    fastWriteClient = createFastWriteClient(fastWriteUrl, fastWriteApiKey, fastWritePublicUrl)
     console.log('FastWrite 客户端已初始化:', fastWriteUrl)
   } else {
     console.log('FastWrite 客户端未配置 (需要 FASTWRITE_URL 和 FASTWRITE_API_KEY)')
@@ -415,7 +419,7 @@ function resolveLaunchUrl(next, fallbacks = []) {
     const raw = String(value ?? '').trim()
     if (!raw) continue
     try {
-      const parsed = new URL(raw)
+      const parsed = new URL(raw, PUBLIC_API_URL)
       if (!['http:', 'https:'].includes(parsed.protocol)) continue
       if (!isAllowedOrigin(parsed.origin)) continue
       parsed.search = ''
@@ -535,7 +539,7 @@ function createMemberSession(record) {
   const expiresAt = Date.now() + SESSION_TTL_MS
   const identity = {
     role: 'member', keyId: record.id, person: record.person,
-    accountId: accountStore.accountIdForKey(record.id), credentialVersion: record.credentialVersion ?? 1,
+    accountId: accountIdOf(record), credentialVersion: record.credentialVersion ?? 1,
     authSource: 'key', authenticatedAt: Date.now(),
   }
   const session = signJwt({ ...identity, sessionVersion: 2, jti: randomBytes(24).toString('base64url'),
@@ -550,7 +554,7 @@ function memberContent(record) {
   return {
     person: record.person,
     keyId: record.id,
-    accountId: accountStore.accountIdForKey(record.id),
+    accountId: accountIdOf(record),
     recentArticles: record.recentArticles ?? [],
     insightItems: record.insightItems ?? [],
     authors: record.followedAuthors ?? [],
@@ -917,6 +921,11 @@ async function handle(request, response) {
   const url = new URL(request.url, `http://${request.headers.host ?? 'localhost'}`)
   const route = url.pathname.replace(/\/$/, '') || '/'
 
+  if (isFastReadProxyPath(url.pathname)) {
+    await handleFastReadProxy(request, response, url)
+    return
+  }
+
   const current = getSession(request)
   const independentEntry = ['/api/content/unlock','/api/content/logout','/api/auth/fastcas/login','/api/auth/fastcas/callback','/api/auth/fastcas/available','/api/auth/fastcas/events','/api/auth/fastcas/backchannel-logout','/api/sso/consume','/api/health','/api/connectors/news/profile'].includes(route)
   if (current?.authSource === 'fastcas' && !independentEntry && !route.startsWith('/api/admin/')) {
@@ -966,6 +975,37 @@ async function handle(request, response) {
   if (request.method === 'GET' && route === '/api/admin/keys') {
     if (!requireAdmin(request, response)) return
     sendJson(response, 200, { keys: adminKeys() })
+    return
+  }
+
+  if (route === '/api/admin/fastinsight/roster') {
+    if (!requireAdmin(request, response)) return
+    try {
+      if (request.method === 'GET') {
+        const current = await readRoster(FASTINSIGHT_ROSTER_FILE)
+        sendJson(response, 200, {
+          roster: current.roster,
+          revision: current.revision,
+          file: path.basename(FASTINSIGHT_ROSTER_FILE),
+        })
+        return
+      }
+      if (request.method === 'PUT') {
+        const body = await readBody(request)
+        const saved = await writeRoster(FASTINSIGHT_ROSTER_FILE, body.roster, String(body.revision ?? '').trim())
+        sendJson(response, 200, {
+          roster: saved.roster,
+          revision: saved.revision,
+          file: path.basename(FASTINSIGHT_ROSTER_FILE),
+        })
+        return
+      }
+      sendError(response, 405, '不支持的 FastInsight 名册操作')
+    } catch (error) {
+      if (error instanceof RosterConflictError) sendError(response, 409, error.message)
+      else if (error instanceof RosterValidationError) sendError(response, 400, error.message)
+      else sendError(response, 500, `FastInsight 名册保存失败：${error?.message || '未知错误'}`)
+    }
     return
   }
 
@@ -1712,7 +1752,7 @@ async function handle(request, response) {
     sendJson(response, 200, {
       configured,
       healthy,
-      url: process.env.FASTWRITE_URL || process.env.VITE_WRITE_URL || null,
+      url: process.env.FASTWRITE_PUBLIC_URL || process.env.VITE_WRITE_URL || process.env.FASTWRITE_URL || null,
     })
     return
   }
@@ -1729,9 +1769,15 @@ export async function startServer(port = PORT, host = HOST) {
     requestScope.run(request, async () => {
       try {
         // Parse before entering the queue so a slow upload cannot hold the writer.
-        if (['POST','PUT','PATCH','DELETE'].includes(request.method)) {
+        const requestUrl = new URL(request.url, 'http://localhost')
+        const proxiedModuleRequest = isFastReadProxyPath(requestUrl.pathname)
+        if (proxiedModuleRequest) {
+          await handle(request, response)
+          return
+        }
+        if (!proxiedModuleRequest && ['POST','PUT','PATCH','DELETE'].includes(request.method)) {
           if (String(request.headers['content-type'] ?? '').split(';')[0] === 'application/jwt' ||
-              (new URL(request.url,'http://localhost').pathname==='/api/auth/fastcas/backchannel-logout' && String(request.headers['content-type'] ?? '').split(';')[0] === 'application/x-www-form-urlencoded')) {
+              (requestUrl.pathname==='/api/auth/fastcas/backchannel-logout' && String(request.headers['content-type'] ?? '').split(';')[0] === 'application/x-www-form-urlencoded')) {
             const chunks = []; let size = 0
             for await (const chunk of request) { size += chunk.length; if (size > 65536) throw new Error('事件过大'); chunks.push(chunk) }
             request.rawBody = Buffer.concat(chunks).toString('utf8')

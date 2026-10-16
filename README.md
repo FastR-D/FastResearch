@@ -52,6 +52,9 @@ PORT=8787
 # 数据目录
 FASTRESEARCH_DATA_DIR=data
 
+# FastInsight 自动分发名册
+FASTINSIGHT_ROSTER=../fastinsight/assets/colleagues.yaml
+
 # 公共访问地址
 FASTRESEARCH_PUBLIC_URL=http://127.0.0.1:8787
 
@@ -74,6 +77,11 @@ FASTRESEARCH_CORS_ORIGINS=
 ```
 
 ## API 文档
+
+### FastInsight 分发名册
+
+- `GET /api/admin/fastinsight/roster` - 管理员读取 `colleagues.yaml`、版本号与文件名
+- `PUT /api/admin/fastinsight/roster` - 校验并原子保存研究领域、关键词、分发人物和默认负责人；提交旧版本号会返回 `409`
 
 ### 成员认证
 

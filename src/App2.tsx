@@ -1,5 +1,5 @@
-import { ArrowUpRight, BookOpenText, Check, CheckCircle2, Circle, CircleDot, ExternalLink, FlaskConical, Inbox, KeyRound, Languages, Layers, ListTodo, LockKeyhole, LogIn, Moon, Newspaper, PenLine, Plus, ShieldCheck, Sun, Terminal, Trash2, UsersRound, X } from 'lucide-react'
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { ArrowUpRight, BookOpenText, Check, CheckCircle2, Circle, CircleDot, ExternalLink, FlaskConical, Inbox, KeyRound, Languages, Layers, ListTodo, LockKeyhole, LogIn, Moon, Newspaper, PenLine, Plus, Save, Settings2, ShieldCheck, Sun, Terminal, Trash2, UsersRound, X } from 'lucide-react'
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createTranslator, getInitialLocale, saveLocale, type Locale, type Translate } from './i18n'
 
 type EntryId = 'fast-write' | 'fast-read' | 'fast-news'
@@ -11,12 +11,15 @@ type MemberSession = BearerSession & { person: string; keyId: string; expiresAt:
 type PersonalKey = { id: string; person: string; keyPreview: string; active: boolean; createdAt?: string; expiresAt?: string | null }
 type InsightItem = { id: string; title: string; summary?: string; url?: string; source?: string; direction?: string; authors?: string; venue?: string; receivedAt?: string }
 type TaskStatus = 'pending' | 'active' | 'done'
-type WorkspaceView = 'workflow' | 'insight' | 'team'
+type WorkspaceView = 'workflow' | 'insight' | 'team' | 'routing'
 type WorkspaceDirection = 'forward' | 'backward'
 type WorkflowTask = { id: string; module: EntryId; title: string; description: string; status: TaskStatus; completedAt?: string | null }
 type Workflow = { id: string; title: string; source?: string; receivedAt?: string; currentIndex: number; doneCount: number; total: number; completed: boolean; currentTask?: WorkflowTask | null; tasks: WorkflowTask[] }
 type TeamWorkflow = { keyId: string; person: string; workflow: Workflow | null }
 type PendingLaunch = { entryId: EntryId; popup: Window | null }
+type RosterOwner = { name: string; feishu_open_id?: string; [key: string]: unknown }
+type RosterDirection = { name: string; priority?: number; keywords: string[]; owners: RosterOwner[]; [key: string]: unknown }
+type FastInsightRoster = { directions: RosterDirection[]; default_owner?: RosterOwner; [key: string]: unknown }
 
 const API_BASE = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '')
 const apiUrl = (path: string) => `${API_BASE}${path}`
@@ -24,7 +27,7 @@ const adminStorageKey = 'fastresearch-admin-session'
 const memberStorageKey = 'fastresearch-member-session'
 const personalKeyStorage = 'fastresearch-personal-key'
 const MODULE_ORDER: EntryId[] = ['fast-news', 'fast-read', 'fast-write']
-const WORKSPACE_VIEWS: WorkspaceView[] = ['workflow', 'insight', 'team']
+const WORKSPACE_VIEWS: WorkspaceView[] = ['workflow', 'insight', 'team', 'routing']
 const SSO_AUDIENCE: Record<SsoEntryId, 'fast-news' | 'fast-read'> = { 'fast-read': 'fast-read', 'fast-news': 'fast-news' }
 const ENTRY_CONFIG: Record<EntryId, { nameKey: string; labelKey: string; descriptionKey: string; Icon: typeof BookOpenText; url?: string; tone: string }> = {
   'fast-write': { nameKey: 'entry.fast-write.name', labelKey: 'entry.fast-write.label', descriptionKey: 'entry.fast-write.description', Icon: PenLine, url: import.meta.env.VITE_WRITE_URL || 'http://127.0.0.1:3003', tone: 'blue' },
@@ -121,6 +124,10 @@ function App2() {
   const visibleWorkflow = workflow ?? previewWorkflow
   const selectedTask = visibleWorkflow.tasks.find((task) => task.id === selectedTaskId) ?? visibleWorkflow.tasks.find((task) => task.status === 'active') ?? visibleWorkflow.tasks[0]
   const selectedEntry = selectedTask ? entries[selectedTask.module] : null
+  const expireAdminSession = useCallback(() => {
+    sessionStorage.removeItem(adminStorageKey)
+    setSession(null)
+  }, [])
 
   const changeLocale = () => {
     const next = locale === 'zh-CN' ? 'en-US' : 'zh-CN'
@@ -522,6 +529,9 @@ function App2() {
               <button type="button" className={workspaceView === 'team' ? 'is-active' : ''} aria-pressed={workspaceView === 'team'} onClick={() => setWorkspacePage('team')}>
                 <UsersRound size={17} /> <span>{t('team.label')}</span>
               </button>
+              <button type="button" className={workspaceView === 'routing' ? 'is-active' : ''} aria-pressed={workspaceView === 'routing'} onClick={() => setWorkspacePage('routing')}>
+                <Settings2 size={17} /> <span>{t('workspace.routing')}</span>
+              </button>
             </div>
           </div>
 
@@ -552,6 +562,7 @@ function App2() {
                 readIds={readIds}
                 onSelect={markRead}
                 onUnlock={() => setKeyOpen(true)}
+                onOpenFastRead={() => openEntry(entries['fast-read'])}
                 t={t}
               />
             )}
@@ -559,6 +570,15 @@ function App2() {
               <div className="workspace-team-page">
                 <TeamProgressPanel members={teamWorkflows} currentKeyId={member?.keyId ?? null} loading={Boolean(member) && teamWorkflows.length === 0} t={t} />
               </div>
+            )}
+            {workspaceView === 'routing' && (
+              <FastInsightRosterEditor
+                session={session}
+                onAdminOpen={() => setAdminOpen(true)}
+                onSessionExpired={expireAdminSession}
+                onToast={setToast}
+                t={t}
+              />
             )}
           </div>
         </section>
@@ -800,13 +820,14 @@ function ModuleShowcase({ entries, selectedId, t }: { entries: Record<EntryId, E
   )
 }
 
-function InsightMailbox({ member, items, selectedId, readIds, onSelect, onUnlock, t }: {
+function InsightMailbox({ member, items, selectedId, readIds, onSelect, onUnlock, onOpenFastRead, t }: {
   member: MemberSession | null
   items: InsightItem[]
   selectedId: string | null
   readIds: Set<string>
   onSelect: (id: string) => void
   onUnlock: () => void
+  onOpenFastRead: () => void
   t: Translate
 }) {
   const selected = useMemo(() => items.find((item) => item.id === selectedId) ?? items[0] ?? null, [items, selectedId])
@@ -912,11 +933,16 @@ function InsightMailbox({ member, items, selectedId, readIds, onSelect, onUnlock
 
                 <div className="paper-card-footer">
                   <small className="paper-note">{t('insight.archived')}</small>
-                  {selected.url && (
-                    <a className="primary-button paper-open-btn" href={selected.url} target="_blank" rel="noreferrer">
-                      {t('insight.open')} <ExternalLink size={14} />
-                    </a>
-                  )}
+                  <div className="paper-actions">
+                    <button type="button" className="primary-button paper-open-btn" onClick={onOpenFastRead}>
+                      <BookOpenText size={15} /> {t('insight.fastRead')}
+                    </button>
+                    {selected.url && (
+                      <a className="outline-button paper-source-btn" href={selected.url} target="_blank" rel="noreferrer">
+                        {t('insight.open')} <ExternalLink size={14} />
+                      </a>
+                    )}
+                  </div>
                 </div>
               </>
             ) : (
@@ -926,6 +952,306 @@ function InsightMailbox({ member, items, selectedId, readIds, onSelect, onUnlock
         </div>
       )}
     </section>
+  )
+}
+
+function FastInsightRosterEditor({ session, onAdminOpen, onSessionExpired, onToast, t }: {
+  session: AdminSession | null
+  onAdminOpen: () => void
+  onSessionExpired: () => void
+  onToast: (message: string) => void
+  t: Translate
+}) {
+  const [roster, setRoster] = useState<FastInsightRoster | null>(null)
+  const [revision, setRevision] = useState('')
+  const [fileName, setFileName] = useState('colleagues.yaml')
+  const [loading, setLoading] = useState(Boolean(session))
+  const [saving, setSaving] = useState(false)
+  const [dirty, setDirty] = useState(false)
+  const [error, setError] = useState('')
+  const sessionExpiredRef = useRef(onSessionExpired)
+
+  useEffect(() => {
+    sessionExpiredRef.current = onSessionExpired
+  }, [onSessionExpired])
+
+  useEffect(() => {
+    if (!session) {
+      setRoster(null)
+      setRevision('')
+      setDirty(false)
+      setLoading(false)
+      return
+    }
+    let cancelled = false
+    setLoading(true)
+    setError('')
+    void request<{ roster: FastInsightRoster; revision: string; file: string }>('/api/admin/fastinsight/roster', {}, session)
+      .then((result) => {
+        if (cancelled) return
+        setRoster(result.roster)
+        setRevision(result.revision)
+        setFileName(result.file)
+        setDirty(false)
+      })
+      .catch((err) => {
+        if (cancelled) return
+        const message = err instanceof Error ? err.message : t('routing.loadFailed')
+        setError(message)
+        if (message.includes('管理员登录已过期') || message.includes('管理员登录已失效')) sessionExpiredRef.current()
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [session, t])
+
+  const changeRoster = (change: (value: FastInsightRoster) => FastInsightRoster) => {
+    setRoster((current) => current ? change(current) : current)
+    setDirty(true)
+    setError('')
+  }
+
+  const changeDirection = (index: number, patch: Partial<RosterDirection>) => {
+    changeRoster((current) => ({
+      ...current,
+      directions: current.directions.map((direction, itemIndex) => itemIndex === index ? { ...direction, ...patch } : direction),
+    }))
+  }
+
+  const changeOwner = (directionIndex: number, ownerIndex: number, patch: Partial<RosterOwner>) => {
+    changeRoster((current) => ({
+      ...current,
+      directions: current.directions.map((direction, itemIndex) => itemIndex !== directionIndex ? direction : {
+        ...direction,
+        owners: direction.owners.map((owner, index) => index === ownerIndex ? { ...owner, ...patch } : owner),
+      }),
+    }))
+  }
+
+  const addDirection = () => {
+    changeRoster((current) => ({
+      ...current,
+      directions: [...current.directions, { name: '', keywords: [], owners: [{ name: '', feishu_open_id: '' }] }],
+    }))
+  }
+
+  const addOwner = (directionIndex: number) => {
+    changeRoster((current) => ({
+      ...current,
+      directions: current.directions.map((direction, index) => index === directionIndex ? {
+        ...direction,
+        owners: [...direction.owners, { name: '', feishu_open_id: '' }],
+      } : direction),
+    }))
+  }
+
+  const changeDefaultOwner = (patch: Partial<RosterOwner>) => {
+    changeRoster((current) => {
+      const next = {
+        ...(current.default_owner ?? { name: '', feishu_open_id: '' }),
+        ...patch,
+        name: patch.name ?? current.default_owner?.name ?? '',
+        feishu_open_id: patch.feishu_open_id ?? current.default_owner?.feishu_open_id ?? '',
+      }
+      const value = { ...current }
+      if (!next.name.trim() && !next.feishu_open_id.trim()) delete value.default_owner
+      else value.default_owner = next
+      return value
+    })
+  }
+
+  const save = async (event: FormEvent) => {
+    event.preventDefault()
+    if (!session || !roster) return
+    setSaving(true)
+    setError('')
+    try {
+      const result = await request<{ roster: FastInsightRoster; revision: string; file: string }>('/api/admin/fastinsight/roster', {
+        method: 'PUT',
+        body: JSON.stringify({
+          roster: {
+            ...roster,
+            directions: roster.directions.map((direction) => ({
+              ...direction,
+              keywords: direction.keywords.filter(Boolean),
+            })),
+          },
+          revision,
+        }),
+      }, session)
+      setRoster(result.roster)
+      setRevision(result.revision)
+      setFileName(result.file)
+      setDirty(false)
+      onToast(t('routing.saved'))
+    } catch (err) {
+      const message = err instanceof Error ? err.message : t('routing.saveFailed')
+      setError(message)
+      if (message.includes('管理员登录已过期') || message.includes('管理员登录已失效')) sessionExpiredRef.current()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!session) {
+    return (
+      <section className="roster-editor roster-editor--locked" aria-label={t('routing.title')}>
+        <div className="mailbox-locked">
+          <div className="locked-icon-wrap"><Settings2 size={25} /></div>
+          <strong>{t('routing.adminRequired')}</strong>
+          <p>{t('routing.adminRequiredHint')}</p>
+          <button type="button" className="outline-button" onClick={onAdminOpen}><ShieldCheck size={15} /> {t('routing.openAdmin')}</button>
+        </div>
+      </section>
+    )
+  }
+
+  const ownerCount = roster?.directions.reduce((count, direction) => count + direction.owners.length, 0) ?? 0
+  const keywordCount = roster?.directions.reduce((count, direction) => count + direction.keywords.filter(Boolean).length, 0) ?? 0
+
+  return (
+    <form className="roster-editor" onSubmit={save} aria-label={t('routing.title')}>
+      <header className="roster-editor-header">
+        <div>
+          <span className="workspace-kicker"><Settings2 size={14} /> FASTINSIGHT / ROUTING</span>
+          <h2>{t('routing.title')}</h2>
+          <p>{t('routing.description')} <code>{fileName}</code></p>
+        </div>
+        <div className="roster-editor-actions">
+          {dirty && <span className="roster-dirty">{t('routing.unsaved')}</span>}
+          <button type="button" className="outline-button" onClick={addDirection}><Plus size={15} /> {t('routing.addDirection')}</button>
+          <button type="submit" className="primary-button" disabled={loading || saving || !roster}>
+            <Save size={15} /> {saving ? t('routing.saving') : t('routing.save')}
+          </button>
+        </div>
+      </header>
+
+      <div className="roster-stats">
+        <div><strong>{roster?.directions.length ?? 0}</strong><span>{t('routing.directionCount')}</span></div>
+        <div><strong>{ownerCount}</strong><span>{t('routing.ownerCount')}</span></div>
+        <div><strong>{keywordCount}</strong><span>{t('routing.keywordCount')}</span></div>
+      </div>
+
+      {error && <div className="roster-error" role="alert">{error}</div>}
+      {loading ? (
+        <div className="roster-loading">{t('routing.loading')}</div>
+      ) : roster && (
+        <>
+          <div className="roster-direction-list">
+            {roster.directions.length === 0 && <div className="roster-empty">{t('routing.empty')}</div>}
+            {roster.directions.map((direction, directionIndex) => (
+              <article className="roster-direction-card" key={`${directionIndex}-${direction.name}`}>
+                <header className="roster-direction-heading">
+                  <span className="roster-index">{String(directionIndex + 1).padStart(2, '0')}</span>
+                  <label>
+                    <span>{t('routing.directionName')}</span>
+                    <input
+                      value={direction.name}
+                      onChange={(event) => changeDirection(directionIndex, { name: event.target.value })}
+                      placeholder={t('routing.directionPlaceholder')}
+                      required
+                    />
+                  </label>
+                  <label className="roster-priority">
+                    <span>{t('routing.priority')}</span>
+                    <input
+                      type="number"
+                      value={direction.priority ?? ''}
+                      onChange={(event) => changeDirection(directionIndex, { priority: event.target.value === '' ? undefined : Number(event.target.value) })}
+                      min="0"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="icon-button roster-remove"
+                    aria-label={t('routing.removeDirection')}
+                    title={t('routing.removeDirection')}
+                    onClick={() => changeRoster((current) => ({ ...current, directions: current.directions.filter((_, index) => index !== directionIndex) }))}
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </header>
+
+                <label className="roster-keywords">
+                  <span>{t('routing.keywords')} <small>{t('routing.keywordsHint')}</small></span>
+                  <textarea
+                    value={direction.keywords.join('\n')}
+                    onChange={(event) => changeDirection(directionIndex, {
+                      keywords: event.target.value.split(/\r?\n/).map((keyword) => keyword.trim()),
+                    })}
+                    placeholder={t('routing.keywordsPlaceholder')}
+                    rows={4}
+                  />
+                </label>
+
+                <div className="roster-owners">
+                  <div className="roster-subheading">
+                    <strong><UsersRound size={15} /> {t('routing.owners')}</strong>
+                    <button type="button" className="text-button" onClick={() => addOwner(directionIndex)}><Plus size={14} /> {t('routing.addOwner')}</button>
+                  </div>
+                  {direction.owners.map((owner, ownerIndex) => (
+                    <div className="roster-owner-row" key={`${directionIndex}-${ownerIndex}`}>
+                      <label>
+                        <span>{t('routing.ownerName')}</span>
+                        <input
+                          value={owner.name}
+                          onChange={(event) => changeOwner(directionIndex, ownerIndex, { name: event.target.value })}
+                          placeholder={t('routing.ownerNamePlaceholder')}
+                          required
+                        />
+                      </label>
+                      <label>
+                        <span>{t('routing.feishuOpenId')}</span>
+                        <input
+                          value={owner.feishu_open_id ?? ''}
+                          onChange={(event) => changeOwner(directionIndex, ownerIndex, { feishu_open_id: event.target.value })}
+                          placeholder={t('routing.feishuPlaceholder')}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        className="icon-button roster-remove"
+                        aria-label={t('routing.removeOwner')}
+                        title={t('routing.removeOwner')}
+                        onClick={() => changeDirection(directionIndex, { owners: direction.owners.filter((_, index) => index !== ownerIndex) })}
+                      >
+                        <X size={15} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </article>
+            ))}
+          </div>
+
+          <article className="roster-default-owner">
+            <div className="roster-subheading">
+              <strong><ShieldCheck size={16} /> {t('routing.defaultOwner')}</strong>
+              <small>{t('routing.defaultOwnerHint')}</small>
+            </div>
+            <div className="roster-owner-row">
+              <label>
+                <span>{t('routing.ownerName')}</span>
+                <input
+                  value={roster.default_owner?.name ?? ''}
+                  onChange={(event) => changeDefaultOwner({ name: event.target.value })}
+                  placeholder={t('routing.ownerNamePlaceholder')}
+                />
+              </label>
+              <label>
+                <span>{t('routing.feishuOpenId')}</span>
+                <input
+                  value={roster.default_owner?.feishu_open_id ?? ''}
+                  onChange={(event) => changeDefaultOwner({ feishu_open_id: event.target.value })}
+                  placeholder={t('routing.feishuPlaceholder')}
+                />
+              </label>
+            </div>
+          </article>
+        </>
+      )}
+    </form>
   )
 }
 
@@ -1174,8 +1500,8 @@ function FastCASDialog({member, onClose, t}: {member: MemberSession; onClose: ()
   const [key, setKey] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const load = async () => { const value = await request<{link: {state: string} | null}>('/api/auth/fastcas/status', {}, member); setLink(value.link); setLoaded(true) }
-  useEffect(() => { void load().catch(err => setError(err.message)) }, [])
+  const load = useCallback(async () => { const value = await request<{link: {state: string} | null}>('/api/auth/fastcas/status', {}, member); setLink(value.link); setLoaded(true) }, [member])
+  useEffect(() => { void load().catch(err => setError(err.message)) }, [load])
   async function act(action: 'link' | 'revoke' | 'reconcile') {
     setBusy(true); setError('')
     try {

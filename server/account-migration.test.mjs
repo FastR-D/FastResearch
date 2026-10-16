@@ -5,6 +5,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { migrateAccounts, planAccounts, readLegacySnapshot } from './account-migration.mjs'
+import { AccountStore } from './account-store.mjs'
 
 function fixture() {
   return { admin: { username: 'admin', passwordHash: 'private-admin-hash' }, jwtSecret: 'private-signing-secret', unknownRoot: { keep: true }, keys: ['one','two'].map(id => ({ id, person: 'Same name', keyHash: id === 'one' ? 'a'.repeat(64) : 'b'.repeat(64), expiresAt: null, revokedAt: null, followedAuthors: ['Author'], inbox: [{ content: 'original content', read: false }], workflow: { tasks: [{ title: 'task' }] }, unknownContent: ['preserve', 2] })) }
@@ -53,4 +54,27 @@ test('invalid and duplicate records fail without writes', () => {
   assert.throws(() => planAccounts(input), /duplicate/)
   assert.throws(() => planAccounts({ keys: [{id:'bad',keyHash:'missing'}] }), /Invalid/)
   assert.throws(() => planAccounts({}), /keys array/)
+})
+
+test('loads and saves legacy accounts when FastCAS owns the accounts table', () => {
+  const dir = mkdtempSync(path.join(tmpdir(),'research-accounts-'))
+  try {
+    const source = path.join(dir,'access.json'), target = path.join(dir,'accounts.sqlite')
+    writeFileSync(source, JSON.stringify(fixture()))
+    migrateAccounts(source,target,{apply:true})
+    const migrationDb = new DatabaseSync(target)
+    migrationDb.exec('ALTER TABLE accounts RENAME TO accounts_main_legacy; CREATE TABLE accounts(id TEXT PRIMARY KEY,key_id TEXT UNIQUE,created_at TEXT NOT NULL);')
+    migrationDb.close()
+    const store = new AccountStore(target)
+    try {
+      const snapshot = store.load()
+      assert.deepEqual(snapshot.data, fixture())
+      const updated = structuredClone(snapshot.data)
+      updated.keys[0].person = 'Updated member'
+      const revision = store.save(updated, snapshot.revision)
+      assert.deepEqual(store.load(), { data: updated, revision })
+    } finally {
+      store.close()
+    }
+  } finally { rmSync(dir,{recursive:true,force:true}) }
 })

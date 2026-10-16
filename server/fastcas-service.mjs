@@ -1,5 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { FastCASStore } from './fastcas-store.mjs'
+import { legacyAccountsTable } from './account-migration.mjs'
 
 export class CASFailure extends Error {
   constructor(message,status=403){super(message);this.status=status}
@@ -25,8 +26,9 @@ export class FastCASService {
     return this.sdkInstance
   }
   account(id){
-    const row=this.db.prepare('SELECT a.*,c.credential FROM accounts a JOIN credentials c ON c.account_id=a.id WHERE a.id=?').get(id)
-    return row ? {...JSON.parse(row.content),...JSON.parse(row.credential),accountId:row.id} : null
+    const accountTable=legacyAccountsTable(this.db)
+    const row=this.db.prepare(`SELECT a.content,c.credential FROM ${accountTable} a JOIN credentials c ON c.account_id=a.id WHERE a.id=?`).get(id)
+    return row ? {...JSON.parse(row.content),...JSON.parse(row.credential),accountId:id} : null
   }
   session(raw){const session=this.sessions.get(raw);return session?.role==='member'?session:null}
   prove(raw,key,peer){
