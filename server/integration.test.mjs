@@ -16,6 +16,9 @@ process.env.FASTRESEARCH_FASTCAS_REDIRECT_URI = ''
 process.env.ADMIN_PASSWORD = 'integration-admin-password'
 process.env.FASTINSIGHT_INGEST_KEY = 'integration-ingest-key'
 process.env.FASTTASK_INGEST_KEY = 'integration-fasttask-key'
+process.env.FASTTASK_API_KEY = 'integration-fasttask-api-key'
+delete process.env.FASTTASK_PROVISION_KEY
+process.env.FASTRESEARCH_FASTTASK_SSO_SECRET = 'integration-fasttask-sso-secret-for-tests'
 const seededKeyId = '11111111111111111111'
 const seededRawKey = 'fk_seeded-external-account'
 const seededAccountId = 'external-account-for-seeded-key'
@@ -50,6 +53,8 @@ test('Key identity persists across FastRead, FastWrite and rotation', async () =
   let fastReadRequestUrl = ''
   let fastReadRequestBody
   let panelBase = ''
+  let fastTaskProvisionCalls = 0
+  let fastTaskTodayRequest = null
   const fastRead = createServer(async (request, response) => {
     fastReadRequestUrl = request.url
     if (request.method === 'POST') {
@@ -66,6 +71,46 @@ test('Key identity persists across FastRead, FastWrite and rotation', async () =
   })
   await new Promise(resolve => fastRead.listen(0, '127.0.0.1', resolve))
   const fastReadAddress = fastRead.address()
+  const fastTask = createServer(async (request, response) => {
+    if (request.url === '/api/v1/integrations/fastresearch/accounts') {
+      fastTaskProvisionCalls += 1
+      response.writeHead(404, { 'content-type': 'application/json' })
+      response.end(JSON.stringify({ detail: 'not found' }))
+      return
+    }
+    if (request.url === '/api/v1/integrations/fastresearch/today') {
+      const chunks = []
+      for await (const chunk of request) chunks.push(chunk)
+      fastTaskTodayRequest = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}')
+      const refs = fastTaskTodayRequest.receiver_refs ?? []
+      response.writeHead(200, { 'content-type': 'application/json' })
+      response.end(JSON.stringify({
+        members: refs.map((ref) => ({
+          receiver_ref: ref,
+          found: ref === seededAccountId,
+          user_id: ref === seededAccountId ? 'ft-user-seeded' : undefined,
+          display_name: ref === seededAccountId ? '显式账户成员' : undefined,
+          local_date: '2026-10-18',
+          timezone: 'Asia/Shanghai',
+          plan_status: ref === seededAccountId ? 'active' : 'none',
+          plan_revision: ref === seededAccountId ? 1 : 0,
+          items: ref === seededAccountId ? [
+            { id: 'item-1', title: '阅读论文', commitment: '精读', minimum_action: '读完摘要', status: 'in_progress', target_minutes: 30, position: 0 },
+            { id: 'item-2', title: '整理笔记', commitment: '', minimum_action: '写三条笔记', status: 'satisfied', target_minutes: 20, position: 1 },
+          ] : [],
+          progress: ref === seededAccountId
+            ? { total: 2, completed: 1, in_progress: 1, planned: 0, skipped: 0 }
+            : { total: 0, completed: 0, in_progress: 0, planned: 0, skipped: 0 },
+        })),
+      }))
+      return
+    }
+    response.writeHead(200, { 'content-type': 'application/json' })
+    response.end('{}')
+  })
+  await new Promise(resolve => fastTask.listen(0, '127.0.0.1', resolve))
+  const fastTaskAddress = fastTask.address()
+  process.env.FASTTASK_URL = `http://127.0.0.1:${fastTaskAddress.port}`
   process.env.FASTWRITE_URL = `http://127.0.0.1:${fastWriteAddress.port}`
   process.env.FASTWRITE_PUBLIC_URL = 'https://fastrd.io/write'
   process.env.FASTWRITE_API_KEY = 'integration-fastwrite-key'
@@ -82,6 +127,17 @@ test('Key identity persists across FastRead, FastWrite and rotation', async () =
     return { status: response.status, body: await response.json() }
   }
   try {
+    const fastTaskPublicURL = `http://127.0.0.1:${fastTaskAddress.port}`
+    process.env.FASTTASK_PUBLIC_URL = fastTaskPublicURL
+    const fastTaskLogin = await fetch(`${base}/api/fasttask/login`, { redirect: 'manual' })
+    assert.equal(fastTaskLogin.status, 302)
+    assert.equal(fastTaskLogin.headers.get('location'), `${fastTaskPublicURL}/api/v1/auth/fastresearch/login`)
+    delete process.env.FASTTASK_PUBLIC_URL
+    delete process.env.VITE_FASTTASK_URL
+    delete process.env.FASTTASK_URL
+    const unconfiguredFastTaskLogin = await fetch(`${base}/api/fasttask/login`, { redirect: 'manual' })
+    assert.equal(unconfiguredFastTaskLogin.status, 503)
+
     const fastReadProxy = await fetch(`${base}/read/api/auth/me?from=panel`)
     assert.equal(fastReadRequestUrl, '/api/auth/me?from=panel')
     assert.equal(fastReadProxy.headers.get('x-fastread-proxy'), 'fastresearch')
@@ -97,12 +153,48 @@ test('Key identity persists across FastRead, FastWrite and rotation', async () =
     const seeded = await call('/api/content/unlock', 'POST', { key: seededRawKey })
     assert.equal(seeded.status, 200)
     assert.equal(seeded.body.accountId, seededAccountId)
+    process.env.FASTTASK_PUBLIC_URL = base
+    const callback = new URL('/api/v1/auth/fastresearch/callback?state=FastTaskState_0123456789abcdefghijk', base)
+    const launch = await fetch(base + '/api/sso/launch?audience=fast-task&next=' + encodeURIComponent(callback.toString()), {
+      headers: { Authorization: 'Bearer ' + seeded.body.session },
+      redirect: 'manual',
+    })
+    assert.equal(launch.status, 302)
+    const callbackUrl = new URL(launch.headers.get('location'))
+    assert.equal(callbackUrl.pathname, '/api/v1/auth/fastresearch/callback')
+    assert.equal(callbackUrl.searchParams.get('state'), 'FastTaskState_0123456789abcdefghijk')
+    const fastTaskTicket = callbackUrl.searchParams.get('sso')
+    assert.ok(fastTaskTicket)
+    const rejectedFastTaskTicket = await call('/api/sso/consume', 'POST', {
+      ticket: fastTaskTicket,
+      audience: 'fast-task',
+    }, undefined, { 'X-FastTask-SSO-Secret': 'wrong-secret' })
+    assert.equal(rejectedFastTaskTicket.status, 401)
+    const consumedFastTaskTicket = await call('/api/sso/consume', 'POST', {
+      ticket: fastTaskTicket,
+      audience: 'fast-task',
+    }, undefined, { 'X-FastTask-SSO-Secret': process.env.FASTRESEARCH_FASTTASK_SSO_SECRET })
+    assert.equal(consumedFastTaskTicket.status, 200)
+    assert.equal(consumedFastTaskTicket.body.accountId, seededAccountId)
+    assert.equal(consumedFastTaskTicket.body.keyId, seededKeyId)
+    assert.equal(consumedFastTaskTicket.body.person, '\u663e\u5f0f\u8d26\u6237\u6210\u5458')
     const seededTicket = await call('/api/sso/ticket', 'POST', { audience: 'fast-read' }, seeded.body.session)
     const seededConsumed = await call('/api/sso/consume', 'POST', {
       ticket: seededTicket.body.ticket,
       audience: 'fast-read',
     })
     assert.equal(seededConsumed.body.accountId, seededAccountId)
+    const seededToday = await call('/api/fasttask/today', 'GET', undefined, seeded.body.session)
+    assert.equal(seededToday.status, 200)
+    assert.equal(seededToday.body.today.received, true)
+    assert.equal(seededToday.body.today.items.length, 2)
+    assert.equal(seededToday.body.today.items[0].title, '阅读论文')
+    assert.equal(seededToday.body.today.progress.completed, 1)
+    assert.equal(seededToday.body.today.progress.inProgress, 1)
+    assert.ok(fastTaskTodayRequest.receiver_refs.includes(seededAccountId))
+    const seededTeam = await call('/api/workflow/team', 'GET', undefined, seeded.body.session)
+    assert.equal(seededTeam.status, 200)
+    assert.equal(seededTeam.body.members.find((member) => member.keyId === seededKeyId).today.received, true)
     const seededWrite = await call('/api/fastwrite/login-url', 'POST', {}, seeded.body.session)
     assert.deepEqual(fastWriteIdentity, {
       externalAccountId: seededAccountId,
@@ -115,6 +207,15 @@ test('Key identity persists across FastRead, FastWrite and rotation', async () =
     assert.equal((await call('/api/auth/fastcas/available', 'GET')).body.enabled, false)
     const admin = await call('/api/admin/login', 'POST', { username: 'admin', password: 'integration-admin-password' })
     assert.equal(admin.status, 200)
+    const fastTaskKey = await call('/api/admin/keys', 'POST', { person: 'FastTask SSO 成员' }, admin.body.session)
+    assert.equal(fastTaskKey.status, 201)
+    assert.equal(fastTaskProvisionCalls, 0)
+    const emptyMember = await call('/api/content/unlock', 'POST', { key: fastTaskKey.body.key })
+    assert.equal(emptyMember.status, 200)
+    const emptyToday = await call('/api/fasttask/today', 'GET', undefined, emptyMember.body.session)
+    assert.equal(emptyToday.status, 200)
+    assert.equal(emptyToday.body.today.received, false)
+    assert.equal(emptyToday.body.today.items.length, 0)
     const created = await call('/api/admin/keys', 'POST', { person: '同名成员', fasttask_user_id: 'fasttask-user-1' }, admin.body.session)
     assert.equal(created.status, 201)
     assert.ok(created.body.record.accountId)
@@ -172,6 +273,7 @@ test('Key identity persists across FastRead, FastWrite and rotation', async () =
     await new Promise((resolve) => server.close(resolve))
     await new Promise((resolve) => fastWrite.close(resolve))
     await new Promise((resolve) => fastRead.close(resolve))
+    await new Promise((resolve) => fastTask.close(resolve))
     rmSync(dir, { recursive: true, force: true })
   }
 })

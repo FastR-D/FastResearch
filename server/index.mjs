@@ -52,6 +52,13 @@ const SESSION_TTL_MS = 8 * 60 * 60 * 1000
 const TICKET_TTL_MS = 2 * 60 * 1000
 const PUBLIC_API_URL = (process.env.FASTRESEARCH_PUBLIC_URL ?? `http://127.0.0.1:${PORT}`).replace(/\/$/, '')
 const SSO_LAUNCH = {
+  'fast-task': {
+    fallbacks: () => [process.env.FASTTASK_PUBLIC_URL, process.env.VITE_FASTTASK_URL, process.env.FASTTASK_URL],
+    invalid: 'FastTask 地址无效',
+    mode: 'ticket',
+    preserveSearch: true,
+    secret: true,
+  },
   'fast-news': {
     fallbacks: () => [process.env.FASTNEWS_URL, process.env.VITE_FASTNEWS_URL, 'http://127.0.0.1:4173'],
     invalid: 'FastNews 地址无效',
@@ -182,7 +189,7 @@ async function loadData() {
   fastTaskBaseURL = String(fastTaskUrl ?? '').trim()
   const fastTaskApiKey = process.env.FASTTASK_API_KEY
   fastTaskClient = createFastTaskClient(fastTaskUrl, fastTaskApiKey)
-  const fastTaskProvisionKey = process.env.FASTTASK_PROVISION_KEY || fastTaskApiKey
+  const fastTaskProvisionKey = process.env.FASTTASK_PROVISION_KEY
   fastTaskProvisionClient = createFastTaskClient(fastTaskUrl, fastTaskProvisionKey)
   fastTaskClients = new Map()
   const configuredFastTaskKeys = String(process.env.FASTTASK_API_KEYS ?? '').trim()
@@ -264,6 +271,87 @@ function startFastTaskSync() {
   if (fastTaskSyncTimer) clearInterval(fastTaskSyncTimer)
   fastTaskSyncTimer = setInterval(() => { void syncFastTaskEvents() }, 5000)
   void syncFastTaskEvents()
+}
+
+const FASTTASK_TODAY_CACHE_MS = 8000
+let fastTaskTodayCache = { key: '', at: 0, byAccount: null }
+
+function fastTaskReadClient() {
+  return fastTaskClient ?? fastTaskProvisionClient
+}
+
+function emptyFastTaskToday(extra = {}) {
+  return {
+    received: false,
+    items: [],
+    progress: { total: 0, completed: 0, inProgress: 0, planned: 0, skipped: 0 },
+    ...extra,
+  }
+}
+
+function fastTaskTodayView(entry) {
+  if (!entry || entry.found === false) return emptyFastTaskToday({ error: entry?.error ? String(entry.error).slice(0, 200) : '' })
+  const items = Array.isArray(entry.items) ? entry.items.map((item) => ({
+    id: String(item.id ?? ''),
+    taskId: item.task_id ? String(item.task_id) : null,
+    kind: String(item.kind ?? ''),
+    title: String(item.title ?? ''),
+    commitment: String(item.commitment ?? ''),
+    minimumAction: String(item.minimum_action ?? ''),
+    status: String(item.status ?? 'planned'),
+    completionType: String(item.completion_type ?? ''),
+    completionSummary: String(item.completion_summary ?? ''),
+    targetMinutes: Number(item.target_minutes ?? 0) || 0,
+    position: Number(item.position ?? 0) || 0,
+    workspace: item.workspace && typeof item.workspace === 'object'
+      ? {
+          system: String(item.workspace.system ?? ''),
+          label: String(item.workspace.label ?? ''),
+          url: String(item.workspace.url ?? ''),
+        }
+      : null,
+  })) : []
+  const raw = entry.progress && typeof entry.progress === 'object' ? entry.progress : {}
+  return {
+    received: items.length > 0,
+    date: String(entry.local_date ?? ''),
+    timezone: String(entry.timezone ?? ''),
+    planStatus: String(entry.plan_status ?? ''),
+    planRevision: Number(entry.plan_revision ?? 0) || 0,
+    updatedAt: String(entry.updated_at ?? ''),
+    items,
+    progress: {
+      total: Number(raw.total ?? items.length) || 0,
+      completed: Number(raw.completed ?? 0) || 0,
+      inProgress: Number(raw.in_progress ?? 0) || 0,
+      planned: Number(raw.planned ?? 0) || 0,
+      skipped: Number(raw.skipped ?? 0) || 0,
+    },
+    error: entry.error ? String(entry.error).slice(0, 200) : '',
+  }
+}
+
+// The workspace polls every 15 seconds. A short cache coalesces the independent
+// today/team reads into one FastTask batch while still surfacing chat-generated
+// tasks promptly.
+async function fetchFastTaskToday(accountIds, { fresh = false } = {}) {
+  const client = fastTaskReadClient()
+  const ids = [...new Set(accountIds.map((id) => String(id ?? '').trim()).filter(Boolean))]
+  if (!client) return { configured: false, byAccount: new Map(), error: '' }
+  if (!ids.length) return { configured: true, byAccount: new Map(), error: '' }
+  const key = ids.slice().sort().join(',')
+  if (!fresh && fastTaskTodayCache.byAccount && fastTaskTodayCache.key === key && Date.now() - fastTaskTodayCache.at < FASTTASK_TODAY_CACHE_MS) {
+    return { configured: true, byAccount: fastTaskTodayCache.byAccount, error: '' }
+  }
+  try {
+    const result = await client.fetchToday(ids)
+    const byAccount = new Map()
+    for (const member of result.members ?? []) byAccount.set(String(member.receiver_ref ?? ''), member)
+    fastTaskTodayCache = { key, at: Date.now(), byAccount }
+    return { configured: true, byAccount, error: '' }
+  } catch (error) {
+    return { configured: true, byAccount: new Map(), error: String(error?.message ?? error).slice(0, 200) }
+  }
 }
 
 function reloadData() {
@@ -351,6 +439,9 @@ function allowedOrigins() {
       process.env.VITE_FASTNEWS_URL,
       process.env.FASTREAD_URL,
       process.env.VITE_READ_URL,
+      process.env.FASTTASK_PUBLIC_URL,
+      process.env.VITE_FASTTASK_URL,
+      process.env.FASTTASK_URL,
       'http://127.0.0.1:5173',
       'http://localhost:5173',
       'http://127.0.0.1:4173',
@@ -414,7 +505,7 @@ function clearMemberCookieHeader(request) {
   return { 'Set-Cookie': serializeCookie('', { maxAge: 0, request }) }
 }
 
-function resolveLaunchUrl(next, fallbacks = []) {
+function resolveLaunchUrl(next, fallbacks = [], preserveSearch = false) {
   for (const value of [next, ...fallbacks]) {
     const raw = String(value ?? '').trim()
     if (!raw) continue
@@ -422,7 +513,7 @@ function resolveLaunchUrl(next, fallbacks = []) {
       const parsed = new URL(raw, PUBLIC_API_URL)
       if (!['http:', 'https:'].includes(parsed.protocol)) continue
       if (!isAllowedOrigin(parsed.origin)) continue
-      parsed.search = ''
+      if (!preserveSearch) parsed.search = ''
       parsed.hash = ''
       return parsed.toString()
     } catch {}
@@ -1263,6 +1354,14 @@ async function handle(request, response) {
     const body = await readBody(request)
     const ticketId = String(body.ticket ?? '').trim()
     const audience = String(body.audience ?? '').trim()
+    if (audience === 'fast-task') {
+      const expected = Buffer.from(String(process.env.FASTRESEARCH_FASTTASK_SSO_SECRET ?? '').trim())
+      const candidate = Buffer.from(String(request.headers['x-fasttask-sso-secret'] ?? ''))
+      if (expected.length < 32 || candidate.length !== expected.length || !timingSafeEqual(candidate, expected)) {
+        sendError(response, 401, 'FastTask SSO 凭证无效')
+        return
+      }
+    }
     pruneTickets()
     const ticket = tickets.take(ticketId)
     if (!ticket || ticket.expiresAt < Date.now() || ticket.audience !== audience) {
@@ -1280,6 +1379,22 @@ async function handle(request, response) {
     return
   }
 
+  if (request.method === 'GET' && route === '/api/fasttask/login') {
+    const fastTaskBase = resolveLaunchUrl('', [process.env.FASTTASK_PUBLIC_URL, process.env.VITE_FASTTASK_URL, process.env.FASTTASK_URL])
+    if (!fastTaskBase) {
+      sendError(response, 503, 'FastTask 公开地址未配置')
+      return
+    }
+    const target = new URL('/api/v1/auth/fastresearch/login', fastTaskBase)
+    response.writeHead(302, {
+      Location: target.toString(),
+      'Cache-Control': 'no-store',
+      ...corsHeaders(request),
+    })
+    response.end()
+    return
+  }
+
   if (request.method === 'GET' && route === '/api/sso/launch') {
     const member = requireMember(request, response)
     if (!member) return
@@ -1289,7 +1404,7 @@ async function handle(request, response) {
       sendError(response, 400, '不支持的登录入口')
       return
     }
-    const target = resolveLaunchUrl(url.searchParams.get('next'), config.fallbacks())
+    const target = resolveLaunchUrl(url.searchParams.get('next'), config.fallbacks(), config.preserveSearch)
     if (!target) {
       sendError(response, 400, config.invalid)
       return
@@ -1501,15 +1616,31 @@ async function handle(request, response) {
   if (request.method === 'GET' && route === '/api/workflow/team') {
     const member = requireMember(request, response)
     if (!member) return
-    const members = data.keys
-      .filter((record) => keyIsActive(record))
-      .map((record) => ({
-        keyId: record.id,
-        person: record.person,
-        workflow: workflowView(record.workflow),
-      }))
+    const activeKeys = data.keys.filter((record) => keyIsActive(record))
+    const { configured, byAccount, error } = await fetchFastTaskToday(activeKeys.map((record) => accountIdOf(record)))
+    const members = activeKeys
+      .map((record) => {
+        const accountId = accountIdOf(record)
+        return {
+          keyId: record.id,
+          person: record.person,
+          workflow: workflowView(record.workflow),
+          today: configured ? fastTaskTodayView(byAccount.get(accountId)) : emptyFastTaskToday({ configured: false }),
+        }
+      })
       .sort((left, right) => left.person.localeCompare(right.person, 'zh-CN'))
-    sendJson(response, 200, { members, currentKeyId: member.keyId })
+    sendJson(response, 200, { members, currentKeyId: member.keyId, fastTaskConfigured: configured, fastTaskError: error })
+    return
+  }
+
+  if (request.method === 'GET' && route === '/api/fasttask/today') {
+    const member = requireMember(request, response)
+    if (!member) return
+    const accountId = String(member.accountId || accountIdOf(member.record) || '').trim()
+    const { configured, byAccount, error } = await fetchFastTaskToday([accountId], { fresh: true })
+    const today = configured ? fastTaskTodayView(byAccount.get(accountId)) : emptyFastTaskToday({ configured: false })
+    if (error && !today.error) today.error = error
+    sendJson(response, 200, { today })
     return
   }
 

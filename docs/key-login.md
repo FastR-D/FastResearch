@@ -108,7 +108,7 @@
 | FastNews | 已实现服务端票据登录 | Panel `unlock` → `/api/sso/launch` 302 到 `{NEWS}?sso=` → **serve.py consume** → HttpOnly Cookie | 不要 `python -m http.server`；不要把票据/JWT 放进 URL；不要再要 Key |
 | FastRead | 已实现 | Panel `unlock` → `/api/sso/launch` 302 到 `{READ}?sso=` → **服务端** `consume` → 按 `accountId` 复用本模块工作区并写 Cookie | 不要用邮箱密码替代 Key 身份；不要信 `research_api`；不要在 FastRead 做 Key 输入框 |
 | FastWrite | 已实现 | Panel 验证 Key → 服务端调用 FastWrite `/api/integration/auth/token`，传递 `accountId` → 自动进入对应 FastWrite 账户 | 不要把原始 Key 放进 URL；不要要求用户重复注册 |
-| FastTask | 预留 | 与 FastRead 相同，换 `audience` | 不要各自做 Key 表单 |
+| FastTask | 已实现 | Panel 验证 Key → `/api/fasttask/login` 或 FastTask `/api/v1/auth/fastresearch/login` → 浏览器带一次性票据回到 Panel → Panel `/api/sso/launch?audience=fast-task` 302 到 FastTask 回调 → **FastTask 服务端** `consume` | 不要各自做 Key 表单；不要在 FastTask 保存原始 Key |
 | FastInsight | 发布通道 | 服务号 `X-FastInsight-Key` 写入该成员的 FastInsight 信箱 | 不要用个人 Key 当发布凭证 |
 
 `audience` 必须是下面的精确字符串（大小写敏感）：
@@ -118,9 +118,11 @@
 | `fast-news` | `{NEWS}?sso={ticket}`（经 `/api/sso/launch` 302） | FastNews `serve.py` | **已上线** |
 | `fast-read` | `{READ}?sso={ticket}`（经 `/api/sso/launch` 302） | FastRead 后端 | **已上线** |
 | `fast-write` | `{WRITE}/projects?token={token}` | FastWrite 集成端点按 `externalAccountId` 映射账户 | **已上线** |
-| `fast-task` | `{TASK}?sso={ticket}` | FastTask 后端 | 预留 |
+| `fast-task` | `{TASK}/api/v1/auth/fastresearch/callback?state=…&sso={ticket}`（经 `/api/sso/launch` 302） | FastTask 后端（需 `X-FastTask-SSO-Secret`） | **已上线** |
 
-当前服务端 SSO 票据白名单为 `fast-news` 和 `fast-read`。FastWrite 使用独立的服务级 API Key 账户映射流程，不经过该 SSO 白名单。
+当前服务端 SSO 票据白名单为 `fast-news`、`fast-read` 和 `fast-task`。FastWrite 使用独立的服务级 API Key 账户映射流程，不经过该 SSO 白名单。
+
+FastTask 的票据兑换额外要求共享密钥：FastResearch 的 `FASTRESEARCH_FASTTASK_SSO_SECRET` 必须与 FastTask 的 `FASTTASK_FASTRESEARCH_SSO_SECRET` 完全一致，长度至少 32 字符。FastTask 服务端兑换成功后按 `accountId` 创建或复用本模块用户，个人 Key 不会离开 FastResearch。
 
 ---
 
@@ -545,13 +547,13 @@ curl -s -X POST "$FR/api/sso/consume" \
 # 401 { "error": "登录票据无效或已过期" }
 ```
 
-当前未开放的 audience：
+未开放的 audience：
 
 ```bash
 curl -s -X POST "$FR/api/sso/ticket" \
   -H "Authorization: Bearer MEMBER_SESSION" \
   -H "Content-Type: application/json" \
-  -d '{"audience":"fast-read"}'
+  -d '{"audience":"fast-write"}'
 # 400 { "error": "不支持的登录入口" }
 ```
 
@@ -731,6 +733,8 @@ curl -s -X POST "$FR/api/content/unlock" \
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` | FastResearch | 管理员账号 |
 | `FASTINSIGHT_INGEST_KEY` | FastResearch + 发布方 | 服务号写内容 |
 | `FASTRESEARCH_API_URL` | FastRead 等有后端的模块 | **模块自己配置**的 FastResearch 地址，不要用查询参数 |
+| `FASTTASK_PUBLIC_URL` | Panel / FastResearch | 浏览器访问 FastTask 的公开地址，用于入口跳转与回调来源校验 |
+| `FASTRESEARCH_FASTTASK_SSO_SECRET` | FastResearch + FastTask | FastTask 兑换 `fast-task` 票据的服务端共享密钥，至少 32 字符 |
 | `VITE_READ_URL` / `FASTREAD_URL` | Panel / FastResearch | FastRead 入口；launch 未传 `next` 时的回退地址 |
 | `FASTRESEARCH_PANEL_URL` | FastRead | 登录页「打开 FastResearch」链接 |
 | `VITE_WRITE_URL` 等 | Panel 前端 | 其余模块入口 URL |

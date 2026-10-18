@@ -43,6 +43,26 @@ export class FastTaskClient {
     return data
   }
 
+  async fetchToday(receiverRefs) {
+    const response = await fetch(`${this.baseURL}/api/v1/integrations/fastresearch/today`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'X-API-Key': this.apiKey,
+      },
+      body: JSON.stringify({ receiver_refs: receiverRefs }),
+      signal: AbortSignal.timeout(4000),
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      const error = new Error(data.detail || data.error || `FastTask API error: ${response.status}`)
+      error.status = response.status
+      throw error
+    }
+    return data
+  }
+
   async checkHealth() {
     try {
       const response = await fetch(`${this.baseURL}/health/ready`)

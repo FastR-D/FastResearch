@@ -2513,6 +2513,61 @@ html.dark .workflow-note {
 .workspace-team-page { height: 100%; min-height: 0; padding: 26px 32px; background: #fff; }
 .workspace-team-page .team-progress-panel { display: flex; flex-direction: column; height: 100%; min-height: 0; max-height: none; border: 1px solid #e4e7ec; border-radius: 12px; box-shadow: none; }
 .workspace-team-page .team-progress-list { flex: 1; min-height: 0; max-height: none; }
+
+/* FastTask today: the key-authenticated workspace view and the per-member team block. */
+.workspace-today-page { height: 100%; min-height: 0; padding: 26px 32px; background: #fff; overflow-y: auto; }
+.fasttask-today-panel { display: flex; flex-direction: column; gap: 22px; min-height: 100%; padding: 26px 28px; border: 1px solid #e4e7ec; border-radius: 12px; background: #fff; }
+.fasttask-today-panel.is-locked { justify-content: center; align-items: center; }
+.fasttask-today-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
+.fasttask-today-head h2 { margin: 6px 0 4px; color: #101820; font-size: 24px; line-height: 1.2; }
+.fasttask-today-head p { margin: 0; color: #667085; font-size: 12px; }
+.fasttask-today-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.fasttask-today-progress { display: grid; gap: 9px; }
+.fasttask-today-progress-copy { display: flex; justify-content: space-between; align-items: baseline; color: #344054; font-size: 13px; }
+.fasttask-today-progress-copy span { color: #1769d3; font-weight: 700; }
+.fasttask-today-track { height: 8px; border-radius: 999px; background: #e8eef7; overflow: hidden; }
+.fasttask-today-track i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #2f8af5, #1769d3); transition: width .35s ease; }
+.fasttask-today-stats { display: flex; gap: 14px; flex-wrap: wrap; color: #667085; font-size: 12px; }
+.fasttask-today-items { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.fasttask-today-items li { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 14px 16px; border: 1px solid #e4e7ec; border-radius: 10px; background: #fbfcfe; }
+.fasttask-today-items li.is-in_progress { border-color: #9ec6fb; background: #f3f8ff; }
+.fasttask-today-items li.is-satisfied { border-color: #b7e4c7; background: #f5fcf7; }
+.fasttask-today-status { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; color: #98a2b3; }
+.fasttask-today-items li.is-in_progress .fasttask-today-status { color: #1769d3; }
+.fasttask-today-items li.is-satisfied .fasttask-today-status { color: #12805c; }
+.fasttask-today-items li.is-skipped .fasttask-today-status, .fasttask-today-items li.is-not_completed .fasttask-today-status { color: #b54708; }
+.fasttask-today-item-copy strong { display: block; color: #101820; font-size: 14px; line-height: 1.45; }
+.fasttask-today-item-copy p { margin: 4px 0 0; color: #667085; font-size: 12px; line-height: 1.5; }
+.fasttask-today-item-copy p.fasttask-today-summary { color: #1769d3; }
+.fasttask-today-item-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; white-space: nowrap; }
+.fasttask-today-item-meta em { font-style: normal; color: #475467; font-size: 11px; font-weight: 600; }
+.fasttask-today-item-meta small { display: inline-flex; align-items: center; gap: 4px; color: #98a2b3; font-size: 11px; }
+.fasttask-today-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; flex: 1; min-height: 280px; text-align: center; color: #667085; }
+.fasttask-today-empty-icon { display: grid; place-items: center; width: 64px; height: 64px; border-radius: 50%; background: #eef4fd; color: #2f8af5; }
+.fasttask-today-empty strong { color: #101820; font-size: 18px; }
+.fasttask-today-empty p { max-width: 420px; margin: 0; font-size: 13px; line-height: 1.6; }
+.fasttask-today-empty small { color: #b54708; }
+.fasttask-today-empty .primary-button { margin-top: 8px; }
+.team-fasttask-today { margin-top: 12px; padding-top: 12px; border-top: 1px dashed #e4e7ec; }
+.team-fasttask-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: #475467; font-size: 12px; font-weight: 600; }
+.team-fasttask-heading span:first-child { display: inline-flex; align-items: center; gap: 6px; color: #1769d3; }
+.team-fasttask-items { display: grid; gap: 4px; margin: 8px 0 0; padding: 0; list-style: none; }
+.team-fasttask-items li { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 8px; align-items: center; color: #344054; font-size: 12px; }
+.team-fasttask-items li small { color: #98a2b3; font-size: 10px; }
+html.dark .workspace-today-page { background: #111c2f; }
+html.dark .fasttask-today-panel { background: #111c2f; border-color: #203252; }
+html.dark .fasttask-today-head h2, html.dark .fasttask-today-item-copy strong, html.dark .fasttask-today-empty strong { color: #e6edf7; }
+html.dark .fasttask-today-items li { background: #0e192b; border-color: #203252; }
+html.dark .fasttask-today-items li.is-in_progress { background: #10233d; border-color: #24508a; }
+html.dark .fasttask-today-items li.is-satisfied { background: #0f2a1f; border-color: #1e5c40; }
+html.dark .team-fasttask-today { border-color: #203252; }
+@media (max-width: 720px) {
+  .workspace-today-page { padding: 16px; }
+  .fasttask-today-panel { padding: 18px; }
+  .fasttask-today-head { flex-direction: column; }
+  .fasttask-today-items li { grid-template-columns: 22px minmax(0, 1fr); }
+  .fasttask-today-item-meta { grid-column: 2; flex-direction: row; align-items: center; }
+}
 .tech-footer { width: min(1320px, calc(100% - 48px)); gap: 24px; }
 .footer-brand, .footer-tagline { min-width: 0; }
 .footer-brand svg, .footer-pulse { flex: none; }

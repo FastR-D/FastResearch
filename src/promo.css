@@ -272,6 +272,10 @@ html.promo-route body {
   font-size: 14.5px;
 }
 
+.promo-nav-fasttask-label {
+  white-space: nowrap;
+}
+
 .promo-menu-button {
   display: none;
   width: 44px;
@@ -577,6 +581,34 @@ html.promo-route body {
   height: auto;
 }
 
+.promo-motion-badge {
+  position: absolute;
+  z-index: 2;
+  top: 12px;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.8);
+  color: #ffffff;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  pointer-events: none;
+  backdrop-filter: blur(4px);
+}
+
+.promo-motion-badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #4ade80;
+  box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.22);
+}
+
 .promo-figure-status {
   position: absolute;
   inset: 0;
@@ -728,6 +760,10 @@ html.promo-route body {
 /* ---------- Responsive ---------- */
 
 @media (max-width: 900px) {
+  .promo-nav-fasttask-label {
+    display: none;
+  }
+
   .promo-nav-links {
     display: none;
   }

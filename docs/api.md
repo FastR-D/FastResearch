@@ -97,11 +97,13 @@ Base URL：`http://127.0.0.1:8787`（`PORT` / `FASTRESEARCH_PUBLIC_URL`）。
 | PUT | `/api/content/inbox` | 成员 | 200 | 覆盖私信或标已读 |
 | POST | `/api/sso/ticket` | 成员 | 200 | 申请一次性票据 |
 | GET | `/api/sso/launch` | 成员 | 302 | 出票并跳到 `{target}?sso=ticket` |
-| POST | `/api/sso/consume` | 无 | 200 | 兑换票据，Set-Cookie `fr_session` |
+| POST | `/api/sso/consume` | 无；`fast-task` 需 `X-FastTask-SSO-Secret` | 200 | 兑换票据，Set-Cookie `fr_session` |
+| GET | `/api/fasttask/login` | 无 | 302 | 跳转到 FastTask 的 FastResearch 登录入口 |
 | POST | `/api/insight/publish` | `X-FastInsight-Key` | 201 | 写入 Insight 信箱 |
 | POST | `/api/content/reading/publish` | 同上 | 201 | 写入最近阅读 |
 | GET | `/api/workflow` | 成员 | 200 | 读取当前任务列表 |
-| GET | `/api/workflow/team` | 成员 | 200 | 查看所有有效成员的任务和完成进度 |
+| GET | `/api/workflow/team` | 成员 | 200 | 查看所有有效成员的任务和完成进度，含 FastTask 当日任务 |
+| GET | `/api/fasttask/today` | 成员 | 200 | 读取当前成员在 FastTask 的当日任务与进度 |
 | POST | `/api/workflow` | 成员 | 201 | 写入/覆盖自己的任务列表；`{ "default": true }` 加载默认研究流 |
 | POST | `/api/workflow/complete` | 成员 | 200 | 完成当前任务并返回下一任务 |
 | POST | `/api/workflow/publish` | `X-FastInsight-Key` | 201 | 向成员下发任务列表 |
@@ -210,6 +212,45 @@ Authorization: Bearer <成员会话>
   ]
 }
 ```
+
+### 3.2.2 FastTask 当日任务
+
+`GET /api/fasttask/today` 返回当前成员在 FastTask 的当天计划。FastResearch 服务端使用 `FASTTASK_URL` + `FASTTASK_API_KEY` 调用 FastTask 的 `POST /api/v1/integrations/fastresearch/today`；FastTask 侧校验 `FASTTASK_FASTRESEARCH_INGEST_KEY`，并按 `receiver_ref`（即 `accountId`）找到对应 FastTask 用户。
+
+```json
+{
+  "today": {
+    "received": true,
+    "date": "2026-10-18",
+    "timezone": "Asia/Shanghai",
+    "planStatus": "active",
+    "planRevision": 1,
+    "items": [
+      {
+        "id": "…",
+        "taskId": "…",
+        "kind": "core",
+        "title": "阅读论文",
+        "commitment": "完成精读",
+        "minimumAction": "读完摘要",
+        "status": "planned",
+        "targetMinutes": 40,
+        "position": 1,
+        "workspace": { "system": "fastread", "label": "FastRead", "url": "" }
+      }
+    ],
+    "progress": { "total": 1, "completed": 0, "inProgress": 0, "planned": 1, "skipped": 0 }
+  }
+}
+```
+
+| 字段 | 说明 |
+|---|---|
+| `received` | `items` 非空时为 `true`；无计划、无任务或账户未映射时为 `false` |
+| `status` | `planned` / `in_progress` / `satisfied` / `skipped` / `not_completed` |
+| `progress` | 当天任务的完成统计 |
+
+`GET /api/workflow/team` 的每个成员对象额外带 `today` 字段，结构同上。未登录成员或 FastTask 未配置时返回 `configured: false`；界面对 `received: false` 显示「未接受到任务」。服务端缓存同一批成员的结果 8 秒，工作台每 15 秒轮询一次。
 
 ### 3.3 管理员
 
@@ -328,7 +369,7 @@ PUT 可传 `items` 全量覆盖，和/或 `readIds` 把对应条目标为已读�
 
 ### 3.5 SSO
 
-开放 audience：**`fast-news`**、**`fast-read`**（精确字符串）。
+开放 audience：**`fast-news`**、**`fast-read`**、**`fast-task`**（精确字符串）。`fast-task` 兑换时下游必须带 `X-FastTask-SSO-Secret`，其值与 `FASTRESEARCH_FASTTASK_SSO_SECRET` 一致。
 
 | 接口 | 调用方 | 要点 |
 |---|---|---|

@@ -47,7 +47,7 @@ POST /api/content/unlock          → 成员会话（8h）
 点击 FastNews / FastRead
         │
         ▼
-GET /api/sso/launch?audience=fast-news|fast-read&next={模块入口}
+GET /api/sso/launch?audience=fast-news|fast-read|fast-task&next={模块入口}
   Cookie: fr_session=<成员 JWT>
         │
         ▼
@@ -175,6 +175,9 @@ FastRead 使用 `accountId`、`keyId` 和 `person` 建立本模块登录；其�
 |---|---|---|---|
 | `fast-news` | `{VITE_FASTNEWS_URL}?sso={ticket}`（`/api/sso/launch` 302） | FastNews **serve.py** | 已上线 |
 | `fast-read` | `{VITE_READ_URL}?sso={ticket}`（经 `/api/sso/launch` 302） | FastRead **后端** | 已上线 |
+| `fast-task` | `{FASTTASK_PUBLIC_URL}/api/v1/auth/fastresearch/callback?state=…&sso={ticket}`（经 `/api/sso/launch` 302） | FastTask **后端**（需 `X-FastTask-SSO-Secret`） | 已上线 |
+
+`fast-task` 兑换必须带请求头 `X-FastTask-SSO-Secret`，其值与 FastResearch 的 `FASTRESEARCH_FASTTASK_SSO_SECRET`、FastTask 的 `FASTTASK_FASTRESEARCH_SSO_SECRET` 一致，至少 32 字符。FastTask 按 `accountId` 映射本模块用户；个人 Key 不进入 FastTask。
 
 audience 是精确字符串，不要用 `FastRead`、`read`、`fastread`。
 

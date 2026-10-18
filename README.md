@@ -190,6 +190,25 @@ FastTask 使用 `fasttask-dispatch-v1` 协议版本发布任务：
 - `fast-write` - FastWrite 写作工作区
 - `fast-news` - FastNews 资讯跟踪
 
+### FastTask Key 登录
+
+个人 Key 是 FastResearch 与 FastTask 之间唯一的用户凭证。已登录成员点击页面上的「打开 FastTask」会经 `/api/fasttask/login` 跳转到 FastTask 登录入口；FastTask 校验 `state` 后把浏览器送回 FastResearch，FastResearch 再出一次性票据（`audience=fast-task`）并 302 到 FastTask 回调。FastTask 服务端用共享密钥兑换票据，按稳定的 `accountId` 创建或复用本模块用户，原始个人 Key 不会离开 FastResearch。
+
+需要在两边配置：
+
+| 变量 | 配置位置 | 说明 |
+|---|---|---|
+| `FASTTASK_PUBLIC_URL` | FastResearch | 浏览器访问 FastTask 的公开地址 |
+| `FASTRESEARCH_FASTTASK_SSO_SECRET` | FastResearch | 至少 32 字符，与 FastTask 侧一致 |
+| `FASTTASK_FASTRESEARCH_LOGIN_ENABLED` | FastTask | 设为 `true` 启用 Key 登录 |
+| `FASTTASK_FASTRESEARCH_URL` | FastTask | FastTask 服务端访问 FastResearch 的地址 |
+| `FASTTASK_FASTRESEARCH_PUBLIC_URL` | FastTask | 浏览器访问 FastResearch 的公开地址 |
+| `FASTTASK_FASTRESEARCH_SSO_SECRET` | FastTask | 与 FastResearch 侧一致 |
+
+FastResearch 工作台通过 `GET /api/fasttask/today` 展示当前成员在 FastTask 的当天任务，`GET /api/workflow/team` 同时返回每位成员当天的 FastTask 任务进度。FastResearch 服务端使用 `FASTTASK_URL` + `FASTTASK_API_KEY` 调用 FastTask 的 `/api/v1/integrations/fastresearch/today`；FastTask 侧对应配置为 `FASTTASK_FASTRESEARCH_INGEST_KEY`，两边的 Key 必须一致。没有收到任务时，工作台显示「未接受到任务」。
+
+本机以 `FASTTASK_ENV=production` 运行且公开地址为回环 HTTP 时，FastTask 还需设置 `FASTTASK_FASTRESEARCH_LOOPBACK_HTTP=true`。完整接口与安全规则见 [docs/key-login.md](docs/key-login.md)。
+
 ### 使用示例
 
 详细集成说明和示例代码见：

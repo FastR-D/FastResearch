@@ -1,19 +1,33 @@
-import { ArrowRight, ArrowUp, BookOpenText, Check, FlaskConical, Inbox, KeyRound, Menu, Newspaper, PenLine, UsersRound, X } from 'lucide-react'
+import { ArrowRight, ArrowUp, BookOpenText, Check, FlaskConical, Inbox, KeyRound, ListTodo, Menu, Newspaper, PenLine, UsersRound, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createTranslator, getInitialLocale, saveLocale, type Locale, type Translate } from './i18n'
 import './promo.css'
 
 const WORKSPACE_HREF = `${import.meta.env.BASE_URL}workspace`
+const API_BASE = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '')
+const FASTTASK_HREF = `${API_BASE}/api/fasttask/login`
 const asset = (name: string) => `${import.meta.env.BASE_URL}promo/${name}`
 
 const MODULES = [
-  { id: 'fastNews', nameKey: 'entry.fast-news.name', labelKey: 'entry.fast-news.label', image: 'module-news', altKey: 'promo.media.alt.news', Icon: Newspaper, width: 960, height: 620 },
-  { id: 'fastRead', nameKey: 'entry.fast-read.name', labelKey: 'entry.fast-read.label', image: 'module-read', altKey: 'promo.media.alt.read', Icon: BookOpenText, width: 960, height: 620 },
-  { id: 'fastWrite', nameKey: 'entry.fast-write.name', labelKey: 'entry.fast-write.label', image: 'module-write', altKey: 'promo.media.alt.write', Icon: PenLine, width: 960, height: 620 },
+  { id: 'fastNews', nameKey: 'entry.fast-news.name', labelKey: 'entry.fast-news.label', image: 'module-news-static', motion: 'module-news-anim', altKey: 'promo.media.alt.news', Icon: Newspaper, width: 960, height: 620 },
+  { id: 'fastRead', nameKey: 'entry.fast-read.name', labelKey: 'entry.fast-read.label', image: 'module-read-static', motion: 'module-read-anim', altKey: 'promo.media.alt.read', Icon: BookOpenText, width: 960, height: 620 },
+  { id: 'fastWrite', nameKey: 'entry.fast-write.name', labelKey: 'entry.fast-write.label', image: 'module-write-static', motion: 'module-write-anim', altKey: 'promo.media.alt.write', Icon: PenLine, width: 960, height: 620 },
 ] as const
 
 function prefersReducedMotion() {
   return typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
+function usePrefersReducedMotion() {
+  const [reduced, setReduced] = useState(prefersReducedMotion)
+  useEffect(() => {
+    const query = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const update = () => setReduced(query.matches)
+    update()
+    query.addEventListener('change', update)
+    return () => query.removeEventListener('change', update)
+  }, [])
+  return reduced
 }
 
 function Reveal({ children, className = '', delay = 0 }: { children: ReactNode; className?: string; delay?: number }) {
@@ -38,14 +52,17 @@ function Reveal({ children, className = '', delay = 0 }: { children: ReactNode; 
   return <div ref={ref} className={`promo-reveal ${className}`.trim()} style={delay ? { transitionDelay: `${delay}ms` } : undefined}>{children}</div>
 }
 
-function PromoImage({ src, alt, width, height, t, eager = false }: { src: string; alt: string; width: number; height: number; t: Translate; eager?: boolean }) {
+function PromoImage({ src, motionSrc, alt, width, height, t, eager = false, reducedMotion }: { src: string; motionSrc?: string; alt: string; width: number; height: number; t: Translate; eager?: boolean; reducedMotion: boolean }) {
+  const activeSrc = motionSrc && !reducedMotion ? motionSrc : src
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
+  useEffect(() => setState('loading'), [activeSrc])
   return (
     <figure className={`promo-figure is-${state}`}>
       {state === 'loading' && <div className="promo-figure-status">{t('promo.media.loading')}</div>}
       {state === 'error' && <div className="promo-figure-status promo-figure-status--error">{t('promo.media.unavailable')}</div>}
+      {motionSrc && !reducedMotion && <span className="promo-motion-badge">{t('promo.media.animated')}</span>}
       <img
-        src={src}
+        src={activeSrc}
         alt={alt}
         width={width}
         height={height}
@@ -64,6 +81,7 @@ function PromoPage() {
   const [scrolled, setScrolled] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const t = useMemo(() => createTranslator(locale), [locale])
+  const reducedMotion = usePrefersReducedMotion()
 
   const changeLocale = () => {
     const next = locale === 'zh-CN' ? 'en-US' : 'zh-CN'
@@ -120,6 +138,10 @@ function PromoPage() {
             <button type="button" className="promo-lang" onClick={changeLocale} aria-label={t('promo.language.label')}>
               {locale === 'zh-CN' ? 'English' : '中文'}
             </button>
+            <a className="promo-btn promo-btn--ghost promo-nav-cta" href={FASTTASK_HREF} aria-label={t('header.fastTask')} title={t('header.fastTask')}>
+              <ListTodo size={16} />
+              <span className="promo-nav-fasttask-label">{t('header.fastTask')}</span>
+            </a>
             <a className="promo-btn promo-btn--primary promo-nav-cta" href={WORKSPACE_HREF}>{t('promo.cta.workspaceShort')}</a>
             <button
               type="button"
@@ -135,6 +157,7 @@ function PromoPage() {
         </div>
         <div id="promo-menu" className="promo-menu" hidden={!menuOpen}>
           {navLinks.map((link) => <a key={link.href} href={link.href} onClick={() => setMenuOpen(false)}>{link.label}</a>)}
+          <a className="promo-btn promo-btn--ghost" href={FASTTASK_HREF} onClick={() => setMenuOpen(false)}><ListTodo size={15} /> {t('header.fastTask')}</a>
           <button type="button" className="promo-menu-lang" onClick={() => { changeLocale(); setMenuOpen(false) }} aria-label={t('promo.language.label')}>
             {locale === 'zh-CN' ? 'English' : '中文'}
           </button>
@@ -159,6 +182,7 @@ function PromoPage() {
           <p className="promo-hero-lead">{t('promo.hero.description')}</p>
           <div className="promo-hero-actions">
             <a className="promo-btn promo-btn--primary" href={WORKSPACE_HREF}>{t('promo.cta.workspace')}</a>
+            <a className="promo-btn promo-btn--ghost" href={FASTTASK_HREF}><ListTodo size={16} /> {t('header.fastTask')}</a>
             <a className="promo-btn promo-btn--ghost" href="#workflow">{t('promo.cta.explore')}</a>
           </div>
         </div>
@@ -184,7 +208,7 @@ function PromoPage() {
             ))}
           </ol>
           <Reveal className="promo-workflow-visual">
-            <PromoImage src={asset('workflow-board.webp')} alt={t('promo.media.alt.workflow')} width={1280} height={760} t={t} />
+            <PromoImage src={asset('workflow-board.webp')} alt={t('promo.media.alt.workflow')} width={2636} height={1198} t={t} reducedMotion={reducedMotion} />
           </Reveal>
         </div>
       </section>
@@ -206,7 +230,7 @@ function PromoPage() {
                   <a className="promo-link" href={WORKSPACE_HREF}>{t('promo.modules.openCta')} <ArrowRight size={15} /></a>
                 </Reveal>
                 <Reveal className="promo-module-media" delay={index ? 60 : 0}>
-                  <PromoImage src={asset(`${module.image}.webp`)} alt={t(module.altKey)} width={module.width} height={module.height} t={t} />
+                  <PromoImage src={asset(`${module.image}.webp`)} motionSrc={'motion' in module ? asset(`${module.motion}.webp`) : undefined} alt={t(module.altKey)} width={module.width} height={module.height} t={t} reducedMotion={reducedMotion} />
                 </Reveal>
               </article>
             )
@@ -224,7 +248,7 @@ function PromoPage() {
               <p className="promo-note"><Check size={14} /> {t('promo.insight.requirement')}</p>
             </Reveal>
             <Reveal className="promo-module-media">
-              <PromoImage src={asset('insight.webp')} alt={t('promo.media.alt.insight')} width={1100} height={760} t={t} />
+              <PromoImage src={asset('insight.webp')} alt={t('promo.media.alt.insight')} width={2636} height={1198} t={t} reducedMotion={reducedMotion} />
             </Reveal>
           </article>
         </div>
@@ -240,7 +264,7 @@ function PromoPage() {
               <p className="promo-note"><Check size={14} /> {t('promo.team.fastTaskOptional')}</p>
             </Reveal>
             <Reveal className="promo-module-media">
-              <PromoImage src={asset('team.webp')} alt={t('promo.media.alt.team')} width={1100} height={620} t={t} />
+              <PromoImage src={asset('team.webp')} alt={t('promo.media.alt.team')} width={2508} height={1094} t={t} reducedMotion={reducedMotion} />
             </Reveal>
           </article>
         </div>

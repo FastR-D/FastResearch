@@ -1,4 +1,4 @@
-import { ArrowUpRight, BookOpenText, Check, CheckCircle2, Circle, CircleDot, ExternalLink, FlaskConical, Inbox, KeyRound, Languages, Layers, ListTodo, LockKeyhole, LogIn, Moon, Newspaper, PenLine, Plus, Save, Settings2, ShieldCheck, Sun, Terminal, Trash2, UsersRound, X } from 'lucide-react'
+import { ArrowUpRight, BookOpenText, CalendarCheck, CalendarClock, Check, CheckCircle2, Circle, CircleDot, Clock, ExternalLink, FlaskConical, Inbox, KeyRound, Languages, Layers, ListTodo, LockKeyhole, LogIn, Moon, Newspaper, PenLine, Plus, RefreshCw, Save, Settings2, ShieldCheck, Sun, Terminal, Trash2, UsersRound, X } from 'lucide-react'
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createTranslator, getInitialLocale, saveLocale, type Locale, type Translate } from './i18n'
 
@@ -12,11 +12,14 @@ type MemberSession = BearerSession & { person: string; keyId: string; expiresAt:
 type PersonalKey = { id: string; person: string; keyPreview: string; active: boolean; createdAt?: string; expiresAt?: string | null }
 type InsightItem = { id: string; title: string; summary?: string; url?: string; source?: string; direction?: string; authors?: string; venue?: string; receivedAt?: string }
 type TaskStatus = 'pending' | 'active' | 'done'
-type WorkspaceView = 'workflow' | 'insight' | 'team' | 'routing'
+type WorkspaceView = 'today' | 'workflow' | 'insight' | 'team' | 'routing'
 type WorkspaceDirection = 'forward' | 'backward'
 type WorkflowTask = { id: string; module: WorkflowModule; title: string; description: string; status: TaskStatus; completedAt?: string | null }
 type Workflow = { id: string; title: string; source?: string; receivedAt?: string; currentIndex: number; doneCount: number; total: number; completed: boolean; currentTask?: WorkflowTask | null; tasks: WorkflowTask[] }
-type TeamWorkflow = { keyId: string; person: string; workflow: Workflow | null }
+type FastTaskTodayItem = { id: string; taskId?: string | null; kind?: string; title: string; commitment?: string; minimumAction?: string; status: string; completionType?: string; completionSummary?: string; targetMinutes?: number; position?: number; workspace?: { system: string; label: string; url?: string } | null }
+type FastTaskTodayProgress = { total: number; completed: number; inProgress: number; planned: number; skipped: number }
+type FastTaskToday = { configured?: boolean; received: boolean; date?: string; timezone?: string; planStatus?: string; planRevision?: number; updatedAt?: string; items: FastTaskTodayItem[]; progress: FastTaskTodayProgress; error?: string }
+type TeamWorkflow = { keyId: string; person: string; workflow: Workflow | null; today?: FastTaskToday | null }
 type PendingLaunch = { entryId: EntryId; popup: Window | null }
 type RosterOwner = { name: string; feishu_open_id?: string; [key: string]: unknown }
 type RosterDirection = { name: string; priority?: number; keywords: string[]; owners: RosterOwner[]; [key: string]: unknown }
@@ -28,7 +31,7 @@ const adminStorageKey = 'fastresearch-admin-session'
 const memberStorageKey = 'fastresearch-member-session'
 const personalKeyStorage = 'fastresearch-personal-key'
 const MODULE_ORDER: EntryId[] = ['fast-news', 'fast-read', 'fast-write']
-const WORKSPACE_VIEWS: WorkspaceView[] = ['workflow', 'insight', 'team', 'routing']
+const WORKSPACE_VIEWS: WorkspaceView[] = ['today', 'workflow', 'insight', 'team', 'routing']
 const SSO_AUDIENCE: Record<SsoEntryId, 'fast-news' | 'fast-read'> = { 'fast-read': 'fast-read', 'fast-news': 'fast-news' }
 const ENTRY_CONFIG: Record<EntryId, { nameKey: string; labelKey: string; descriptionKey: string; Icon: typeof BookOpenText; url?: string; tone: string }> = {
   'fast-write': { nameKey: 'entry.fast-write.name', labelKey: 'entry.fast-write.label', descriptionKey: 'entry.fast-write.description', Icon: PenLine, url: import.meta.env.VITE_WRITE_URL || 'http://127.0.0.1:3003', tone: 'blue' },
@@ -127,11 +130,13 @@ function App2() {
   const [toast, setToast] = useState('')
   const [workflow, setWorkflow] = useState<Workflow | null>(null)
   const [teamWorkflows, setTeamWorkflows] = useState<TeamWorkflow[]>([])
+  const [fastTaskToday, setFastTaskToday] = useState<FastTaskToday | null>(null)
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
-  const [workspaceView, setWorkspaceView] = useState<WorkspaceView>('workflow')
+  const [workspaceView, setWorkspaceView] = useState<WorkspaceView>('today')
   const [workspaceDirection, setWorkspaceDirection] = useState<WorkspaceDirection>('forward')
   const [busy, setBusy] = useState(false)
   const pendingLaunch = useRef<PendingLaunch | null>(null)
+  const pendingFastTaskLaunch = useRef<string | null>(null)
   const workspaceRef = useRef<HTMLElement | null>(null)
   const lastWorkspaceWheel = useRef(0)
   const t = useMemo(() => createTranslator(locale), [locale])
@@ -212,6 +217,7 @@ function App2() {
       setReadIds(new Set())
       setWorkflow(null)
       setTeamWorkflows([])
+      setFastTaskToday(null)
       setSelectedTaskId(previewWorkflow.tasks[0]?.id ?? null)
       return
     }
@@ -219,14 +225,16 @@ function App2() {
     let cancelled = false
     const load = async () => {
       try {
-        const [data, team] = await Promise.all([
+        const [data, team, today] = await Promise.all([
           request<{ insightItems?: InsightItem[]; workflow?: Workflow | null }>('/api/content/me', {}, member),
           request<{ members: TeamWorkflow[] }>('/api/workflow/team', {}, member),
+          request<{ today: FastTaskToday }>('/api/fasttask/today', {}, member),
         ])
         if (cancelled) return
         setInsightItems(data.insightItems ?? [])
         setWorkflow(data.workflow ?? null)
         setTeamWorkflows(team.members ?? [])
+        setFastTaskToday(today.today ?? null)
       } catch (err) {
         if (cancelled) return
         sessionStorage.removeItem(memberStorageKey)
@@ -342,6 +350,48 @@ function App2() {
     }
   }
 
+  const launchFastTaskSso = useCallback(async (memberSession: MemberSession, next: string) => {
+    try {
+      await request('/api/content/me', {}, memberSession)
+      const launch = new URL(apiUrl('/api/sso/launch'), window.location.origin)
+      launch.searchParams.set('audience', 'fast-task')
+      launch.searchParams.set('next', next)
+      window.location.assign(launch.toString())
+    } catch (err) {
+      sessionStorage.removeItem(memberStorageKey)
+      setMember(null)
+      pendingFastTaskLaunch.current = next
+      setKeyOpen(true)
+      setToast(err instanceof Error ? err.message : t('error.ssoFailed', { name: 'FastTask' }))
+    }
+  }, [t])
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('launch') !== 'fast-task') return
+    const rawNext = params.get('next') ?? ''
+    const page = new URL(window.location.href)
+    page.searchParams.delete('launch')
+    page.searchParams.delete('next')
+    window.history.replaceState({}, '', page.pathname + page.search + page.hash)
+    let next = ''
+    try {
+      const callback = new URL(rawNext)
+      const state = callback.searchParams.get('state') ?? ''
+      if (!['http:', 'https:'].includes(callback.protocol) ||
+          callback.pathname !== '/api/v1/auth/fastresearch/callback' ||
+          callback.username || callback.password ||
+          !/^[A-Za-z0-9_-]{32,128}$/.test(state)) throw new Error('invalid callback')
+      next = callback.toString()
+    } catch {
+      setToast(t('error.ssoFailed', { name: 'FastTask' }))
+      return
+    }
+    pendingFastTaskLaunch.current = next
+    if (member) void launchFastTaskSso(member, next)
+    else setKeyOpen(true)
+  }, [launchFastTaskSso, member, t])
+
   const openEntry = (entry: Entry, popup?: Window | null) => {
     const tab = popup && !popup.closed ? popup : window.open('about:blank', '_blank')
     if (!tab) {
@@ -392,6 +442,28 @@ function App2() {
       else if (isSsoEntry(pending.entryId)) await launchSsoEntry(pending.entryId, value, pending.popup)
       else pending.popup?.close()
     }
+    const fastTaskNext = pendingFastTaskLaunch.current
+    if (fastTaskNext) {
+      pendingFastTaskLaunch.current = null
+      await launchFastTaskSso(value, fastTaskNext)
+    }
+  }
+
+  const refreshFastTaskToday = async () => {
+    if (!member) {
+      setKeyOpen(true)
+      return
+    }
+    try {
+      const [today, team] = await Promise.all([
+        request<{ today: FastTaskToday }>('/api/fasttask/today', {}, member),
+        request<{ members: TeamWorkflow[] }>('/api/workflow/team', {}, member),
+      ])
+      setFastTaskToday(today.today ?? null)
+      setTeamWorkflows(team.members ?? [])
+    } catch (err) {
+      setToast(err instanceof Error ? err.message : t('error.request'))
+    }
   }
 
   const markRead = (id: string) => {
@@ -409,6 +481,7 @@ function App2() {
   const closeKeyDialog = () => {
     pendingLaunch.current?.popup?.close()
     pendingLaunch.current = null
+    pendingFastTaskLaunch.current = null
     setKeyOpen(false)
   }
 
@@ -502,6 +575,10 @@ function App2() {
         <div className="header-actions">
           {casEnabled && (member ? <button type="button" className="ghost-button" onClick={() => setCasOpen(true)}>FastCAS 认证</button> : <a className="ghost-button" href={apiUrl('/api/auth/fastcas/login')}>使用 FastCAS 登录</a>)}
           {member && <span className="header-identity" title={`当前认证成员：${member.person}`}>👤 {member.person}</span>}
+          <button type="button" className="ghost-button" onClick={() => window.location.assign(apiUrl('/api/fasttask/login'))}>
+            <ListTodo size={14} />
+            <span>{t('header.fastTask')}</span>
+          </button>
           <button type="button" className="ghost-button" onClick={() => setKeyOpen(true)}>
             <KeyRound size={14} />
             <span>{member ? t('header.keyActive') : t('header.authenticate')}</span>
@@ -538,6 +615,9 @@ function App2() {
               <h2>{t('workspace.title')}</h2>
             </div>
             <div className="workspace-tabs" aria-label={t('workspace.views')}>
+              <button type="button" className={workspaceView === 'today' ? 'is-active' : ''} aria-pressed={workspaceView === 'today'} onClick={() => setWorkspacePage('today')}>
+                <CalendarCheck size={17} /> <span>{t('workspace.today')}</span>
+              </button>
               <button type="button" className={workspaceView === 'workflow' ? 'is-active' : ''} aria-pressed={workspaceView === 'workflow'} onClick={() => setWorkspacePage('workflow')}>
                 <ListTodo size={17} /> <span>{t('workspace.workflow')}</span>
               </button>
@@ -555,6 +635,18 @@ function App2() {
           </div>
 
           <div className={`workspace-page workspace-page--${workspaceView} workspace-page--${workspaceDirection}`} key={workspaceView}>
+            {workspaceView === 'today' && (
+              <div className="workspace-today-page">
+                <FastTaskTodayPanel
+                  member={member}
+                  today={fastTaskToday}
+                  onUnlock={() => setKeyOpen(true)}
+                  onRefresh={() => { void refreshFastTaskToday() }}
+                  onOpenFastTask={() => window.location.assign(apiUrl('/api/fasttask/login'))}
+                  t={t}
+                />
+              </div>
+            )}
             {workspaceView === 'workflow' && (
               <WorkflowBoard
                 workflow={visibleWorkflow}
@@ -631,6 +723,100 @@ function App2() {
   )
 }
 
+function fastTaskStatusKey(status: string) {
+  return ['satisfied', 'in_progress', 'planned', 'skipped', 'not_completed'].includes(status) ? `today.status.${status}` : 'today.status.default'
+}
+
+function FastTaskStatusIcon({ status }: { status: string }) {
+  if (status === 'satisfied') return <CheckCircle2 size={16} />
+  if (status === 'in_progress') return <CircleDot size={16} />
+  if (status === 'skipped' || status === 'not_completed') return <X size={16} />
+  return <Circle size={16} />
+}
+
+function FastTaskTodayPanel({ member, today, onUnlock, onRefresh, onOpenFastTask, t }: {
+  member: MemberSession | null
+  today: FastTaskToday | null
+  onUnlock: () => void
+  onRefresh: () => void
+  onOpenFastTask: () => void
+  t: Translate
+}) {
+  if (!member) {
+    return (
+      <section className="fasttask-today-panel is-locked" aria-label={t('today.title')}>
+        <div className="fasttask-today-empty">
+          <span className="fasttask-today-empty-icon"><LockKeyhole size={30} /></span>
+          <strong>{t('today.locked')}</strong>
+          <p>{t('today.lockedHint')}</p>
+          <button type="button" className="primary-button" onClick={onUnlock}>{t('board.authenticate')} <KeyRound size={14} /></button>
+        </div>
+      </section>
+    )
+  }
+  const items = today?.items ?? []
+  const progress = today?.progress ?? { total: 0, completed: 0, inProgress: 0, planned: 0, skipped: 0 }
+  const percentage = progress.total ? Math.round(100 * progress.completed / progress.total) : 0
+
+  return (
+    <section className="fasttask-today-panel" aria-label={t('today.title')}>
+      <header className="fasttask-today-head">
+        <div>
+          <span className="intel-kicker"><CalendarCheck size={14} /> {t('today.kicker')}</span>
+          <h2>{t('today.title')}</h2>
+          <p>{today?.date ? t('today.date', { date: today.date }) : t('today.syncing')}</p>
+        </div>
+        <div className="fasttask-today-actions">
+          <button type="button" className="outline-button" onClick={onRefresh}><RefreshCw size={14} /> {t('today.refresh')}</button>
+          <button type="button" className="primary-button" onClick={onOpenFastTask}><ExternalLink size={14} /> {t('header.fastTask')}</button>
+        </div>
+      </header>
+
+      {items.length === 0 ? (
+        <div className="fasttask-today-empty">
+          <span className="fasttask-today-empty-icon"><CalendarClock size={30} /></span>
+          <strong>{t('today.empty')}</strong>
+          <p>{t('today.emptyHint')}</p>
+          {today?.error && <small role="status">{t('today.error')}</small>}
+        </div>
+      ) : (
+        <>
+          <div className="fasttask-today-progress">
+            <div className="fasttask-today-progress-copy">
+              <strong>{t('today.progress', { done: progress.completed, total: progress.total })}</strong>
+              <span>{percentage}%</span>
+            </div>
+            <div className="fasttask-today-track" role="progressbar" aria-valuenow={percentage} aria-valuemin={0} aria-valuemax={100}>
+              <i style={{ width: `${percentage}%` }} />
+            </div>
+            <div className="fasttask-today-stats">
+              {progress.inProgress > 0 && <span>{t('today.inProgress', { count: progress.inProgress })}</span>}
+              <span>{t('today.planned', { count: progress.planned })}</span>
+              {progress.skipped > 0 && <span>{t('today.skipped', { count: progress.skipped })}</span>}
+            </div>
+          </div>
+          <ul className="fasttask-today-items">
+            {items.map((item) => (
+              <li className={`is-${item.status}`} key={item.id}>
+                <span className="fasttask-today-status" aria-hidden="true"><FastTaskStatusIcon status={item.status} /></span>
+                <div className="fasttask-today-item-copy">
+                  <strong>{item.title}</strong>
+                  {item.minimumAction && <p>{item.minimumAction}</p>}
+                  {item.completionSummary && <p className="fasttask-today-summary">{item.completionSummary}</p>}
+                </div>
+                <span className="fasttask-today-item-meta">
+                  <em>{t(fastTaskStatusKey(item.status))}</em>
+                  {item.targetMinutes ? <small><Clock size={12} /> {t('today.minutes', { count: item.targetMinutes })}</small> : null}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </section>
+  )
+}
+
 function TeamProgressPanel({ members, currentKeyId, loading, t }: { members: TeamWorkflow[]; currentKeyId: string | null; loading: boolean; t: Translate }) {
   const assigned = members.filter((member) => member.workflow)
   const completed = assigned.reduce((total, member) => total + (member.workflow?.doneCount ?? 0), 0)
@@ -671,6 +857,23 @@ function TeamProgressPanel({ members, currentKeyId, loading, t }: { members: Tea
                     ))}
                   </ul>
                 ) : <p className="team-progress-no-tasks">{t('team.noTasks')}</p>}
+                <div className="team-fasttask-today">
+                  <div className="team-fasttask-heading">
+                    <span><CalendarCheck size={13} /> {t('team.fastTaskToday')}</span>
+                    <span>{member.today?.received ? `${member.today.progress.completed}/${member.today.progress.total}` : t('team.noFastTaskToday')}</span>
+                  </div>
+                  {member.today?.received ? (
+                    <ul className="team-fasttask-items">
+                      {member.today.items.map((item) => (
+                        <li className={`is-${item.status}`} key={item.id}>
+                          <span className="team-task-status" aria-hidden="true">{item.status === 'satisfied' ? '✓' : item.status === 'in_progress' ? '●' : item.status === 'skipped' || item.status === 'not_completed' ? '×' : '○'}</span>
+                          <span>{item.title}</span>
+                          <small>{t(fastTaskStatusKey(item.status))}</small>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : <p className="team-progress-no-tasks">{t('team.noFastTaskToday')}</p>}
+                </div>
               </article>
             )
           })}
