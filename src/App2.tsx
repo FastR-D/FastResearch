@@ -4,6 +4,7 @@ import { createTranslator, getInitialLocale, saveLocale, type Locale, type Trans
 
 type EntryId = 'fast-write' | 'fast-read' | 'fast-news'
 type SsoEntryId = 'fast-read' | 'fast-news'
+type WorkflowModule = EntryId | 'fast-ppt' | 'fast-lab'
 type Entry = { id: EntryId; name: string; label: string; description: string; Icon: typeof BookOpenText; url?: string; tone: string }
 type BearerSession = { token: string }
 type AdminSession = BearerSession & { username: string; expiresAt: number }
@@ -13,7 +14,7 @@ type InsightItem = { id: string; title: string; summary?: string; url?: string; 
 type TaskStatus = 'pending' | 'active' | 'done'
 type WorkspaceView = 'workflow' | 'insight' | 'team' | 'routing'
 type WorkspaceDirection = 'forward' | 'backward'
-type WorkflowTask = { id: string; module: EntryId; title: string; description: string; status: TaskStatus; completedAt?: string | null }
+type WorkflowTask = { id: string; module: WorkflowModule; title: string; description: string; status: TaskStatus; completedAt?: string | null }
 type Workflow = { id: string; title: string; source?: string; receivedAt?: string; currentIndex: number; doneCount: number; total: number; completed: boolean; currentTask?: WorkflowTask | null; tasks: WorkflowTask[] }
 type TeamWorkflow = { keyId: string; person: string; workflow: Workflow | null }
 type PendingLaunch = { entryId: EntryId; popup: Window | null }
@@ -33,6 +34,13 @@ const ENTRY_CONFIG: Record<EntryId, { nameKey: string; labelKey: string; descrip
   'fast-write': { nameKey: 'entry.fast-write.name', labelKey: 'entry.fast-write.label', descriptionKey: 'entry.fast-write.description', Icon: PenLine, url: import.meta.env.VITE_WRITE_URL || 'http://127.0.0.1:3003', tone: 'blue' },
   'fast-read': { nameKey: 'entry.fast-read.name', labelKey: 'entry.fast-read.label', descriptionKey: 'entry.fast-read.description', Icon: BookOpenText, url: import.meta.env.VITE_READ_URL || 'http://127.0.0.1:3015', tone: 'blue' },
   'fast-news': { nameKey: 'entry.fast-news.name', labelKey: 'entry.fast-news.label', descriptionKey: 'entry.fast-news.description', Icon: Newspaper, url: import.meta.env.VITE_FASTNEWS_URL || 'http://127.0.0.1:4173', tone: 'blue' },
+}
+const WORKFLOW_MODULE_NAMES: Record<WorkflowModule, string> = {
+  'fast-ppt': 'FastPPT',
+  'fast-write': 'FastWrite',
+  'fast-read': 'FastRead',
+  'fast-news': 'FastNews',
+  'fast-lab': 'FastLab',
 }
 
 function createEntries(t: Translate): Record<EntryId, Entry> {
@@ -95,6 +103,14 @@ function isSsoEntry(id: EntryId): id is SsoEntryId {
   return id === 'fast-read' || id === 'fast-news'
 }
 
+function getWorkflowEntry(entries: Record<EntryId, Entry>, module: WorkflowModule) {
+  return Object.prototype.hasOwnProperty.call(entries, module) ? entries[module as EntryId] : null
+}
+
+function getWorkflowModuleName(entries: Record<EntryId, Entry>, module: WorkflowModule) {
+  return getWorkflowEntry(entries, module)?.name ?? WORKFLOW_MODULE_NAMES[module] ?? module
+}
+
 function App2() {
   // Default to the light BlockSec-inspired blue research theme
   const [dark, setDark] = useState(() => localStorage.getItem('fastresearch-theme') === 'dark')
@@ -123,7 +139,7 @@ function App2() {
   const previewWorkflow = useMemo(() => createPreviewWorkflow(t), [t])
   const visibleWorkflow = workflow ?? previewWorkflow
   const selectedTask = visibleWorkflow.tasks.find((task) => task.id === selectedTaskId) ?? visibleWorkflow.tasks.find((task) => task.status === 'active') ?? visibleWorkflow.tasks[0]
-  const selectedEntry = selectedTask ? entries[selectedTask.module] : null
+  const selectedEntry = selectedTask ? getWorkflowEntry(entries, selectedTask.module) : null
   const expireAdminSession = useCallback(() => {
     sessionStorage.removeItem(adminStorageKey)
     setSession(null)
@@ -442,7 +458,8 @@ function App2() {
       return
     }
     const upcoming = workflow.tasks.find((item) => item.status === 'pending')
-    const nextTab = upcoming && entries[upcoming.module]?.url ? window.open('about:blank', '_blank') : null
+    const upcomingEntry = upcoming ? getWorkflowEntry(entries, upcoming.module) : null
+    const nextTab = upcomingEntry?.url ? window.open('about:blank', '_blank') : null
     setBusy(true)
     try {
       const result = await request<{ workflow: Workflow; nextTask?: WorkflowTask | null }>('/api/workflow/complete', { method: 'POST', body: JSON.stringify({ taskId: task.id }) }, member)
@@ -451,8 +468,10 @@ function App2() {
       const next = result.nextTask ?? result.workflow.currentTask ?? null
       if (next) {
         setSelectedTaskId(next.id)
-        setToast(t('toast.stageComplete', { name: entries[next.module].name }))
-        openEntry(entries[next.module], nextTab)
+        setToast(t('toast.stageComplete', { name: getWorkflowModuleName(entries, next.module) }))
+        const nextEntry = getWorkflowEntry(entries, next.module)
+        if (nextEntry) openEntry(nextEntry, nextTab)
+        else nextTab?.close()
       } else {
         nextTab?.close()
         setSelectedTaskId(result.workflow.tasks[result.workflow.tasks.length - 1]?.id ?? task.id)
@@ -691,20 +710,20 @@ function WorkflowBoard({ workflow, live, member, selectedId, selectedEntry, sele
         </div>
         <ol className="workflow-steps">
           {workflow.tasks.map((task, index) => {
-            const entry = entries[task.module]
+            const entry = getWorkflowEntry(entries, task.module)
             const active = task.id === selectedId
             const StatusIcon = task.status === 'done' ? CheckCircle2 : task.status === 'active' ? CircleDot : Circle
             return (
               <li key={task.id}>
                 <button
                   type="button"
-                  className={`workflow-step is-${task.status} ${active ? 'is-selected' : ''} tone-${entry.tone}`}
+                  className={`workflow-step is-${task.status} ${active ? 'is-selected' : ''} tone-${entry?.tone ?? 'neutral'}`}
                   onClick={() => onSelect(task)}
                   aria-current={task.status === 'active' ? 'step' : undefined}
                 >
                   <span className="step-index">0{index + 1}</span>
                   <span className="step-copy">
-                    <em>{entry.name} · {entry.label.split(' · ')[0]}</em>
+                    <em>{getWorkflowModuleName(entries, task.module)} · {entry?.label.split(' · ')[0] ?? t('board.externalModuleLabel')}</em>
                     <strong>{task.title}</strong>
                   </span>
                   <span className="step-status-icon">
@@ -742,32 +761,34 @@ function WorkflowBoard({ workflow, live, member, selectedId, selectedEntry, sele
             <p>{t('board.allDoneDescription')}</p>
             {member && <button type="button" className="outline-button" onClick={onLoadDefault} disabled={busy}>{t('board.reload')}</button>}
           </div>
-        ) : selectedEntry && selectedTask ? (
+        ) : selectedTask ? (
           <>
             <div className="stage-top-bar">
-              <span className="stage-badge">{selectedEntry.label}</span>
+              <span className="stage-badge">{selectedEntry?.label ?? t('board.externalModuleLabel')}</span>
               <span className="card-number">{t('board.stage', { current: String(workflow.tasks.findIndex((task) => task.id === selectedTask.id) + 1).padStart(2, '0'), total: String(workflow.tasks.length).padStart(2, '0') })}</span>
             </div>
             <div className="stage-identity">
               <span className="module-icon"><Icon size={22} /></span>
               <div className="stage-identity-text">
-                <span className="module-system-name">{selectedEntry.name}</span>
+                <span className="module-system-name">{getWorkflowModuleName(entries, selectedTask.module)}</span>
                 <h2>{selectedTask.title}</h2>
               </div>
             </div>
             <div className="stage-brief">
               <h4>{t('board.brief')}</h4>
-              <p>{selectedTask.description || selectedEntry.description}</p>
+              <p>{selectedTask.description || selectedEntry?.description || t('board.externalModuleDescription')}</p>
             </div>
             {current && selectedTask.id !== current.id && live && (
               <div className="workflow-note">
-                <span>{t('board.suggestion', { name: entries[current.module].name, title: current.title })}</span>
+                <span>{t('board.suggestion', { name: getWorkflowModuleName(entries, current.module), title: current.title })}</span>
               </div>
             )}
             <div className="workflow-actions">
-              <button type="button" className="primary-button" onClick={onOpen} disabled={!canOpen || busy}>
-                {t('board.open', { name: selectedEntry.name })} <ArrowUpRight size={15} />
-              </button>
+              {selectedEntry && (
+                <button type="button" className="primary-button" onClick={onOpen} disabled={!canOpen || busy}>
+                  {t('board.open', { name: selectedEntry.name })} <ArrowUpRight size={15} />
+                </button>
+              )}
               <button type="button" className="outline-button" onClick={onComplete} disabled={!canComplete || busy}>
                 {selectedTask.status === 'active' && workflow.currentIndex >= workflow.total - 1 ? t('board.finish') : t('board.finishNext')}
               </button>
