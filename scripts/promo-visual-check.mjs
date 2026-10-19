@@ -145,7 +145,7 @@ try {
   // Image failure fallback keeps text and navigation usable.
   const offline = await browser.newContext({ viewport: { width: 1024, height: 900 } })
   const offlinePage = await offline.newPage()
-  await offlinePage.route('**/promo/*.webp', (route) => route.abort())
+  await offlinePage.route((url) => url.pathname.endsWith('.webp') && url.pathname.includes('/promo/'), (route) => route.abort())
   await offlinePage.goto(baseUrl, { waitUntil: 'domcontentloaded' })
   // Scroll through so lazy-loaded figures below the fold are requested too.
   for (let step = 0; step < 12; step += 1) {

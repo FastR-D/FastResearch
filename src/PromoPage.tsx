@@ -6,7 +6,7 @@ import './promo.css'
 const WORKSPACE_HREF = `${import.meta.env.BASE_URL}workspace`
 const API_BASE = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '')
 const FASTTASK_HREF = `${API_BASE}/api/fasttask/login`
-const ASSET_VERSION = '20261019-1'
+const ASSET_VERSION = '20261019-2'
 const asset = (name: string) => `${import.meta.env.BASE_URL}promo/${name}?v=${ASSET_VERSION}`
 
 const MODULES = [
