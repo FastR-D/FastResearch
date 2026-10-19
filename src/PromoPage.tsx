@@ -6,7 +6,8 @@ import './promo.css'
 const WORKSPACE_HREF = `${import.meta.env.BASE_URL}workspace`
 const API_BASE = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '')
 const FASTTASK_HREF = `${API_BASE}/api/fasttask/login`
-const asset = (name: string) => `${import.meta.env.BASE_URL}promo/${name}`
+const ASSET_VERSION = '20261019-1'
+const asset = (name: string) => `${import.meta.env.BASE_URL}promo/${name}?v=${ASSET_VERSION}`
 
 const MODULES = [
   { id: 'fastNews', nameKey: 'entry.fast-news.name', labelKey: 'entry.fast-news.label', image: 'module-news-static', motion: 'module-news-anim', altKey: 'promo.media.alt.news', Icon: Newspaper, width: 960, height: 620 },
@@ -53,14 +54,16 @@ function Reveal({ children, className = '', delay = 0 }: { children: ReactNode; 
 }
 
 function PromoImage({ src, motionSrc, alt, width, height, t, eager = false, reducedMotion }: { src: string; motionSrc?: string; alt: string; width: number; height: number; t: Translate; eager?: boolean; reducedMotion: boolean }) {
-  const activeSrc = motionSrc && !reducedMotion ? motionSrc : src
-  const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
-  useEffect(() => setState('loading'), [activeSrc])
+  const [failedMotion, setFailedMotion] = useState(false)
+  const animated = Boolean(motionSrc) && !reducedMotion && !failedMotion
+  const activeSrc = animated ? motionSrc! : src
+  const [loadState, setLoadState] = useState<{ src: string; state: 'loading' | 'ready' | 'error' }>({ src: activeSrc, state: 'loading' })
+  const state = loadState.src === activeSrc ? loadState.state : 'loading'
   return (
     <figure className={`promo-figure is-${state}`}>
       {state === 'loading' && <div className="promo-figure-status">{t('promo.media.loading')}</div>}
       {state === 'error' && <div className="promo-figure-status promo-figure-status--error">{t('promo.media.unavailable')}</div>}
-      {motionSrc && !reducedMotion && <span className="promo-motion-badge">{t('promo.media.animated')}</span>}
+      {animated && <span className="promo-motion-badge">{t('promo.media.animated')}</span>}
       <img
         src={activeSrc}
         alt={alt}
@@ -69,8 +72,14 @@ function PromoImage({ src, motionSrc, alt, width, height, t, eager = false, redu
         style={{ aspectRatio: `${width} / ${height}` }}
         loading={eager ? 'eager' : 'lazy'}
         decoding="async"
-        onLoad={() => setState('ready')}
-        onError={() => setState('error')}
+        onLoad={() => setLoadState({ src: activeSrc, state: 'ready' })}
+        onError={() => {
+          if (animated) {
+            setFailedMotion(true)
+            return
+          }
+          setLoadState({ src: activeSrc, state: 'error' })
+        }}
       />
     </figure>
   )

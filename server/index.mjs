@@ -17,6 +17,7 @@ import { createFastWriteClient } from './fastwrite-client.mjs'
 import { createFastTaskClient } from './fasttask-client.mjs'
 import { RosterConflictError, RosterValidationError, readRoster, writeRoster } from './fastinsight-roster.mjs'
 import { handleFastReadProxy, isFastReadProxyPath } from './fastread-proxy.mjs'
+import { handleFastTaskProxy, isFastTaskProxyHost } from './fasttask-proxy.mjs'
 
 function loadEnvFiles() {
   for (const name of ['.env.production', '.env', '.env.local']) {
@@ -969,15 +970,17 @@ async function serveStatic(request, response) {
   const url = new URL(request.url, `http://${request.headers.host ?? 'localhost'}`)
   let filePath = safeStaticPath(url.pathname)
   if (!filePath) return false
+  const requestedExt = path.extname(filePath).toLowerCase()
   const tryPaths = [filePath]
   if (!path.extname(filePath)) tryPaths.push(path.join(STATIC_DIR, 'index.html'))
   for (const candidate of tryPaths) {
     try {
       const contents = await readFile(candidate)
       const ext = path.extname(candidate).toLowerCase()
+      const hashedAsset = candidate.startsWith(path.join(STATIC_DIR, 'assets') + path.sep)
       response.writeHead(200, {
         'Content-Type': STATIC_TYPES[ext] ?? 'application/octet-stream',
-        'Cache-Control': ext === '.html' ? 'no-store' : 'public, max-age=31536000, immutable',
+        'Cache-Control': ext === '.html' ? 'no-store' : hashedAsset ? 'public, max-age=31536000, immutable' : 'public, max-age=3600',
       })
       if (request.method === 'HEAD') response.end()
       else response.end(contents)
@@ -988,6 +991,14 @@ async function serveStatic(request, response) {
         return true
       }
     }
+  }
+  if (requestedExt) {
+    response.writeHead(404, {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Cache-Control': 'no-store',
+    })
+    response.end('Not found')
+    return true
   }
   try {
     const contents = await readFile(path.join(STATIC_DIR, 'index.html'))
@@ -1004,12 +1015,17 @@ async function serveStatic(request, response) {
 }
 
 async function handle(request, response) {
+  const url = new URL(request.url, `http://${request.headers.host ?? 'localhost'}`)
+  const requestHost = request.headers['x-forwarded-host'] ?? request.headers.host
+  if (isFastTaskProxyHost(requestHost)) {
+    await handleFastTaskProxy(request, response, url)
+    return
+  }
   if (request.method === 'OPTIONS') {
     sendJson(response, 204, {})
     return
   }
 
-  const url = new URL(request.url, `http://${request.headers.host ?? 'localhost'}`)
   const route = url.pathname.replace(/\/$/, '') || '/'
 
   if (isFastReadProxyPath(url.pathname)) {
@@ -1902,11 +1918,13 @@ export async function startServer(port = PORT, host = HOST) {
         // Parse before entering the queue so a slow upload cannot hold the writer.
         const requestUrl = new URL(request.url, 'http://localhost')
         const proxiedModuleRequest = isFastReadProxyPath(requestUrl.pathname)
-        if (proxiedModuleRequest) {
+        const requestHost = request.headers['x-forwarded-host'] ?? request.headers.host
+        const proxiedTaskRequest = isFastTaskProxyHost(requestHost)
+        if (proxiedModuleRequest || proxiedTaskRequest) {
           await handle(request, response)
           return
         }
-        if (!proxiedModuleRequest && ['POST','PUT','PATCH','DELETE'].includes(request.method)) {
+        if (['POST','PUT','PATCH','DELETE'].includes(request.method)) {
           if (String(request.headers['content-type'] ?? '').split(';')[0] === 'application/jwt' ||
               (requestUrl.pathname==='/api/auth/fastcas/backchannel-logout' && String(request.headers['content-type'] ?? '').split(';')[0] === 'application/x-www-form-urlencoded')) {
             const chunks = []; let size = 0
