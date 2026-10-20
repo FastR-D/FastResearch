@@ -968,11 +968,16 @@ function safeStaticPath(urlPath) {
 
 async function serveStatic(request, response) {
   const url = new URL(request.url, `http://${request.headers.host ?? 'localhost'}`)
+  if (url.pathname === '/fastppt') {
+    response.writeHead(301, { Location: `/fastppt/${url.search}` })
+    response.end()
+    return true
+  }
   let filePath = safeStaticPath(url.pathname)
   if (!filePath) return false
   const requestedExt = path.extname(filePath).toLowerCase()
   const tryPaths = [filePath]
-  if (!path.extname(filePath)) tryPaths.push(path.join(STATIC_DIR, 'index.html'))
+  if (!path.extname(filePath)) tryPaths.push(path.join(filePath, 'index.html'), path.join(STATIC_DIR, 'index.html'))
   for (const candidate of tryPaths) {
     try {
       const contents = await readFile(candidate)
@@ -986,7 +991,7 @@ async function serveStatic(request, response) {
       else response.end(contents)
       return true
     } catch (error) {
-      if (error?.code !== 'ENOENT') {
+      if (!['ENOENT', 'EISDIR', 'ENOTDIR'].includes(error?.code)) {
         sendError(response, 500, '前端资源读取失败')
         return true
       }

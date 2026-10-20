@@ -2,7 +2,7 @@ import { ArrowUpRight, BookOpenText, CalendarCheck, CalendarClock, Check, CheckC
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createTranslator, getInitialLocale, saveLocale, type Locale, type Translate } from './i18n'
 
-type EntryId = 'fast-write' | 'fast-read' | 'fast-news'
+type EntryId = 'fast-write' | 'fast-read' | 'fast-news' | 'fast-ppt'
 type SsoEntryId = 'fast-read' | 'fast-news'
 type WorkflowModule = EntryId | 'fast-ppt' | 'fast-lab'
 type Entry = { id: EntryId; name: string; label: string; description: string; Icon: typeof BookOpenText; url?: string; tone: string }
@@ -37,6 +37,7 @@ const ENTRY_CONFIG: Record<EntryId, { nameKey: string; labelKey: string; descrip
   'fast-write': { nameKey: 'entry.fast-write.name', labelKey: 'entry.fast-write.label', descriptionKey: 'entry.fast-write.description', Icon: PenLine, url: import.meta.env.VITE_WRITE_URL || 'http://127.0.0.1:3003', tone: 'blue' },
   'fast-read': { nameKey: 'entry.fast-read.name', labelKey: 'entry.fast-read.label', descriptionKey: 'entry.fast-read.description', Icon: BookOpenText, url: import.meta.env.VITE_READ_URL || 'http://127.0.0.1:3015', tone: 'blue' },
   'fast-news': { nameKey: 'entry.fast-news.name', labelKey: 'entry.fast-news.label', descriptionKey: 'entry.fast-news.description', Icon: Newspaper, url: import.meta.env.VITE_FASTNEWS_URL || 'http://127.0.0.1:4173', tone: 'blue' },
+  'fast-ppt': { nameKey: 'entry.fast-ppt.name', labelKey: 'entry.fast-ppt.label', descriptionKey: 'entry.fast-ppt.description', Icon: Layers, url: import.meta.env.VITE_FASTPPT_URL || '/fastppt/', tone: 'blue' },
 }
 const WORKFLOW_MODULE_NAMES: Record<WorkflowModule, string> = {
   'fast-ppt': 'FastPPT',
@@ -940,7 +941,7 @@ function WorkflowBoard({ workflow, live, member, selectedId, selectedEntry, sele
       </aside>
 
       <article className={`workflow-stage ${selectedEntry ? `tone-${selectedEntry.tone}` : ''}`}>
-        {selectedEntry && <ModuleShowcase entries={entries} selectedId={selectedEntry.id} t={t} />}
+        {selectedEntry && selectedEntry.id !== 'fast-ppt' && <ModuleShowcase entries={entries} selectedId={selectedEntry.id} t={t} />}
         {!live && (
           <div className="workflow-banner">
             <div className="workflow-banner-icon"><Layers size={18} /></div>

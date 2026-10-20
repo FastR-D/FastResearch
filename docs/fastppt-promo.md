@@ -13,9 +13,9 @@
 
 已核对 `FastR-D/FastResearch` 仓库的 Vite 构建和 Node 静态服务。建议将 `index.html`、`styles.css`、`script.js` 和 `assets/` 提交到该仓库的 `public/fastppt/`，本说明放入 `docs/fastppt-promo.md`。Vite 构建后会将页面复制到 `dist/fastppt/`，沿用主站发布流程，页面本身无需额外构建。
 
-首次接入建议使用 `/fastppt/index.html`，并在主站宣传页或工作台增加“FastPPT 本地版”普通链接。2026 年 10 月 19 日核对的 `server/index.mjs` 不会自动读取子目录的 `index.html`：目录存在时，直接请求 `/fastppt/` 可能返回 500。若希望使用 `/fastppt/`，需先补充该路径的静态首页映射，并将 `/fastppt` 重定向到 `/fastppt/`，避免相对资源路径解析错误。所有本地资源均使用相对路径，可改为其他子目录。
+宣传页公开地址为 `/fastppt/`，`/fastppt` 会重定向到带尾斜杠的地址，确保相对资源从正确目录解析。`server/index.mjs` 已补充子目录 `index.html` 的静态首页映射；Vite 构建后页面位于 `dist/fastppt/`。
 
-主站的 `src/PromoPage.tsx` 和工作台 `src/App2.tsx` 当前没有 FastPPT 导航入口；仅设置 `VITE_FASTPPT_URL` 不会自动出现入口。此次入口应使用普通页面链接，不走其他产品的 SSO 启动流程。
+工作台 `src/App2.tsx` 已将 `fast-ppt` 工序接入为普通页面入口，地址由 `VITE_FASTPPT_URL` 提供，默认使用 `/fastppt/`。该入口直接打开宣传页，不走其他产品的 SSO 启动流程；其他模块的工序行为保持不变。宣传页本身不追加到工作台的三工具速览中。
 
 建议新建分支、提交 PR，由主站维护同学审核合并。仓库的 `main` 推送会触发 `CD FastResearch` 构建，SSH Secrets 齐备时自动部署；README 还说明服务器可能定时拉取 `origin/main`，因此合并应与部署同学协调。
 
