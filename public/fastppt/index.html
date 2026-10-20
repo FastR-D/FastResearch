@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f6f6f9">
+  <meta name="description" content="FastPPT 是 FastResearch 系列的本地工作台，连接 Codex 与 Claude，管理演示文稿项目、指定修改范围、查看修改差异与页面历史。">
+  <title>FastPPT · 本地 AI 演示文稿工作台 | FastResearch</title>
+  <script src="./script.js"></script>
+  <link rel="stylesheet" href="./styles.css">
+  <link rel="preload" href="./assets/government/slide-06.webp" as="image">
+</head>
+<body>
+  <a class="skip-link" href="#main">跳转到正文</a>
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="https://www.fastrd.io/workspace" aria-label="返回 FastResearch 工作台">
+        <span class="brand-mark" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2v6a2 2 0 0 0 .245.96l5.51 10.08A2 2 0 0 1 18 22H6a2 2 0 0 1-1.755-2.96l5.51-10.08A2 2 0 0 0 10 8V2"></path><path d="M6.453 15h11.094"></path><path d="M8.5 2h7"></path></svg></span>
+        <span class="brand-name"><span>Fast</span>Research</span>
+        <span class="brand-label">产品系列</span>
+      </a>
+      <div class="header-actions">
+        <nav class="site-nav" aria-label="页面导航">
+          <a class="nav-link" href="#features">核心功能</a>
+          <a class="nav-link" href="#workflow">工作流程</a>
+          <a class="nav-link" href="#case">案例预览</a>
+          <a class="nav-link" href="#start">快速开始</a>
+          <a class="nav-workspace" href="https://www.fastrd.io/workspace">工作台 <span aria-hidden="true">↗</span></a>
+        </nav>
+        <button class="theme-toggle" id="theme-toggle" type="button" aria-label="切换到深色模式" aria-pressed="false" title="切换到深色模式">
+          <svg class="moon-icon" aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.9 13A9 9 0 0 1 11 3.1 9 9 0 1 0 20.9 13Z"></path></svg>
+          <svg class="sun-icon" aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2m0 16v2M2 12h2m16 0h2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg>
+          <span class="theme-label">深色模式</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero page-width" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <p class="eyebrow"><span aria-hidden="true"></span> FASTRESEARCH / 本地版</p>
+        <h1 id="hero-title">Fast<span>PPT</span></h1>
+        <p class="hero-lead">把 Agent、画布与版本管理放进一个本地工作台</p>
+        <p class="hero-description">接入本地 Codex 或 Claude，管理演示文稿项目，并按元素、区域或页面指定修改范围。修改在暂存区执行，通过检查后自动提交；支持前后差异对照与历史回看。</p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="#start">开始使用 <span aria-hidden="true">↓</span></a>
+          <a class="button button-secondary" href="https://github.com/FastR-D/FastPPT" target="_blank" rel="noopener noreferrer">查看项目 <span aria-hidden="true">↗</span></a>
+        </div>
+        <ul class="hero-facts" aria-label="产品特点"><li>本地 SDK 接入</li><li>受控范围修改</li><li>差异对照与历史</li></ul>
+      </div>
+      <figure class="workbench-preview" aria-labelledby="workbench-preview-title">
+        <div class="media-heading"><span id="workbench-preview-title">FASTPPT / 本地工作台</span><span>能力示意</span></div>
+        <div class="workbench-shell">
+          <aside class="workbench-rail" aria-label="工作台模块">
+            <span class="rail-label">工作区</span>
+            <span class="rail-item rail-active"><i aria-hidden="true">▦</i>项目与 Agent</span>
+            <span class="rail-item"><i aria-hidden="true">▧</i>画布与范围</span>
+            <span class="rail-item"><i aria-hidden="true">↶</i>页面历史</span>
+            <span class="rail-item"><i aria-hidden="true">⇧</i>讲稿与导出</span>
+          </aside>
+          <div class="workbench-main">
+            <div class="workbench-project"><div><span>当前项目</span><strong>演示文稿项目</strong></div><span class="agent-chip"><i aria-hidden="true"></i> Codex / Claude · 本地 SDK</span></div>
+            <div class="workbench-canvas" tabindex="0" role="group" aria-label="画布预览：鼠标移入、轻触或键盘聚焦，查看市政府集体学习原稿第 6 页">
+              <div class="canvas-toolbar"><span>画布预览</span><span>修改范围　元素 · 区域 · 页面 · 整套</span></div>
+              <div class="canvas-sheet">
+                <span aria-hidden="true"></span><span aria-hidden="true"></span><span aria-hidden="true"></span><span aria-hidden="true"></span><span aria-hidden="true"></span>
+                <img class="canvas-case-image" src="./assets/government/slide-06.webp" alt="页面案例：市政府集体学习原稿第 6 页" width="3200" height="1800">
+              </div>
+              <p class="canvas-hint" aria-hidden="true"><span class="canvas-hint-default">移入或轻触查看案例</span><span class="canvas-hint-case">市政府集体学习 · 第 6 页</span></p>
+            </div>
+            <div class="staging-strip"><span>暂存执行</span><b aria-hidden="true">→</b><span>检查通过</span><b aria-hidden="true">→</b><span>自动提交</span></div>
+            <div class="history-strip"><span>页面历史</span><span>撤销 / 重做</span><span>导出历史</span></div>
+          </div>
+        </div>
+        <figcaption><span>项目、Agent、画布与版本管理</span><a href="#features">了解工作台能力 <span aria-hidden="true">↓</span></a></figcaption>
+      </figure>
+    </section>
+
+    <section class="section-band features" id="features" aria-labelledby="features-title">
+      <div class="page-width">
+        <div class="section-intro">
+          <p class="section-kicker">01 / 核心功能</p>
+          <div><h2 id="features-title">围绕本地 Agent，把修改过程交给工作台管理</h2><p>FastPPT 新增的工作台与任务编排能力，让项目、范围、暂存结果和页面版本都有明确入口。</p></div>
+        </div>
+        <div class="feature-grid">
+          <article class="feature"><span class="feature-index">01 / LOCAL AGENTS</span><h3>连接本地 Codex 与 Claude</h3><p>通过各自的本地 SDK 凭据与运行环境接入 Agent；FastPPT 不保存模型 API Key。</p></article>
+          <article class="feature"><span class="feature-index">02 / PROJECT WORKSPACE</span><h3>项目与任务分开管理</h3><p>创建、打开和切换演示文稿项目；项目具有独立标识和元数据，任务在对应项目工作区内运行。</p></article>
+          <article class="feature"><span class="feature-index">03 / CONTROLLED SCOPE</span><h3>明确每次修改的范围</h3><p>在浏览器画布平移、缩放并选择元素或框选区域；修改可限定为元素、区域、单页、多页或整套演示稿。</p></article>
+          <article class="feature"><span class="feature-index">04 / STAGING &amp; VALIDATION</span><h3>暂存执行，检查后自动提交</h3><p>修改在暂存区执行，通过检查后自动提交；支持前后差异对照与历史回看。生成阶段未通过检查的暂存结果可调用 Agent 修复。</p></article>
+          <article class="feature"><span class="feature-index">05 / PAGE HISTORY</span><h3>逐页历史与撤销重做</h3><p>查看页面历史，恢复历史版本，并对当前页执行撤销与重做，保留可逆的迭代过程。</p></article>
+          <article class="feature"><span class="feature-index">06 / NOTES & EXPORT HISTORY</span><h3>讲稿、导出记录一起管理</h3><p>按页编辑讲稿，查看成功或失败的导出记录，并从当前项目的导出历史中定位文件。</p></article>
+        </div>
+        <div class="foundation-note"><span class="foundation-label">底层工作流</span><p>主题研究、内容规划、页面生成与演示文稿转换沿用 PPT Master 的工作流和工具；FastPPT 在此基础上提供本地工作台、Agent 编排和版本管理。</p></div>
+      </div>
+    </section>
+
+    <section class="workflow page-width" id="workflow" aria-labelledby="workflow-title">
+      <div class="section-intro"><p class="section-kicker">02 / 工作流程</p><div><h2 id="workflow-title">让每次 Agent 修改范围清楚、过程可回看</h2><p>项目内按范围执行任务，通过检查后自动提交，再回看差异、管理版本或导出。</p></div></div>
+      <ol class="steps">
+        <li><span class="step-number">1</span><div class="step-copy"><h3>选择项目与 Agent</h3><p>在独立项目工作区中，使用已配置本地环境的 Codex 或 Claude。</p></div></li>
+        <li><span class="step-number">2</span><div class="step-copy"><h3>指定范围与任务</h3><p>选择修改范围并描述任务；需要审批的任务在执行前确认。</p></div></li>
+        <li><span class="step-number">3</span><div class="step-copy"><h3>暂存执行与自动提交</h3><p>Agent 在暂存区执行修改，通过检查后自动提交并记录版本。</p></div></li>
+        <li><span class="step-number">4</span><div class="step-copy"><h3>回看版本并导出</h3><p>对照修改前后差异，结合页面历史、撤销重做、讲稿与导出记录继续迭代。</p></div></li>
+      </ol>
+    </section>
+
+    <section class="section-band case-section" id="case" aria-labelledby="case-title">
+      <div class="page-width">
+        <div class="section-intro"><p class="section-kicker">03 / 案例预览</p><div><h2 id="case-title">页面案例与课件更新对比</h2><p>以下页面用于展示内容与版式，课件组展示更新前后的页面差异；这些材料不代表由 FastPPT 生成。</p></div></div>
+        <div class="case-collection" aria-labelledby="government-title">
+          <div class="case-toolbar"><div><p class="collection-kicker">专题学习</p><h3 id="government-title">市政府集体学习</h3><p>网络安全专题 · 8 页精选</p></div><a class="button button-secondary" href="./assets/government/slide-04.webp" data-open-gallery="government" data-start-page="4">浏览精选 <span aria-hidden="true">↗</span></a></div>
+          <div class="slide-grid" aria-label="市政府集体学习 8 页精选">
+            <a class="slide-card" href="./assets/government/slide-04.webp" data-gallery-item data-gallery="government" data-gallery-title="市政府集体学习" data-page="4" data-title="高价值目标与网络威胁" target="_blank" rel="noopener"><img src="./assets/government/thumb-04.webp" alt="市政府集体学习：高价值目标与网络威胁，原稿第 4 页" width="800" height="450" loading="lazy"><span><b>04</b>高价值目标与网络威胁</span></a>
+            <a class="slide-card" href="./assets/government/slide-07.webp" data-gallery-item data-gallery="government" data-gallery-title="市政府集体学习" data-page="7" data-title="网络安全建设" target="_blank" rel="noopener"><img src="./assets/government/thumb-07.webp" alt="市政府集体学习：网络安全建设，原稿第 7 页" width="800" height="450" loading="lazy"><span><b>07</b>网络安全建设</span></a>
+            <a class="slide-card" href="./assets/government/slide-11.webp" data-gallery-item data-gallery="government" data-gallery-title="市政府集体学习" data-page="11" data-title="大模型与国际竞争" target="_blank" rel="noopener"><img src="./assets/government/thumb-11.webp" alt="市政府集体学习：大模型与国际竞争，原稿第 11 页" width="800" height="450" loading="lazy"><span><b>11</b>大模型与国际竞争</span></a>
+            <a class="slide-card" href="./assets/government/slide-14.webp" data-gallery-item data-gallery="government" data-gallery-title="市政府集体学习" data-page="14" data-title="AI 伪造内容风险" target="_blank" rel="noopener"><img src="./assets/government/thumb-14.webp" alt="市政府集体学习：AI 伪造内容风险，原稿第 14 页" width="800" height="450" loading="lazy"><span><b>14</b>AI 伪造内容风险</span></a>
+            <a class="slide-card" href="./assets/government/slide-51.webp" data-gallery-item data-gallery="government" data-gallery-title="市政府集体学习" data-page="51" data-title="人工智能政策竞争" target="_blank" rel="noopener"><img src="./assets/government/thumb-51.webp" alt="市政府集体学习：人工智能政策竞争，原稿第 51 页" width="800" height="450" loading="lazy"><span><b>51</b>人工智能政策竞争</span></a>
+            <a class="slide-card" href="./assets/government/slide-55.webp" data-gallery-item data-gallery="government" data-gallery-title="市政府集体学习" data-page="55" data-title="后量子安全" target="_blank" rel="noopener"><img src="./assets/government/thumb-55.webp" alt="市政府集体学习：后量子安全，原稿第 55 页" width="800" height="450" loading="lazy"><span><b>55</b>后量子安全</span></a>
+            <a class="slide-card" href="./assets/government/slide-58.webp" data-gallery-item data-gallery="government" data-gallery-title="市政府集体学习" data-page="58" data-title="中国网谷与产业优势" target="_blank" rel="noopener"><img src="./assets/government/thumb-58.webp" alt="市政府集体学习：中国网谷与产业优势，原稿第 58 页" width="800" height="450" loading="lazy"><span><b>58</b>中国网谷与产业优势</span></a>
+            <a class="slide-card" href="./assets/government/slide-61.webp" data-gallery-item data-gallery="government" data-gallery-title="市政府集体学习" data-page="61" data-title="网络安全人才培养" target="_blank" rel="noopener"><img src="./assets/government/thumb-61.webp" alt="市政府集体学习：网络安全人才培养，原稿第 61 页" width="800" height="450" loading="lazy"><span><b>61</b>网络安全人才培养</span></a>
+          </div>
+        </div>
+        <div class="case-collection" aria-labelledby="thinktrap-title">
+          <div class="case-toolbar"><div><p class="collection-kicker">学术汇报</p><h3 id="thinktrap-title">ThinkTrap 学术汇报</h3><p>8 页精选</p></div><a class="button button-secondary" href="./assets/thinktrap/slide-01.webp" data-open-gallery="thinktrap">浏览精选 <span aria-hidden="true">↗</span></a></div>
+          <div class="slide-grid" aria-label="ThinkTrap 8 页精选">
+            <a class="slide-card" href="./assets/thinktrap/slide-01.webp" data-gallery-item data-gallery="thinktrap" data-gallery-title="ThinkTrap" data-page="1" data-title="封面" target="_blank" rel="noopener"><img src="./assets/thinktrap/thumb-01.webp" alt="ThinkTrap：封面，原稿第 1 页" width="800" height="450" loading="lazy"><span><b>01</b>封面</span></a>
+            <a class="slide-card" href="./assets/thinktrap/slide-02.webp" data-gallery-item data-gallery="thinktrap" data-gallery-title="ThinkTrap" data-page="2" data-title="汇报目录" target="_blank" rel="noopener"><img src="./assets/thinktrap/thumb-02.webp" alt="ThinkTrap：汇报目录，原稿第 2 页" width="800" height="450" loading="lazy"><span><b>02</b>汇报目录</span></a>
+            <a class="slide-card" href="./assets/thinktrap/slide-03.webp" data-gallery-item data-gallery="thinktrap" data-gallery-title="ThinkTrap" data-page="3" data-title="服务场景" target="_blank" rel="noopener"><img src="./assets/thinktrap/thumb-03.webp" alt="ThinkTrap：服务场景，原稿第 3 页" width="800" height="450" loading="lazy"><span><b>03</b>服务场景</span></a>
+            <a class="slide-card" href="./assets/thinktrap/slide-09.webp" data-gallery-item data-gallery="thinktrap" data-gallery-title="ThinkTrap" data-page="9" data-title="流程概览" target="_blank" rel="noopener"><img src="./assets/thinktrap/thumb-09.webp" alt="ThinkTrap：流程概览，原稿第 9 页" width="800" height="450" loading="lazy"><span><b>09</b>流程概览</span></a>
+            <a class="slide-card" href="./assets/thinktrap/slide-11.webp" data-gallery-item data-gallery="thinktrap" data-gallery-title="ThinkTrap" data-page="11" data-title="近邻解码" target="_blank" rel="noopener"><img src="./assets/thinktrap/thumb-11.webp" alt="ThinkTrap：近邻解码，原稿第 11 页" width="800" height="450" loading="lazy"><span><b>11</b>近邻解码</span></a>
+            <a class="slide-card" href="./assets/thinktrap/slide-17.webp" data-gallery-item data-gallery="thinktrap" data-gallery-title="ThinkTrap" data-page="17" data-title="基线对比" target="_blank" rel="noopener"><img src="./assets/thinktrap/thumb-17.webp" alt="ThinkTrap：基线对比，原稿第 17 页" width="800" height="450" loading="lazy"><span><b>17</b>基线对比</span></a>
+            <a class="slide-card" href="./assets/thinktrap/slide-19.webp" data-gallery-item data-gallery="thinktrap" data-gallery-title="ThinkTrap" data-page="19" data-title="服务退化" target="_blank" rel="noopener"><img src="./assets/thinktrap/thumb-19.webp" alt="ThinkTrap：服务退化，原稿第 19 页" width="800" height="450" loading="lazy"><span><b>19</b>服务退化</span></a>
+            <a class="slide-card" href="./assets/thinktrap/slide-22.webp" data-gallery-item data-gallery="thinktrap" data-gallery-title="ThinkTrap" data-page="22" data-title="防御机制" target="_blank" rel="noopener"><img src="./assets/thinktrap/thumb-22.webp" alt="ThinkTrap：防御机制，原稿第 22 页" width="800" height="450" loading="lazy"><span><b>22</b>防御机制</span></a>
+          </div>
+        </div>
+        <div class="case-collection comparison-collection" aria-labelledby="comparison-title">
+          <div class="case-toolbar"><div><p class="collection-kicker">课件更新</p><h3 id="comparison-title">计算机组成原理，前后对比</h3><p>4 组真实页面 · 向左查看原版，向右查看更新版 · 支持放大对比</p></div><span class="compare-hint">← 原版<span aria-hidden="true">│</span>更新版 →</span></div>
+          <div class="comparison-grid">
+            <article class="comparison-card" data-comparison="interconnect" data-title="互连及输入输出组织" data-before-page="1" data-after-page="1">
+              <div class="comparison-heading"><div><p class="feature-index">计算机组成原理 / 教学课件</p><h4>互连及输入输出组织</h4></div><button class="expand-comparison" type="button" data-open-comparison="interconnect" aria-label="放大对比：互连及输入输出组织">放大对比 ↗</button></div>
+              <div class="image-comparison">
+                <img class="comparison-before" src="./assets/comparisons/interconnect-before.webp" alt="互连及输入输出组织：原版第 1 页" width="3200" height="2400" loading="lazy" draggable="false">
+                <div class="comparison-after"><img src="./assets/comparisons/interconnect-after.webp" alt="互连及输入输出组织：更新版第 1 页" width="3200" height="1800" loading="lazy" draggable="false"></div>
+                <span class="comparison-divider" aria-hidden="true"><span>‹ ›</span></span>
+                <input class="comparison-range" type="range" min="0" max="100" value="50" aria-label="互连及输入输出组织前后对比，向左查看原版，向右查看更新版">
+              </div>
+              <div class="comparison-footer"><button type="button" data-compare-position="0">← 原版 · 第 1 页</button><span>拖动竖线对比</span><button type="button" data-compare-position="100">更新版 · 第 1 页 →</button></div>
+              <noscript><p class="no-script-links"><a href="./assets/comparisons/interconnect-before.webp" target="_blank" rel="noopener">查看原版</a><a href="./assets/comparisons/interconnect-after.webp" target="_blank" rel="noopener">查看更新版</a></p></noscript>
+            </article>
+            <article class="comparison-card" data-comparison="memory" data-title="层次结构存储系统" data-before-page="3" data-after-page="3">
+              <div class="comparison-heading"><div><p class="feature-index">计算机组成原理 / 教学课件</p><h4>层次结构存储系统</h4></div><button class="expand-comparison" type="button" data-open-comparison="memory" aria-label="放大对比：层次结构存储系统">放大对比 ↗</button></div>
+              <div class="image-comparison">
+                <img class="comparison-before" src="./assets/comparisons/memory-before.webp" alt="层次结构存储系统：原版第 3 页" width="3200" height="2400" loading="lazy" draggable="false">
+                <div class="comparison-after"><img src="./assets/comparisons/memory-after.webp" alt="层次结构存储系统：更新版第 3 页" width="3200" height="1800" loading="lazy" draggable="false"></div>
+                <span class="comparison-divider" aria-hidden="true"><span>‹ ›</span></span>
+                <input class="comparison-range" type="range" min="0" max="100" value="50" aria-label="层次结构存储系统前后对比，向左查看原版，向右查看更新版">
+              </div>
+              <div class="comparison-footer"><button type="button" data-compare-position="0">← 原版 · 第 3 页</button><span>拖动竖线对比</span><button type="button" data-compare-position="100">更新版 · 第 3 页 →</button></div>
+              <noscript><p class="no-script-links"><a href="./assets/comparisons/memory-before.webp" target="_blank" rel="noopener">查看原版</a><a href="./assets/comparisons/memory-after.webp" target="_blank" rel="noopener">查看更新版</a></p></noscript>
+            </article>
+            <article class="comparison-card" data-comparison="instructions" data-title="指令系统及程序的机器级表示" data-before-page="16" data-after-page="16">
+              <div class="comparison-heading"><div><p class="feature-index">计算机组成原理 / 教学课件</p><h4>指令系统及程序的机器级表示</h4></div><button class="expand-comparison" type="button" data-open-comparison="instructions" aria-label="放大对比：指令系统及程序的机器级表示">放大对比 ↗</button></div>
+              <div class="image-comparison">
+                <img class="comparison-before" src="./assets/comparisons/instructions-before.webp" alt="指令系统及程序的机器级表示：原版第 16 页" width="3200" height="2400" loading="lazy" draggable="false">
+                <div class="comparison-after"><img src="./assets/comparisons/instructions-after.webp" alt="指令系统及程序的机器级表示：更新版第 16 页" width="3200" height="1800" loading="lazy" draggable="false"></div>
+                <span class="comparison-divider" aria-hidden="true"><span>‹ ›</span></span>
+                <input class="comparison-range" type="range" min="0" max="100" value="50" aria-label="指令系统及程序的机器级表示前后对比，向左查看原版，向右查看更新版">
+              </div>
+              <div class="comparison-footer"><button type="button" data-compare-position="0">← 原版 · 第 16 页</button><span>拖动竖线对比</span><button type="button" data-compare-position="100">更新版 · 第 16 页 →</button></div>
+              <noscript><p class="no-script-links"><a href="./assets/comparisons/instructions-before.webp" target="_blank" rel="noopener">查看原版</a><a href="./assets/comparisons/instructions-after.webp" target="_blank" rel="noopener">查看更新版</a></p></noscript>
+            </article>
+            <article class="comparison-card" data-comparison="pipeline" data-title="中央处理器设计：流水线 CPU" data-before-page="50" data-after-page="34">
+              <div class="comparison-heading"><div><p class="feature-index">计算机组成原理 / 教学课件</p><h4>中央处理器设计：流水线 CPU</h4></div><button class="expand-comparison" type="button" data-open-comparison="pipeline" aria-label="放大对比：中央处理器设计：流水线 CPU">放大对比 ↗</button></div>
+              <div class="image-comparison">
+                <img class="comparison-before" src="./assets/comparisons/pipeline-before.webp" alt="中央处理器设计：流水线 CPU：原版第 50 页" width="3200" height="2400" loading="lazy" draggable="false">
+                <div class="comparison-after"><img src="./assets/comparisons/pipeline-after.webp" alt="中央处理器设计：流水线 CPU：更新版第 34 页" width="3200" height="1800" loading="lazy" draggable="false"></div>
+                <span class="comparison-divider" aria-hidden="true"><span>‹ ›</span></span>
+                <input class="comparison-range" type="range" min="0" max="100" value="50" aria-label="中央处理器设计：流水线 CPU前后对比，向左查看原版，向右查看更新版">
+              </div>
+              <div class="comparison-footer"><button type="button" data-compare-position="0">← 原版 · 第 50 页</button><span>拖动竖线对比</span><button type="button" data-compare-position="100">更新版 · 第 34 页 →</button></div>
+              <noscript><p class="no-script-links"><a href="./assets/comparisons/pipeline-before.webp" target="_blank" rel="noopener">查看原版</a><a href="./assets/comparisons/pipeline-after.webp" target="_blank" rel="noopener">查看更新版</a></p></noscript>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="start-section" id="start" aria-labelledby="start-title">
+      <div class="page-width start-grid">
+        <div><p class="section-kicker">04 / 快速开始</p><h2 id="start-title">在自己的电脑上创作</h2><p>工作台默认在本机浏览器中打开，项目文件保存在本地。Codex 与 Claude 使用各自本地 SDK 的凭据和运行环境，FastPPT 不保存模型 API Key。</p><p class="environment">环境要求：Node.js 22+、pnpm 10、Python 3.10+；建议安装 uv 以同步 Python / PPT 依赖，并配置 Codex 或 Claude 本地环境。</p><p class="data-note">使用模型或联网研究时，相关输入会按所选服务提供方的规则处理。</p><a class="button button-primary" href="https://github.com/FastR-D/FastPPT" target="_blank" rel="noopener noreferrer">查看仓库与安装说明 <span aria-hidden="true">↗</span></a></div>
+        <div class="install-panel"><p>QUICK START</p><pre><code>git clone https://github.com/FastR-D/FastPPT.git
+cd FastPPT
+pnpm install
+uv sync
+pnpm studio</code></pre><span>启动后访问 http://127.0.0.1:6070</span></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer"><div class="page-width footer-inner"><div><strong>FastResearch · FastPPT</strong><p>基于 PPT Master 演示文稿工作流与转换工具构建。</p></div><div class="footer-links"><a href="https://www.fastrd.io/workspace">科研工作台 ↗</a><a href="https://github.com/FastR-D/FastPPT" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div></div></footer>
+
+  <dialog id="preview-dialog" aria-labelledby="preview-title">
+    <div class="preview-toolbar"><div><h2 id="preview-title">案例高清预览</h2><p id="preview-counter" aria-live="polite"></p></div><div class="preview-tools"><a id="original-image" href="./assets/thinktrap/slide-01.webp" target="_blank" rel="noopener noreferrer">原图 ↗</a><button id="close-preview" type="button" aria-label="关闭预览" title="关闭预览">×</button></div></div>
+    <div class="preview-stage"><img id="preview-image" alt="" width="3200" height="1800"></div>
+    <div class="preview-controls"><button class="button button-secondary" id="previous-slide" type="button">← 上一页</button><p id="preview-status" role="status">支持键盘左右方向键切换</p><button class="button button-secondary" id="next-slide" type="button">下一页 →</button></div>
+  </dialog>
+  <dialog id="comparison-dialog" aria-labelledby="comparison-dialog-title">
+    <div class="preview-toolbar"><div><h2 id="comparison-dialog-title">课件前后对比</h2><p>向左查看原版，向右查看更新版。保留各自页面比例。</p></div><div class="preview-tools"><button id="close-comparison" type="button" aria-label="关闭对比" title="关闭对比">×</button></div></div>
+    <div class="comparison-modal-content"><div class="image-comparison">
+      <img class="comparison-before" alt="" width="3200" height="2400" draggable="false">
+      <div class="comparison-after"><img alt="" width="3200" height="1800" draggable="false"></div>
+      <span class="comparison-divider" aria-hidden="true"><span>‹ ›</span></span>
+      <input class="comparison-range" type="range" min="0" max="100" value="50" aria-label="课件前后对比，向左查看原版，向右查看更新版">
+    </div></div>
+    <div class="comparison-footer"><button type="button" data-compare-position="0">← 原版</button><span>拖动竖线，或使用键盘方向键</span><button type="button" data-compare-position="100">更新版 →</button></div>
+    <div class="comparison-originals"><a id="comparison-before-link" target="_blank" rel="noopener noreferrer">原版高清图 ↗</a><a id="comparison-after-link" target="_blank" rel="noopener noreferrer">更新版高清图 ↗</a></div>
+  </dialog>
+</body>
+</html>
