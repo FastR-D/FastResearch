@@ -153,6 +153,9 @@ test('Key identity persists across FastRead, FastWrite and rotation', async () =
     const seeded = await call('/api/content/unlock', 'POST', { key: seededRawKey })
     assert.equal(seeded.status, 200)
     assert.equal(seeded.body.accountId, seededAccountId)
+    const memberSessionTtl = seeded.body.expiresAt - Date.now()
+    assert.ok(memberSessionTtl > 47 * 60 * 60 * 1000)
+    assert.ok(memberSessionTtl <= 48 * 60 * 60 * 1000)
     process.env.FASTTASK_PUBLIC_URL = base
     const callback = new URL('/api/v1/auth/fastresearch/callback?state=FastTaskState_0123456789abcdefghijk', base)
     const launch = await fetch(base + '/api/sso/launch?audience=fast-task&next=' + encodeURIComponent(callback.toString()), {

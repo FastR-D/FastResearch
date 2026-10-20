@@ -18,6 +18,7 @@ import { createFastTaskClient } from './fasttask-client.mjs'
 import { RosterConflictError, RosterValidationError, readRoster, writeRoster } from './fastinsight-roster.mjs'
 import { handleFastReadProxy, isFastReadProxyPath } from './fastread-proxy.mjs'
 import { handleFastTaskProxy, isFastTaskProxyHost } from './fasttask-proxy.mjs'
+import { ADMIN_SESSION_TTL_MS, MEMBER_SESSION_TTL_MS } from './session-config.mjs'
 
 function loadEnvFiles() {
   for (const name of ['.env.production', '.env', '.env.local']) {
@@ -49,7 +50,6 @@ const DATA_DIR = path.resolve(process.env.FASTRESEARCH_DATA_DIR ?? 'data')
 const DATA_FILE = path.join(DATA_DIR, 'access.json')
 const WORKFLOW_FILE = path.join(DATA_DIR, 'workflows.sqlite')
 const FASTINSIGHT_ROSTER_FILE = path.resolve(process.env.FASTINSIGHT_ROSTER ?? '../fastinsight/assets/colleagues.yaml')
-const SESSION_TTL_MS = 8 * 60 * 60 * 1000
 const TICKET_TTL_MS = 2 * 60 * 1000
 const PUBLIC_API_URL = (process.env.FASTRESEARCH_PUBLIC_URL ?? `http://127.0.0.1:${PORT}`).replace(/\/$/, '')
 const SSO_LAUNCH = {
@@ -498,7 +498,7 @@ function serializeCookie(value, { maxAge, request, sameSite = COOKIE_SAMESITE } 
 }
 
 function memberCookieHeader(request, token, expiresAt) {
-  const maxAge = Math.max(0, Math.floor(((expiresAt ?? (Date.now() + SESSION_TTL_MS)) - Date.now()) / 1000))
+  const maxAge = Math.max(0, Math.floor(((expiresAt ?? (Date.now() + MEMBER_SESSION_TTL_MS)) - Date.now()) / 1000))
   return { 'Set-Cookie': serializeCookie(token, { maxAge, request }) }
 }
 
@@ -628,7 +628,7 @@ function findKey(key) {
 }
 
 function createMemberSession(record) {
-  const expiresAt = Date.now() + SESSION_TTL_MS
+  const expiresAt = Date.now() + MEMBER_SESSION_TTL_MS
   const identity = {
     role: 'member', keyId: record.id, person: record.person,
     accountId: accountIdOf(record), credentialVersion: record.credentialVersion ?? 1,
@@ -1071,7 +1071,7 @@ async function handle(request, response) {
       return
     }
     const sessionId = randomBytes(32).toString('base64url')
-    const expiresAt = Date.now() + SESSION_TTL_MS
+    const expiresAt = Date.now() + ADMIN_SESSION_TTL_MS
     sessions.set(sessionId, { role: 'admin', username: data.admin.username, expiresAt })
     sendJson(response, 200, { session: sessionId, username: data.admin.username, expiresAt })
     return

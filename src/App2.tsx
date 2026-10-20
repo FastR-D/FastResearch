@@ -1,6 +1,7 @@
 import { ArrowUpRight, BookOpenText, CalendarCheck, CalendarClock, Check, CheckCircle2, Circle, CircleDot, Clock, ExternalLink, FlaskConical, Inbox, KeyRound, Languages, Layers, ListTodo, LockKeyhole, LogIn, Moon, Newspaper, PenLine, Plus, RefreshCw, Save, Settings2, ShieldCheck, Sun, Terminal, Trash2, UsersRound, X } from 'lucide-react'
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createTranslator, getInitialLocale, saveLocale, type Locale, type Translate } from './i18n'
+import { clearMemberSession, loadMemberSession, saveMemberSession } from './member-session'
 
 type EntryId = 'fast-write' | 'fast-read' | 'fast-news' | 'fast-ppt'
 type SsoEntryId = 'fast-read' | 'fast-news'
@@ -28,7 +29,6 @@ type FastInsightRoster = { directions: RosterDirection[]; default_owner?: Roster
 const API_BASE = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '')
 const apiUrl = (path: string) => `${API_BASE}${path}`
 const adminStorageKey = 'fastresearch-admin-session'
-const memberStorageKey = 'fastresearch-member-session'
 const personalKeyStorage = 'fastresearch-personal-key'
 const MODULE_ORDER: EntryId[] = ['fast-news', 'fast-read', 'fast-write']
 const WORKSPACE_VIEWS: WorkspaceView[] = ['today', 'workflow', 'insight', 'team', 'routing']
@@ -124,7 +124,7 @@ function App2() {
   const [casOpen, setCasOpen] = useState(false)
   const [adminOpen, setAdminOpen] = useState(false)
   const [session, setSession] = useState<AdminSession | null>(() => loadStoredSession<AdminSession>(adminStorageKey))
-  const [member, setMember] = useState<MemberSession | null>(() => new URLSearchParams(window.location.search).get('fastcas') === 'complete' ? null : loadStoredSession<MemberSession>(memberStorageKey))
+  const [member, setMember] = useState<MemberSession | null>(() => new URLSearchParams(window.location.search).get('fastcas') === 'complete' ? null : loadMemberSession<MemberSession>())
   const [insightItems, setInsightItems] = useState<InsightItem[]>([])
   const [selectedInsight, setSelectedInsight] = useState<string | null>(null)
   const [readIds, setReadIds] = useState<Set<string>>(() => new Set())
@@ -161,10 +161,10 @@ function App2() {
     void request<{enabled: boolean}>('/api/auth/fastcas/available').then(value => setCasEnabled(value.enabled)).catch(() => {})
     const marker = new URLSearchParams(window.location.search).get('fastcas')
     if (marker === 'complete') {
-      sessionStorage.removeItem(memberStorageKey)
+      clearMemberSession()
       void request<{session: string; person: string; keyId: string; expiresAt: number}>('/api/content/me').then(result => {
         const value = { token: result.session, person: result.person, keyId: result.keyId, expiresAt: result.expiresAt }
-        sessionStorage.setItem(memberStorageKey, JSON.stringify(value)); setMember(value); setToast('FastCAS 操作已完成')
+        saveMemberSession(value); setMember(value); setToast('FastCAS 操作已完成')
       }).catch(() => { setMember(null); setToast('请重新登录以确认认证状态') })
     } else if (marker === 'failed') setToast('FastCAS 操作未完成，请使用原 Key 登录，在账号认证中检查或重试')
     if (marker) { const url = new URL(window.location.href); url.searchParams.delete('fastcas'); window.history.replaceState(null, '', url.pathname + url.search + url.hash) }
@@ -187,7 +187,7 @@ function App2() {
     }
     void request<{ session: string; person: string; keyId: string; accountId: string; source: string; expiresAt: number }>('/api/content/me').then((result) => {
       const value = { token: '', person: result.person, keyId: result.keyId, accountId: result.accountId, source: result.source, expiresAt: result.expiresAt }
-      sessionStorage.setItem(memberStorageKey, JSON.stringify(value))
+      saveMemberSession(value)
       setMember(value)
       setToast(flag === 'linked' ? t('cas.linked') : t('toast.unlocked', { person: result.person }))
     }).catch(() => setToast(t('error.memberExpired')))
@@ -238,7 +238,7 @@ function App2() {
         setFastTaskToday(today.today ?? null)
       } catch (err) {
         if (cancelled) return
-        sessionStorage.removeItem(memberStorageKey)
+        clearMemberSession()
         setMember(null)
         setToast(err instanceof Error ? err.message : t('error.memberExpired'))
       }
@@ -321,7 +321,7 @@ function App2() {
       openInNewTab(launch.toString(), popup)
     } catch (err) {
       popup?.close()
-      sessionStorage.removeItem(memberStorageKey)
+      clearMemberSession()
       setMember(null)
       pendingLaunch.current = { entryId, popup: popup ?? null }
       setKeyOpen(true)
@@ -334,7 +334,7 @@ function App2() {
       await request('/api/content/me', {}, memberSession)
     } catch (err) {
       popup?.close()
-      sessionStorage.removeItem(memberStorageKey)
+      clearMemberSession()
       setMember(null)
       pendingLaunch.current = { entryId: 'fast-write', popup: popup ?? null }
       setKeyOpen(true)
@@ -359,7 +359,7 @@ function App2() {
       launch.searchParams.set('next', next)
       window.location.assign(launch.toString())
     } catch (err) {
-      sessionStorage.removeItem(memberStorageKey)
+      clearMemberSession()
       setMember(null)
       pendingFastTaskLaunch.current = next
       setKeyOpen(true)
@@ -429,7 +429,7 @@ function App2() {
   const unlock = async (key: string) => {
     const result = await request<{ session: string; person: string; keyId: string; expiresAt: number; insightItems?: InsightItem[]; workflow?: Workflow | null }>('/api/content/unlock', { method: 'POST', body: JSON.stringify({ key: key.trim() }) })
     const value: MemberSession = { token: result.session, person: result.person, keyId: result.keyId, expiresAt: result.expiresAt, source: 'key' }
-    sessionStorage.setItem(memberStorageKey, JSON.stringify(value))
+    saveMemberSession(value)
     sessionStorage.removeItem(personalKeyStorage)
     setMember(value)
     setInsightItems(result.insightItems ?? [])

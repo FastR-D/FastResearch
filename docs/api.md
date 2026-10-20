@@ -23,7 +23,7 @@ Key 体系与 curl / Python / JS 示例见 [key-login.md](key-login.md)；SSO �
                  │
                  │  POST /api/content/unlock
                  ▼
-           成员会话 Cookie fr_session（JWT，8h）
+           成员会话 Cookie fr_session（JWT，2 天）
                  │
      ┌───────────┴───────────┐
      ▼                       ▼
@@ -45,7 +45,7 @@ FastWrite 通过 `FASTWRITE_URL` 与 `FASTWRITE_API_KEY` 接入。FastResearch �
 | 凭证 | 谁发 | 有效期 | 用法 |
 |---|---|---|---|
 | 管理员会话 | `POST /api/admin/login` | 8 小时，**内存**，重启失效 | `Authorization: Bearer <session>` |
-| 成员会话 `fr_session` | unlock / consume / launch | 8 小时 JWT | Cookie 或 Bearer；Panel 与 FastNews 共用 |
+| 成员会话 `fr_session` | unlock / consume / launch | 2 天 JWT | Cookie 或 Bearer；Panel 与 FastNews 共用 |
 | SSO 票据 `?sso=` | `/api/sso/ticket` 或 `/api/sso/launch` | **2 分钟、一次性** | 下游服务端 `POST /api/sso/consume` |
 | FastRead `fastread_session` | FastRead 兑换票据后签发 | 7 天 | HttpOnly Cookie；写操作还要 `X-CSRF-Token` |
 | `X-FastInsight-Key` | 环境变量 `FASTINSIGHT_INGEST_KEY` | 长期服务号密钥 | Insight / 最近阅读写入，**不是**个人 Key |

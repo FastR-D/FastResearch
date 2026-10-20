@@ -18,7 +18,7 @@
 | 缓存 | 全部接口 `Cache-Control: no-store` |
 | 错误体 | `{ "error": "中文说明" }` |
 
-成员会话：`Authorization: Bearer <session>`，有效期 8 小时。  
+成员会话：`Authorization: Bearer <session>`，有效期 2 天。
 票据：有效期 **2 分钟**，**一次性**，audience 必须完全一致。
 
 ## 2. 身份字段
@@ -41,7 +41,7 @@ Panel 侧身份如下。下游应用请用 `accountId` 作为稳定账户主键�
 成员在 Panel 输入个人 Key
         │
         ▼
-POST /api/content/unlock          → 成员会话（8h）
+POST /api/content/unlock          → 成员会话（2 天）
         │
         ▼
 点击 FastNews / FastRead

@@ -1,6 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { FastCASStore } from './fastcas-store.mjs'
 import { legacyAccountsTable } from './account-migration.mjs'
+import { MEMBER_SESSION_TTL_MS } from './session-config.mjs'
 
 export class CASFailure extends Error {
   constructor(message,status=403){super(message);this.status=status}
@@ -90,7 +91,7 @@ export class FastCASService {
       const local=this.store.current(link.local_account_ref),account=this.account(link.local_account_ref)
       if(!local||!this.sameIdentity(local,link)||local.version!==link.version||local.state!=='active'||!account||account.accountDisabledAt)throw new CASFailure('项目账号或认证关系不可用')
       const raw=randomBytes(32).toString('base64url'),now=Date.now()
-      this.sessions.set(raw,{role:'member',accountId:account.accountId,keyId:account.id,person:account.person,authSource:'fastcas',authenticatedAt:now,expiresAt:now+8*3600000,casIssuer:this.config.issuer,casSid:identity.sessionId,casLinkId:link.id,casLinkVersion:link.version,casChecked:now})
+      this.sessions.set(raw,{role:'member',accountId:account.accountId,keyId:account.id,person:account.person,authSource:'fastcas',authenticatedAt:now,expiresAt:now+MEMBER_SESSION_TTL_MS,casIssuer:this.config.issuer,casSid:identity.sessionId,casLinkId:link.id,casLinkVersion:link.version,casChecked:now})
       this.db.exec('COMMIT');return raw
     }catch(error){this.db.exec('ROLLBACK');throw error}
   }

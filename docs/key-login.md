@@ -12,10 +12,11 @@
 
 1. **个人 Key 只在 Panel 输入一次。** 下游不要做 Key 输入框，不要把 `fk_…` 放进 URL、Cookie、localStorage。
 2. **跨模块稳定主键是 `accountId`，不是姓名。** `keyId` 标识当前 Key 凭证；`person` 只用于显示，允许重名。
-3. **成员会话和原始 Key 不是一回事。** 解锁后签发 HS256 JWT，写入 HttpOnly Cookie `fr_session`（8 小时）；JSON 里的 `session` 仍可作为 Bearer。服务端只存 Key 的 SHA-256，完整 Key 只在生成时返回一次。
+3. **成员会话和原始 Key 不是一回事。** 解锁后签发 HS256 JWT，写入 HttpOnly Cookie `fr_session`（2 天）；JSON 里的 `session` 仍可作为 Bearer。服务端只存 Key 的 SHA-256，完整 Key 只在生成时返回一次。
 4. **FastNews 和 FastRead 都走一次性 SSO 票据。** FastNews 由 `serve.py` 服务端兑换后写入 HttpOnly Cookie；不要把凭证放进 URL。
 5. **有后端的模块必须在服务端兑换票据。** FastNews 兑换后用同源 `/api` 反代 + `credentials: include`；不要再把 `research_api` 拼进跳转地址，也不要直开静态站。
 6. **服务号密钥 ≠ 个人 Key。** FastInsight / 最近阅读写入用请求头 `X-FastInsight-Key`，与成员 Key 无关。
+7. **浏览器登录状态保留 2 天。** 成功解锁后浏览器会保存成员会话标记；2 天内访问站点根地址会直接进入 `/workspace`。过期后根地址回到宣传首页，从首页进入工作台时重新登录。原始个人 Key 不写入浏览器存储。
 
 ---
 
@@ -39,9 +40,9 @@
 | 角色 | 如何获得 | 有效期 | 用途 |
 |---|---|---|---|
 | `admin` | `POST /api/admin/login` | 8 小时 | 生成 / 列出 / 删除个人 Key |
-| `member` | `POST /api/content/unlock`、`GET /api/sso/launch` 或 `POST /api/sso/consume` | 8 小时 | 读自己的内容、改关注作者、登录 FastNews |
+| `member` | `POST /api/content/unlock`、`GET /api/sso/launch` 或 `POST /api/sso/consume` | 2 天 | 读自己的内容、改关注作者、登录 FastNews |
 
-成员会话为 JWT，写入 Cookie 后可跨进程重启保持到过期；管理员会话仍在内存中，重启即失效。
+成员会话为 JWT，写入 Cookie 后可跨进程重启保持到 2 天有效期；管理员会话仍为 8 小时且重启即失效。
 
 ### 2.2 身份对象
 
@@ -89,7 +90,7 @@
           POST /api/content/unlock
                       │
                       ▼
-              成员会话（8h）
+              成员会话（2 天）
                       │
         ┌─────────────┼─────────────┐
         ▼             ▼             ▼

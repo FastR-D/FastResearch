@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App2'
 import PromoPage from './PromoPage'
+import { hasActiveMemberSession } from './member-session'
 import './index.css'
 import './promo.css'
 
@@ -13,7 +14,7 @@ const workspacePath = `${basePath}/workspace`
 
 if (normalizedPath === basePath) {
   const params = new URLSearchParams(window.location.search)
-  const workspaceReturn = params.has('fastcas') || params.get('launch') === 'fast-task' || ['#home', '#modules'].includes(window.location.hash)
+  const workspaceReturn = hasActiveMemberSession() || params.has('fastcas') || params.get('launch') === 'fast-task' || ['#home', '#modules'].includes(window.location.hash)
   window.location.replace(`${workspaceReturn ? workspacePath : introPath}${window.location.search}${window.location.hash}`)
 } else {
   const isIntro = normalizedPath === introPath
