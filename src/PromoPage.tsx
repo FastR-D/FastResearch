@@ -147,7 +147,7 @@ function PromoPage() {
             <button type="button" className="promo-lang" onClick={changeLocale} aria-label={t('promo.language.label')}>
               {locale === 'zh-CN' ? 'English' : '中文'}
             </button>
-            <a className="promo-btn promo-btn--ghost promo-nav-cta" href={FASTTASK_HREF} aria-label={t('header.fastTask')} title={t('header.fastTask')}>
+            <a className="promo-btn promo-btn--ghost promo-nav-cta" href={FASTTASK_HREF} target="_blank" rel="noopener noreferrer" aria-label={t('header.fastTask')} title={t('header.fastTask')}>
               <ListTodo size={16} />
               <span className="promo-nav-fasttask-label">{t('header.fastTask')}</span>
             </a>
@@ -166,7 +166,7 @@ function PromoPage() {
         </div>
         <div id="promo-menu" className="promo-menu" hidden={!menuOpen}>
           {navLinks.map((link) => <a key={link.href} href={link.href} onClick={() => setMenuOpen(false)}>{link.label}</a>)}
-          <a className="promo-btn promo-btn--ghost" href={FASTTASK_HREF} onClick={() => setMenuOpen(false)}><ListTodo size={15} /> {t('header.fastTask')}</a>
+          <a className="promo-btn promo-btn--ghost" href={FASTTASK_HREF} target="_blank" rel="noopener noreferrer" onClick={() => setMenuOpen(false)}><ListTodo size={15} /> {t('header.fastTask')}</a>
           <button type="button" className="promo-menu-lang" onClick={() => { changeLocale(); setMenuOpen(false) }} aria-label={t('promo.language.label')}>
             {locale === 'zh-CN' ? 'English' : '中文'}
           </button>
@@ -191,7 +191,7 @@ function PromoPage() {
           <p className="promo-hero-lead">{t('promo.hero.description')}</p>
           <div className="promo-hero-actions">
             <a className="promo-btn promo-btn--primary" href={WORKSPACE_HREF}>{t('promo.cta.workspace')}</a>
-            <a className="promo-btn promo-btn--ghost" href={FASTTASK_HREF}><ListTodo size={16} /> {t('header.fastTask')}</a>
+            <a className="promo-btn promo-btn--ghost" href={FASTTASK_HREF} target="_blank" rel="noopener noreferrer"><ListTodo size={16} /> {t('header.fastTask')}</a>
             <a className="promo-btn promo-btn--ghost" href="#workflow">{t('promo.cta.explore')}</a>
           </div>
         </div>

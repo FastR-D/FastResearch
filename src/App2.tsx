@@ -3,9 +3,9 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 're
 import { createTranslator, getInitialLocale, saveLocale, type Locale, type Translate } from './i18n'
 import { clearMemberSession, loadMemberSession, saveMemberSession } from './member-session'
 
-type EntryId = 'fast-write' | 'fast-read' | 'fast-news' | 'fast-ppt'
+type EntryId = 'fast-write' | 'fast-read' | 'fast-news' | 'fast-ppt' | 'fast-lab'
 type SsoEntryId = 'fast-read' | 'fast-news'
-type WorkflowModule = EntryId | 'fast-ppt' | 'fast-lab'
+type WorkflowModule = EntryId
 type Entry = { id: EntryId; name: string; label: string; description: string; Icon: typeof BookOpenText; url?: string; tone: string }
 type BearerSession = { token: string }
 type AdminSession = BearerSession & { username: string; expiresAt: number }
@@ -30,6 +30,7 @@ const API_BASE = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '')
 const apiUrl = (path: string) => `${API_BASE}${path}`
 const adminStorageKey = 'fastresearch-admin-session'
 const personalKeyStorage = 'fastresearch-personal-key'
+const WORKFLOW_MODULE_ORDER: EntryId[] = ['fast-ppt', 'fast-write', 'fast-read', 'fast-news', 'fast-lab']
 const MODULE_ORDER: EntryId[] = ['fast-news', 'fast-read', 'fast-write']
 const WORKSPACE_VIEWS: WorkspaceView[] = ['today', 'workflow', 'insight', 'team', 'routing']
 const SSO_AUDIENCE: Record<SsoEntryId, 'fast-news' | 'fast-read'> = { 'fast-read': 'fast-read', 'fast-news': 'fast-news' }
@@ -38,6 +39,7 @@ const ENTRY_CONFIG: Record<EntryId, { nameKey: string; labelKey: string; descrip
   'fast-read': { nameKey: 'entry.fast-read.name', labelKey: 'entry.fast-read.label', descriptionKey: 'entry.fast-read.description', Icon: BookOpenText, url: import.meta.env.VITE_READ_URL || 'http://127.0.0.1:3015', tone: 'blue' },
   'fast-news': { nameKey: 'entry.fast-news.name', labelKey: 'entry.fast-news.label', descriptionKey: 'entry.fast-news.description', Icon: Newspaper, url: import.meta.env.VITE_FASTNEWS_URL || 'http://127.0.0.1:4173', tone: 'blue' },
   'fast-ppt': { nameKey: 'entry.fast-ppt.name', labelKey: 'entry.fast-ppt.label', descriptionKey: 'entry.fast-ppt.description', Icon: Layers, url: import.meta.env.VITE_FASTPPT_URL || '/fastppt/', tone: 'blue' },
+  'fast-lab': { nameKey: 'entry.fast-lab.name', labelKey: 'entry.fast-lab.label', descriptionKey: 'entry.fast-lab.description', Icon: FlaskConical, url: import.meta.env.VITE_FASTLAB_URL, tone: 'blue' },
 }
 const WORKFLOW_MODULE_NAMES: Record<WorkflowModule, string> = {
   'fast-ppt': 'FastPPT',
@@ -52,7 +54,7 @@ function createEntries(t: Translate): Record<EntryId, Entry> {
 }
 
 function createPreviewWorkflow(t: Translate): Workflow {
-  const modules = MODULE_ORDER
+  const modules = WORKFLOW_MODULE_ORDER
   const tasks = modules.map((module, index) => ({ id: `preview-${module}`, module, title: t(`task.${module}.title`), description: t(`task.${module}.description`), status: index === 0 ? 'active' as const : 'pending' as const, completedAt: null }))
   return { id: 'preview', title: t('workflow.defaultTitle'), source: 'preview', currentIndex: 0, doneCount: 0, total: tasks.length, completed: false, tasks }
 }
@@ -303,6 +305,10 @@ function App2() {
     const opened = window.open(url, '_blank', 'noopener,noreferrer')
     if (!opened) setToast(t('error.popupBlocked'))
     return opened
+  }
+
+  const openFastTaskInNewTab = () => {
+    openInNewTab(apiUrl('/api/fasttask/login'))
   }
 
   const launchSsoEntry = async (entryId: SsoEntryId, memberSession: MemberSession, popup?: Window | null) => {
@@ -576,7 +582,7 @@ function App2() {
         <div className="header-actions">
           {casEnabled && (member ? <button type="button" className="ghost-button" onClick={() => setCasOpen(true)}>FastCAS 认证</button> : <a className="ghost-button" href={apiUrl('/api/auth/fastcas/login')}>使用 FastCAS 登录</a>)}
           {member && <span className="header-identity" title={`当前认证成员：${member.person}`}>👤 {member.person}</span>}
-          <button type="button" className="ghost-button" onClick={() => window.location.assign(apiUrl('/api/fasttask/login'))}>
+          <button type="button" className="ghost-button" onClick={openFastTaskInNewTab}>
             <ListTodo size={14} />
             <span>{t('header.fastTask')}</span>
           </button>
@@ -643,7 +649,7 @@ function App2() {
                   today={fastTaskToday}
                   onUnlock={() => setKeyOpen(true)}
                   onRefresh={() => { void refreshFastTaskToday() }}
-                  onOpenFastTask={() => window.location.assign(apiUrl('/api/fasttask/login'))}
+                  onOpenFastTask={openFastTaskInNewTab}
                   t={t}
                 />
               </div>
@@ -903,7 +909,7 @@ function WorkflowBoard({ workflow, live, member, selectedId, selectedEntry, sele
   const current = workflow.tasks.find((task) => task.status === 'active')
   const Icon = selectedEntry?.Icon ?? ListTodo
   const canComplete = live && selectedTask?.status === 'active'
-  const canOpen = Boolean(selectedEntry) && (!live || selectedTask?.status !== 'pending')
+  const canOpen = Boolean(selectedEntry?.url) && (!live || selectedTask?.status !== 'pending')
 
   return (
     <section className="workflow-board" id="modules">
@@ -941,7 +947,7 @@ function WorkflowBoard({ workflow, live, member, selectedId, selectedEntry, sele
       </aside>
 
       <article className={`workflow-stage ${selectedEntry ? `tone-${selectedEntry.tone}` : ''}`}>
-        {selectedEntry && selectedEntry.id !== 'fast-ppt' && <ModuleShowcase entries={entries} selectedId={selectedEntry.id} t={t} />}
+        {selectedEntry && selectedEntry.id !== 'fast-ppt' && selectedEntry.id !== 'fast-lab' && <ModuleShowcase entries={entries} selectedId={selectedEntry.id} t={t} />}
         {!live && (
           <div className="workflow-banner">
             <div className="workflow-banner-icon"><Layers size={18} /></div>
