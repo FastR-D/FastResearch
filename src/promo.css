@@ -806,6 +806,11 @@ html.promo-route body {
     gap: 26px;
   }
 
+  .promo-steps li .promo-reveal {
+    padding-top: 0;
+    padding-left: 64px;
+  }
+
   .promo-steps::before {
     left: 21px;
     right: auto;
@@ -852,12 +857,15 @@ html.promo-route body {
   }
 
   .promo-footer-inner {
-    grid-template-columns: 1fr;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 14px;
+    align-items: center;
     justify-items: start;
   }
 
   .promo-footer-links {
     justify-content: flex-start;
+    gap: 8px 16px;
   }
 }
 
@@ -889,6 +897,15 @@ html.promo-route body {
   .promo-nav-cta {
     padding: 8px 10px;
     font-size: 12.5px;
+  }
+
+  .promo-footer-links {
+    gap: 8px 10px;
+  }
+
+  .promo-footer-links a,
+  .promo-footer-links button {
+    font-size: 13px;
   }
 }
 
