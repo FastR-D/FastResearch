@@ -793,6 +793,20 @@ button {
   font-weight: 600;
 }
 
+.stage-top-meta { display: inline-flex; align-items: center; gap: 10px; }
+.stage-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+}
+.stage-status.is-done { background: #ecfdf3; border-color: #b7e4c7; color: #067647; }
+.stage-status.is-active { background: #e8f3ff; border-color: #b7d8ff; color: #004ab2; }
+.stage-status.is-pending { background: #f8fafc; border-color: #e4e7ec; color: #667085; }
+
 .stage-identity {
   display: flex;
   align-items: center;
@@ -1084,6 +1098,42 @@ button {
   box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.2);
 }
 
+.mailbox-row-select {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  gap: 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mailbox-row-select:focus-visible { outline: 2px solid #1769d3; outline-offset: 3px; border-radius: 6px; }
+
+.mailbox-row-arrive {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 3px;
+  padding: 5px 8px;
+  border: 1px solid #b7d8ff;
+  border-radius: 6px;
+  background: #f0f7ff;
+  color: #1769d3;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-decoration: none;
+  transition: background-color .16s ease, border-color .16s ease, color .16s ease;
+}
+
+.mailbox-row-arrive:hover { border-color: #2f8af5; background: #e8f3ff; color: #004ab2; }
+.paper-link-text { display: block; min-width: 0; text-decoration: none; }
+.paper-link-text:hover { color: #004ab2; text-decoration: underline; }
+
 .mailbox-row-copy {
   min-width: 0;
   display: grid;
@@ -1350,6 +1400,31 @@ button {
 .admin-dialog {
   width: min(560px, 100%);
 }
+
+.routing-dialog {
+  width: min(980px, 100%);
+  max-height: min(88vh, 920px);
+  display: flex;
+  flex-direction: column;
+}
+.routing-dialog .roster-editor {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px 24px 26px;
+  background: transparent;
+}
+.routing-dialog .roster-editor-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 4px 0 12px;
+  background: #fff;
+}
+.routing-dialog .roster-editor-header h2 { display: none; }
+html.dark .routing-dialog .roster-editor { background: transparent !important; }
+html.dark .routing-dialog .roster-editor-header { background: #111c2f; }
 
 .dialog-title {
   display: flex;
@@ -1738,6 +1813,12 @@ html.dark .team-progress-track i { background: #34d399; }
     border-bottom: 1px solid var(--color-border);
     max-height: 280px;
   }
+}
+
+@media (max-width: 880px) {
+  .tech-header { gap: 12px; }
+  .header-status { display: none; }
+  .header-actions { margin-left: auto; }
 }
 
 @media (max-width: 600px) {
@@ -2344,6 +2425,12 @@ html.dark .input-wrap:focus-within { border-color: #5ba7ff !important; box-shado
   border-color: #b7d8ff !important;
   color: #004ab2 !important;
 }
+.workflow-note.is-muted {
+  background: #f8fafc !important;
+  border-color: #e4e7ec !important;
+  color: #667085 !important;
+}
+.workflow-step.is-available .step-status-icon { color: #2f8af5 !important; }
 .team-progress-tasks li.is-active,
 .team-progress-tasks li.is-done,
 .team-task-status { color: #004ab2 !important; }
@@ -2373,6 +2460,14 @@ html.dark .workflow-note {
   border-color: #2f6fb0 !important;
   color: #b7d8ff !important;
 }
+html.dark .workflow-note.is-muted {
+  background: #0f1a2b !important;
+  border-color: #203252 !important;
+  color: #98a2b3 !important;
+}
+html.dark .stage-status.is-done { background: #0f2a1f; border-color: #1e5c40; color: #7ee2b8; }
+html.dark .stage-status.is-active { background: #102c4f; border-color: #2f6fb0; color: #b7d8ff; }
+html.dark .stage-status.is-pending { background: #0f1a2b; border-color: #203252; color: #98a2b3; }
 
 /* Unified research workspace */
 .tech-main { width: min(1320px, calc(100% - 48px)); padding-top: 34px; }
@@ -2394,6 +2489,8 @@ html.dark .workflow-note {
 }
 .workspace-toolbar {
   display: flex;
+  position: relative;
+  z-index: 3;
   flex: none;
   align-items: center;
   justify-content: space-between;
@@ -2425,6 +2522,51 @@ html.dark .workflow-note {
 .workspace-tabs button.is-active, .module-switcher button.is-active { background: #2f8af5; color: #fff; box-shadow: 0 2px 6px rgba(47, 138, 245, .16); }
 .workspace-tabs button:focus-visible, .module-switcher button:focus-visible { outline: 2px solid #1769d3; outline-offset: 2px; }
 .workspace-unread { display: grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; background: #fff; color: #004ab2; font-size: 10px; }
+.workspace-tools { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.workspace-team-widget { position: relative; flex: none; }
+.team-progress-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid #e4e7ec;
+  border-radius: 7px;
+  background: #fff;
+  color: #475467;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color .16s ease, background-color .16s ease, color .16s ease;
+}
+.team-progress-trigger:hover, .team-progress-trigger.is-open { border-color: #b7d8ff; background: #e8f3ff; color: #004ab2; }
+.team-progress-trigger:focus-visible { outline: 2px solid #1769d3; outline-offset: 2px; }
+.team-progress-trigger svg { flex: none; color: #2f8af5; }
+.team-progress-trigger-meter { width: 54px; height: 5px; overflow: hidden; border-radius: 999px; background: #e8eef7; }
+.team-progress-trigger-meter i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #2f8af5, #1769d3); transition: width .35s ease; }
+.team-progress-trigger strong { color: #1769d3; font-size: 12px; font-weight: 700; }
+.team-progress-trigger-state { display: inline-flex; align-items: center; color: #98a2b3; font-weight: 600; }
+.team-progress-trigger-chevron { color: #98a2b3 !important; transition: transform .18s ease; }
+.team-progress-trigger.is-open .team-progress-trigger-chevron { transform: rotate(180deg); }
+.team-progress-popover {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 10px);
+  right: 0;
+  width: min(380px, calc(100vw - 64px));
+  max-height: 500px;
+  padding: 4px;
+  border: 1px solid #d0d5dd;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 18px 44px rgba(16, 24, 40, .16);
+  animation: showcase-enter 180ms ease both;
+}
+.team-progress-popover .team-progress-panel { min-height: 0; max-height: none; padding: 16px 16px 14px; border: 0; border-radius: 8px; background: transparent; box-shadow: none; }
+.team-progress-popover .team-progress-list { max-height: min(58vh, 380px); }
+.team-progress-heading-actions { display: inline-flex; align-items: center; gap: 6px; }
+.team-progress-close { width: 26px; height: 26px; }
 .workspace-page {
   flex: 1;
   min-height: 0;
@@ -2509,10 +2651,7 @@ html.dark .workflow-note {
 .research-workspace .mailbox-list { grid-column: 1; grid-row: 2; min-height: 0; max-height: none; padding: 10px; }
 .research-workspace .mailbox-card, .research-workspace .mailbox-locked { grid-column: 2; grid-row: 1 / span 2; }
 .research-workspace .mailbox-locked { display: flex; flex-direction: column; justify-content: center; align-items: flex-start; padding: 32px; border: 0 !important; background: #fff !important; }
-.research-workspace .mailbox-row { margin-bottom: 7px; }
-.workspace-team-page { height: 100%; min-height: 0; padding: 26px 32px; background: #fff; }
-.workspace-team-page .team-progress-panel { display: flex; flex-direction: column; height: 100%; min-height: 0; max-height: none; border: 1px solid #e4e7ec; border-radius: 12px; box-shadow: none; }
-.workspace-team-page .team-progress-list { flex: 1; min-height: 0; max-height: none; }
+.research-workspace .mailbox-row { align-items: center; gap: 8px; margin-bottom: 7px; padding: 9px 10px; }
 
 /* FastTask today: the key-authenticated workspace view and the per-member team block. */
 .workspace-today-page { height: 100%; min-height: 0; padding: 26px 32px; background: #fff; overflow-y: auto; }
@@ -2591,8 +2730,15 @@ html.dark .workspace-tabs button:hover, html.dark .module-switcher button:hover 
 html.dark .workspace-tabs button.is-active, html.dark .module-switcher button.is-active { background: #2f8af5; color: #fff; }
 html.dark .research-workspace .workflow-rail, html.dark .research-workspace .mailbox-head, html.dark .research-workspace .mailbox-list { background: #0f1a2b !important; border-color: #203252 !important; }
 html.dark .research-workspace .workflow-stage, html.dark .research-workspace .mailbox-card, html.dark .research-workspace .mailbox-locked { background: #111c2f !important; }
-html.dark .workspace-team-page { background: #111c2f; }
-html.dark .workspace-team-page .team-progress-panel { background: #111c2f !important; border-color: #203252 !important; }
+html.dark .team-progress-trigger { background: #0f1a2b; border-color: #203252; color: #b7c4d8; }
+html.dark .team-progress-trigger:hover, html.dark .team-progress-trigger.is-open { background: #102c4f; border-color: #2f6fb0; color: #e8f1ff; }
+html.dark .team-progress-trigger strong { color: #8dc8e8; }
+html.dark .team-progress-trigger-meter { background: #203252; }
+html.dark .team-progress-popover { background: #0b1424; border-color: #203252; box-shadow: 0 24px 64px rgba(0, 0, 0, .5); }
+html.dark .team-progress-popover .team-progress-panel { background: transparent !important; border-color: transparent !important; }
+html.dark .mailbox-row-arrive { background: #102c4f; border-color: #2f6fb0; color: #b7d8ff; }
+html.dark .mailbox-row-arrive:hover { background: #163a66; border-color: #4f93e8; color: #e8f1ff; }
+html.dark .paper-link-text:hover { color: #b7d8ff; }
 html.dark .module-overview p, html.dark .module-overview li { color: #b7c4d8; }
 html.dark .module-visual { background-color: #102c4f; border-color: #2f6fb0; background-image: linear-gradient(#203e61 1px, transparent 1px), linear-gradient(90deg, #203e61 1px, transparent 1px); }
 html.dark .write-sheet, html.dark .read-page { background: #e8f3ff; }
@@ -2682,7 +2828,7 @@ html.dark .roster-subheading strong { color: #e8f1ff; }
   .module-visual { width: 150px; height: 150px; transform-origin: top left; }
   .module-visual--fast-news .orbit-three { display: none; }
   .research-workspace .workflow-stage, .research-workspace .mailbox-card { padding: 22px; }
-  .workspace-team-page { padding: 22px; }
+  .team-progress-trigger-label { display: none; }
   .roster-editor { padding: 22px; }
 }
 @media (max-width: 720px) {
@@ -2690,9 +2836,13 @@ html.dark .roster-subheading strong { color: #e8f1ff; }
   .research-workspace { height: 760px; }
   .hero-copy h1 { font-size: 28px; }
   .hero-copy h1 em { margin-left: 0; }
-  .workspace-toolbar { flex-wrap: wrap; gap: 12px; padding: 16px; }
-  .workspace-tabs { width: 100%; }
+  .workspace-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 12px; padding: 16px; }
+  .workspace-tools { display: contents; }
+  .workspace-heading { grid-column: 1; grid-row: 1; min-width: 0; }
+  .workspace-team-widget { grid-column: 2; grid-row: 1; }
+  .workspace-tabs { grid-column: 1 / -1; grid-row: 2; width: 100%; }
   .workspace-tabs button { flex: 1; padding: 0 8px; }
+  .team-progress-popover { width: min(360px, calc(100vw - 32px)); }
   .research-workspace .workflow-board, .research-workspace .insight-mailbox { display: flex; flex-direction: column; height: auto; min-height: 100%; }
   .research-workspace .workflow-rail { min-height: 0; overflow: visible; border-right: 0 !important; border-bottom: 1px solid #e4e7ec !important; }
   .research-workspace .workflow-steps { max-height: 245px; }
@@ -2701,9 +2851,6 @@ html.dark .roster-subheading strong { color: #e8f1ff; }
   .research-workspace .mailbox-list { max-height: 240px; min-height: 120px; }
   .research-workspace .mailbox-card, .research-workspace .mailbox-locked { min-height: 250px; }
   .workspace-page { overflow-y: auto; }
-  .workspace-team-page { height: auto; min-height: 100%; padding: 18px; }
-  .workspace-team-page .team-progress-panel { height: auto; min-height: 420px; }
-  .workspace-team-page .team-progress-list { flex: auto; max-height: 325px; }
   .roster-editor { height: auto; min-height: 100%; padding: 18px; }
   .roster-editor-header { flex-direction: column; }
   .roster-editor-actions { width: 100%; flex-wrap: wrap; }
@@ -2730,6 +2877,10 @@ html.dark .roster-subheading strong { color: #e8f1ff; }
   .workspace-tabs button { font-size: 11px; }
   .workspace-tabs button { min-width: 0; gap: 4px; padding-left: 4px; padding-right: 4px; }
   .workspace-tabs button svg { flex: none; width: 14px; height: 14px; }
+  .team-progress-trigger { padding: 0 9px; }
+  .team-progress-trigger-meter { display: none; }
+  .mailbox-row-arrive { padding: 6px; }
+  .mailbox-row-arrive span { display: none; }
   .roster-stats { grid-template-columns: 1fr; }
   .roster-stats div { justify-content: space-between; }
   .roster-direction-card, .roster-default-owner { padding: 14px; }
@@ -2767,4 +2918,137 @@ html.dark .roster-subheading strong { color: #e8f1ff; }
     animation-duration: 1ms !important;
     animation-iteration-count: 1 !important;
   }
+}
+
+/* ==========================================================================
+   Mobile adaptation
+   ========================================================================== */
+
+/* Remove the 300ms tap delay on touch devices. */
+.ghost-button, .icon-button, .outline-button, .primary-button, .text-button,
+.workspace-tabs button, .module-switcher button, .team-progress-trigger,
+.mailbox-row, .promo-btn, .promo-menu-button {
+  touch-action: manipulation;
+}
+
+@media (max-width: 720px) {
+  /* The workspace grows with its content on phones. Keeping a fixed height
+     here hid the last workflow steps and forced a nested scroll area that is
+     hard to discover on touch devices. */
+  .research-workspace { height: auto; overflow: visible; }
+  .workspace-page { overflow: hidden; border-radius: 0 0 8px 8px; }
+  .workspace-today-page { height: auto; overflow: visible; }
+  .research-workspace .workflow-board,
+  .research-workspace .insight-mailbox { min-height: 0; }
+  .research-workspace .workflow-rail,
+  .research-workspace .workflow-steps { overflow: visible; }
+  .research-workspace .workflow-steps { max-height: none; }
+  .research-workspace .workflow-stage,
+  .research-workspace .mailbox-card { overflow: visible; }
+  .research-workspace .mailbox-list { max-height: none; }
+
+  /* Comfortable touch targets for the primary navigation. */
+  .workspace-tabs button { min-height: 44px; }
+  .team-progress-trigger { min-height: 44px; }
+  .team-progress-popover { width: min(380px, calc(100vw - 32px)); max-height: min(70vh, 560px); overflow-y: auto; }
+  .team-progress-popover .team-progress-list { max-height: none; }
+
+  .hero-copy h1 { text-wrap: balance; }
+  .workspace-heading h2 { font-size: 19px; }
+}
+
+@media (max-width: 600px) {
+  .tech-header {
+    padding-left: max(12px, env(safe-area-inset-left));
+    padding-right: max(12px, env(safe-area-inset-right));
+  }
+
+  /* Icon-sized utility actions, but with a 40px hit area. */
+  .header-actions .icon-button { width: 40px; height: 40px; }
+  .header-actions .ghost-button { width: auto; min-width: 40px; min-height: 40px; padding: 0 10px; }
+  .header-actions .ghost-button span { display: none; }
+
+  .workspace-toolbar { padding: 14px; }
+  .workspace-tabs button { font-size: 12px; }
+  .hero-copy p { font-size: 13px; }
+
+  /* Dialogs become bottom sheets with their own scroll area, so tall content
+     (admin key list, routing roster) stays reachable on small screens. */
+  .dialog-backdrop { place-items: end stretch; padding: 0; }
+  .tech-dialog {
+    width: 100%;
+    max-height: calc(100vh - 12px);
+    max-height: calc(100dvh - 12px);
+    display: flex;
+    flex-direction: column;
+    border-radius: 16px 16px 0 0;
+    animation: mobile-sheet-in 240ms ease-out both;
+  }
+  .tech-dialog > * { min-width: 0; }
+  .dialog-title { flex: none; padding: 14px 16px; }
+  .dialog-title .icon-button { flex: none; width: 40px; height: 40px; }
+  .dialog-form, .admin-active {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 18px 16px calc(20px + env(safe-area-inset-bottom));
+  }
+  .routing-dialog {
+    width: 100%;
+    max-height: calc(100vh - 12px);
+    max-height: calc(100dvh - 12px);
+  }
+  .routing-dialog .roster-editor { padding: 16px 16px calc(20px + env(safe-area-inset-bottom)); overscroll-behavior: contain; }
+
+  /* 16px inputs prevent iOS Safari from zooming on focus. */
+  .dialog-form input, .key-create-form input, .key-create-form button,
+  .input-wrap, .roster-editor input, .roster-editor textarea { font-size: 16px; }
+  .dialog-form input, .key-create-form input { height: 44px; }
+  .dialog-form .primary-button, .key-create-form button,
+  .full-button, .roster-editor-actions button { min-height: 44px; }
+  .key-create-form { flex-direction: column; }
+  .key-create-form button { width: 100%; }
+
+  /* Key rows: keep the destructive actions tappable and let the identity wrap. */
+  .admin-key-row { flex-wrap: wrap; gap: 8px; padding: 10px 12px; }
+  .admin-key-row .icon-button { flex: none; width: 40px; height: 40px; }
+  .key-row-info { flex: 1 1 auto; flex-wrap: wrap; }
+  .key-row-info b { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .tech-footer { padding-bottom: calc(18px + env(safe-area-inset-bottom)); }
+}
+
+@media (max-width: 460px) {
+  /* The brand mark shrinks to its icon, matching the promo navigation, so the
+     utility actions can keep full-size touch targets. */
+  .brand-title { display: none; }
+  .tech-header { gap: 8px; }
+  .hero-copy h1 { font-size: 25px; line-height: 1.22; }
+  .hero-copy p { font-size: 13px; line-height: 1.6; }
+  .workspace-toolbar { gap: 10px; }
+  .workspace-tabs button { gap: 5px; font-size: 10px; white-space: nowrap; }
+  .workspace-tabs button > span:not(.workspace-unread) { overflow-wrap: normal; }
+
+  /* Paper metadata reads as label/value pairs instead of a cramped row. */
+  .paper-meta-row { flex-direction: column; gap: 2px; }
+  .meta-label { width: auto; }
+  .meta-val { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+}
+
+@media (max-width: 360px) {
+  .tech-header {
+    padding-left: max(10px, env(safe-area-inset-left));
+    padding-right: max(10px, env(safe-area-inset-right));
+  }
+  .header-actions { gap: 4px; }
+  .header-actions .icon-button { width: 40px; height: 40px; }
+  .header-actions .ghost-button { min-width: 40px; min-height: 40px; padding: 0 9px; }
+  .hero-copy h1 { font-size: 24px; }
+  .workspace-tabs button { font-size: 9.5px; }
+  .workspace-tabs .workspace-unread { display: none; }
+}
+
+@keyframes mobile-sheet-in {
+  from { opacity: 0.6; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
 }

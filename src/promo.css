@@ -865,6 +865,18 @@ html.promo-route body {
   .promo-brand-name {
     display: none;
   }
+
+  /* Stack the hero actions so each CTA is a full-width, 44px touch target. */
+  .promo-hero-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .promo-hero-actions .promo-btn {
+    width: 100%;
+    min-height: 44px;
+  }
 }
 
 @media (max-width: 767px) {

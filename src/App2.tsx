@@ -1,4 +1,4 @@
-import { ArrowUpRight, BookOpenText, CalendarCheck, CalendarClock, Check, CheckCircle2, Circle, CircleDot, Clock, ExternalLink, FlaskConical, Inbox, KeyRound, Languages, Layers, ListTodo, LockKeyhole, LogIn, Moon, Newspaper, PenLine, Plus, RefreshCw, Save, Settings2, ShieldCheck, Sun, Terminal, Trash2, UsersRound, X } from 'lucide-react'
+import { ArrowUpRight, BookOpenText, CalendarCheck, CalendarClock, Check, CheckCircle2, ChevronDown, Circle, CircleDot, Clock, ExternalLink, FlaskConical, Inbox, KeyRound, Languages, Layers, ListTodo, LockKeyhole, LogIn, Moon, Newspaper, PenLine, Plus, RefreshCw, Save, Settings2, ShieldCheck, Sun, Terminal, Trash2, UsersRound, X } from 'lucide-react'
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createTranslator, getInitialLocale, saveLocale, type Locale, type Translate } from './i18n'
 import { clearMemberSession, loadMemberSession, saveMemberSession } from './member-session'
@@ -13,7 +13,7 @@ type MemberSession = BearerSession & { person: string; keyId: string; expiresAt:
 type PersonalKey = { id: string; person: string; keyPreview: string; active: boolean; createdAt?: string; expiresAt?: string | null }
 type InsightItem = { id: string; title: string; summary?: string; url?: string; source?: string; direction?: string; authors?: string; venue?: string; receivedAt?: string }
 type TaskStatus = 'pending' | 'active' | 'done'
-type WorkspaceView = 'today' | 'workflow' | 'insight' | 'team' | 'routing'
+type WorkspaceView = 'today' | 'workflow' | 'insight'
 type WorkspaceDirection = 'forward' | 'backward'
 type WorkflowTask = { id: string; module: WorkflowModule; title: string; description: string; status: TaskStatus; completedAt?: string | null }
 type Workflow = { id: string; title: string; source?: string; receivedAt?: string; currentIndex: number; doneCount: number; total: number; completed: boolean; currentTask?: WorkflowTask | null; tasks: WorkflowTask[] }
@@ -30,9 +30,9 @@ const API_BASE = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '')
 const apiUrl = (path: string) => `${API_BASE}${path}`
 const adminStorageKey = 'fastresearch-admin-session'
 const personalKeyStorage = 'fastresearch-personal-key'
-const WORKFLOW_MODULE_ORDER: EntryId[] = ['fast-ppt', 'fast-write', 'fast-read', 'fast-news', 'fast-lab']
+const MODULE_HUB_ORDER: EntryId[] = ['fast-news', 'fast-read', 'fast-write', 'fast-ppt', 'fast-lab']
 const MODULE_ORDER: EntryId[] = ['fast-news', 'fast-read', 'fast-write']
-const WORKSPACE_VIEWS: WorkspaceView[] = ['today', 'workflow', 'insight', 'team', 'routing']
+const WORKSPACE_VIEWS: WorkspaceView[] = ['today', 'workflow', 'insight']
 const SSO_AUDIENCE: Record<SsoEntryId, 'fast-news' | 'fast-read'> = { 'fast-read': 'fast-read', 'fast-news': 'fast-news' }
 const ENTRY_CONFIG: Record<EntryId, { nameKey: string; labelKey: string; descriptionKey: string; Icon: typeof BookOpenText; url?: string; tone: string }> = {
   'fast-write': { nameKey: 'entry.fast-write.name', labelKey: 'entry.fast-write.label', descriptionKey: 'entry.fast-write.description', Icon: PenLine, url: import.meta.env.VITE_WRITE_URL || 'http://127.0.0.1:3003', tone: 'blue' },
@@ -51,12 +51,6 @@ const WORKFLOW_MODULE_NAMES: Record<WorkflowModule, string> = {
 
 function createEntries(t: Translate): Record<EntryId, Entry> {
   return Object.fromEntries(Object.entries(ENTRY_CONFIG).map(([id, config]) => [id, { id: id as EntryId, name: t(config.nameKey), label: t(config.labelKey), description: t(config.descriptionKey), Icon: config.Icon, url: config.url, tone: config.tone }])) as Record<EntryId, Entry>
-}
-
-function createPreviewWorkflow(t: Translate): Workflow {
-  const modules = WORKFLOW_MODULE_ORDER
-  const tasks = modules.map((module, index) => ({ id: `preview-${module}`, module, title: t(`task.${module}.title`), description: t(`task.${module}.description`), status: index === 0 ? 'active' as const : 'pending' as const, completedAt: null }))
-  return { id: 'preview', title: t('workflow.defaultTitle'), source: 'preview', currentIndex: 0, doneCount: 0, total: tasks.length, completed: false, tasks }
 }
 
 async function request<T>(path: string, init: RequestInit = {}, session?: BearerSession): Promise<T> {
@@ -134,20 +128,24 @@ function App2() {
   const [workflow, setWorkflow] = useState<Workflow | null>(null)
   const [teamWorkflows, setTeamWorkflows] = useState<TeamWorkflow[]>([])
   const [fastTaskToday, setFastTaskToday] = useState<FastTaskToday | null>(null)
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
+  const [selectedModule, setSelectedModule] = useState<WorkflowModule>('fast-news')
   const [workspaceView, setWorkspaceView] = useState<WorkspaceView>('today')
   const [workspaceDirection, setWorkspaceDirection] = useState<WorkspaceDirection>('forward')
-  const [busy, setBusy] = useState(false)
+  const [teamOpen, setTeamOpen] = useState(false)
+  const [routingOpen, setRoutingOpen] = useState(false)
   const pendingLaunch = useRef<PendingLaunch | null>(null)
   const pendingFastTaskLaunch = useRef<string | null>(null)
   const workspaceRef = useRef<HTMLElement | null>(null)
+  const teamWidgetRef = useRef<HTMLDivElement | null>(null)
   const lastWorkspaceWheel = useRef(0)
   const t = useMemo(() => createTranslator(locale), [locale])
   const entries = useMemo(() => createEntries(t), [t])
-  const previewWorkflow = useMemo(() => createPreviewWorkflow(t), [t])
-  const visibleWorkflow = workflow ?? previewWorkflow
-  const selectedTask = visibleWorkflow.tasks.find((task) => task.id === selectedTaskId) ?? visibleWorkflow.tasks.find((task) => task.status === 'active') ?? visibleWorkflow.tasks[0]
-  const selectedEntry = selectedTask ? getWorkflowEntry(entries, selectedTask.module) : null
+  const teamSummary = useMemo(() => {
+    const assigned = teamWorkflows.filter((item) => item.workflow)
+    const done = assigned.reduce((total, item) => total + (item.workflow?.doneCount ?? 0), 0)
+    const taskTotal = assigned.reduce((total, item) => total + (item.workflow?.total ?? 0), 0)
+    return { members: teamWorkflows.length, done, total: taskTotal, percent: taskTotal ? Math.round(100 * done / taskTotal) : 0 }
+  }, [teamWorkflows])
   const expireAdminSession = useCallback(() => {
     sessionStorage.removeItem(adminStorageKey)
     setSession(null)
@@ -208,6 +206,10 @@ function App2() {
   }, [session, t])
 
   useEffect(() => {
+    if (!session) setRoutingOpen(false)
+  }, [session])
+
+  useEffect(() => {
     if (!toast) return
     const hide = window.setTimeout(() => setToast(''), 3200)
     return () => window.clearTimeout(hide)
@@ -221,7 +223,6 @@ function App2() {
       setWorkflow(null)
       setTeamWorkflows([])
       setFastTaskToday(null)
-      setSelectedTaskId(previewWorkflow.tasks[0]?.id ?? null)
       return
     }
     setReadIds(readKey(member.keyId))
@@ -251,12 +252,7 @@ function App2() {
       cancelled = true
       window.clearInterval(timer)
     }
-  }, [member, previewWorkflow, t])
-
-  useEffect(() => {
-    if (!visibleWorkflow.tasks.length) return
-    setSelectedTaskId((current) => visibleWorkflow.tasks.some((task) => task.id === current) ? current : (visibleWorkflow.tasks.find((task) => task.status === 'active') ?? visibleWorkflow.tasks[0]).id)
-  }, [visibleWorkflow])
+  }, [member, t])
 
   useEffect(() => {
     const root = workspaceRef.current
@@ -286,8 +282,26 @@ function App2() {
     return () => root.removeEventListener('wheel', switchOnWheel)
   }, [])
 
+  useEffect(() => {
+    if (!teamOpen) return
+    const closeOnOutsidePointer = (event: MouseEvent) => {
+      if (!(event.target instanceof Node)) return
+      if (!teamWidgetRef.current?.contains(event.target)) setTeamOpen(false)
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setTeamOpen(false)
+    }
+    document.addEventListener('mousedown', closeOnOutsidePointer)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('mousedown', closeOnOutsidePointer)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [teamOpen])
+
   const setWorkspacePage = (view: WorkspaceView) => {
     if (view === workspaceView) return
+    setTeamOpen(false)
     const currentIndex = WORKSPACE_VIEWS.indexOf(workspaceView)
     const nextIndex = WORKSPACE_VIEWS.indexOf(view)
     const forwardDistance = (nextIndex - currentIndex + WORKSPACE_VIEWS.length) % WORKSPACE_VIEWS.length
@@ -492,79 +506,6 @@ function App2() {
     setKeyOpen(false)
   }
 
-  const selectTask = (task: WorkflowTask) => {
-    if (!workflow && task.status === 'pending') {
-      setSelectedTaskId(task.id)
-      return
-    }
-    if (workflow && task.status === 'pending') {
-      setToast(t('toast.activeRequired'))
-      return
-    }
-    setSelectedTaskId(task.id)
-  }
-
-  const loadDefaultWorkflow = async () => {
-    if (!member) {
-      setKeyOpen(true)
-      return
-    }
-    setBusy(true)
-    try {
-      const result = await request<{ workflow: Workflow }>('/api/workflow', { method: 'POST', body: JSON.stringify({ default: true }) }, member)
-      setWorkflow(result.workflow)
-      setTeamWorkflows((current) => current.map((item) => item.keyId === member.keyId ? { ...item, workflow: result.workflow } : item))
-      setSelectedTaskId(result.workflow.currentTask?.id ?? result.workflow.tasks[0]?.id ?? null)
-      setToast(t('toast.defaultLoaded'))
-    } catch (err) {
-      setToast(err instanceof Error ? err.message : t('toast.loadFailed'))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const completeTask = async (task: WorkflowTask) => {
-    if (!member) {
-      setKeyOpen(true)
-      setToast(t('toast.unlockRequired'))
-      return
-    }
-    if (!workflow) {
-      setToast(t('toast.queueRequired'))
-      return
-    }
-    if (task.status !== 'active') {
-      setToast(t('toast.activeRequired'))
-      return
-    }
-    const upcoming = workflow.tasks.find((item) => item.status === 'pending')
-    const upcomingEntry = upcoming ? getWorkflowEntry(entries, upcoming.module) : null
-    const nextTab = upcomingEntry?.url ? window.open('about:blank', '_blank') : null
-    setBusy(true)
-    try {
-      const result = await request<{ workflow: Workflow; nextTask?: WorkflowTask | null }>('/api/workflow/complete', { method: 'POST', body: JSON.stringify({ taskId: task.id }) }, member)
-      setWorkflow(result.workflow)
-      setTeamWorkflows((current) => current.map((item) => item.keyId === member.keyId ? { ...item, workflow: result.workflow } : item))
-      const next = result.nextTask ?? result.workflow.currentTask ?? null
-      if (next) {
-        setSelectedTaskId(next.id)
-        setToast(t('toast.stageComplete', { name: getWorkflowModuleName(entries, next.module) }))
-        const nextEntry = getWorkflowEntry(entries, next.module)
-        if (nextEntry) openEntry(nextEntry, nextTab)
-        else nextTab?.close()
-      } else {
-        nextTab?.close()
-        setSelectedTaskId(result.workflow.tasks[result.workflow.tasks.length - 1]?.id ?? task.id)
-        setToast(t('toast.allComplete'))
-      }
-    } catch (err) {
-      nextTab?.close()
-      setToast(err instanceof Error ? err.message : t('toast.completeFailed'))
-    } finally {
-      setBusy(false)
-    }
-  }
-
   return (
     <div className="tech-app">
       <header className="tech-header">
@@ -582,14 +523,20 @@ function App2() {
         <div className="header-actions">
           {casEnabled && (member ? <button type="button" className="ghost-button" onClick={() => setCasOpen(true)}>FastCAS 认证</button> : <a className="ghost-button" href={apiUrl('/api/auth/fastcas/login')}>使用 FastCAS 登录</a>)}
           {member && <span className="header-identity" title={`当前认证成员：${member.person}`}>👤 {member.person}</span>}
-          <button type="button" className="ghost-button" onClick={openFastTaskInNewTab}>
+          <button type="button" className="ghost-button" onClick={openFastTaskInNewTab} aria-label={t('header.fastTask')} title={t('header.fastTask')}>
             <ListTodo size={14} />
             <span>{t('header.fastTask')}</span>
           </button>
-          <button type="button" className="ghost-button" onClick={() => setKeyOpen(true)}>
+          <button type="button" className="ghost-button" onClick={() => setKeyOpen(true)} aria-label={member ? t('header.keyActive') : t('header.authenticate')} title={member ? t('header.keyActive') : t('header.authenticate')}>
             <KeyRound size={14} />
             <span>{member ? t('header.keyActive') : t('header.authenticate')}</span>
           </button>
+          {session && (
+            <button type="button" className="ghost-button" onClick={() => setRoutingOpen(true)} aria-label={t('workspace.routing')} title={t('workspace.routing')}>
+              <Settings2 size={14} />
+              <span>{t('workspace.routing')}</span>
+            </button>
+          )}
           <button type="button" className="icon-button" onClick={() => setDark((value) => !value)} aria-label={dark ? t('header.lightTheme') : t('header.darkTheme')} title={dark ? t('header.lightTheme') : t('header.darkTheme')}>
             {dark ? <Sun size={15} /> : <Moon size={15} />}
           </button>
@@ -621,23 +568,55 @@ function App2() {
               <span className="workspace-kicker">FASTRESEARCH / WORKSPACE</span>
               <h2>{t('workspace.title')}</h2>
             </div>
-            <div className="workspace-tabs" aria-label={t('workspace.views')}>
-              <button type="button" className={workspaceView === 'today' ? 'is-active' : ''} aria-pressed={workspaceView === 'today'} onClick={() => setWorkspacePage('today')}>
-                <CalendarCheck size={17} /> <span>{t('workspace.today')}</span>
-              </button>
-              <button type="button" className={workspaceView === 'workflow' ? 'is-active' : ''} aria-pressed={workspaceView === 'workflow'} onClick={() => setWorkspacePage('workflow')}>
-                <ListTodo size={17} /> <span>{t('workspace.workflow')}</span>
-              </button>
-              <button type="button" className={workspaceView === 'insight' ? 'is-active' : ''} aria-pressed={workspaceView === 'insight'} onClick={() => setWorkspacePage('insight')}>
-                <Inbox size={17} /> <span>{t('workspace.insight')}</span>
-                {member && insightItems.some((item) => !readIds.has(item.id)) && <span className="workspace-unread">{insightItems.filter((item) => !readIds.has(item.id)).length}</span>}
-              </button>
-              <button type="button" className={workspaceView === 'team' ? 'is-active' : ''} aria-pressed={workspaceView === 'team'} onClick={() => setWorkspacePage('team')}>
-                <UsersRound size={17} /> <span>{t('team.label')}</span>
-              </button>
-              <button type="button" className={workspaceView === 'routing' ? 'is-active' : ''} aria-pressed={workspaceView === 'routing'} onClick={() => setWorkspacePage('routing')}>
-                <Settings2 size={17} /> <span>{t('workspace.routing')}</span>
-              </button>
+            <div className="workspace-tools">
+              <div className="workspace-tabs" aria-label={t('workspace.views')}>
+                <button type="button" className={workspaceView === 'today' ? 'is-active' : ''} aria-pressed={workspaceView === 'today'} onClick={() => setWorkspacePage('today')}>
+                  <CalendarCheck size={17} /> <span>{t('workspace.today')}</span>
+                </button>
+                <button type="button" className={workspaceView === 'workflow' ? 'is-active' : ''} aria-pressed={workspaceView === 'workflow'} onClick={() => setWorkspacePage('workflow')}>
+                  <ListTodo size={17} /> <span>{t('workspace.workflow')}</span>
+                </button>
+                <button type="button" className={workspaceView === 'insight' ? 'is-active' : ''} aria-pressed={workspaceView === 'insight'} onClick={() => setWorkspacePage('insight')}>
+                  <Inbox size={17} /> <span>{t('workspace.insight')}</span>
+                  {member && insightItems.some((item) => !readIds.has(item.id)) && <span className="workspace-unread">{insightItems.filter((item) => !readIds.has(item.id)).length}</span>}
+                </button>
+              </div>
+              <div className="workspace-team-widget" ref={teamWidgetRef}>
+                <button
+                  type="button"
+                  className={`team-progress-trigger ${teamOpen ? 'is-open' : ''}`}
+                  aria-expanded={teamOpen}
+                  aria-controls="workspace-team-progress"
+                  aria-label={member
+                    ? teamSummary.total > 0
+                      ? t('team.widgetAria', { done: teamSummary.done, total: teamSummary.total, percent: teamSummary.percent })
+                      : t('team.widgetEmptyAria')
+                    : t('team.authRequired')}
+                  title={member ? t('team.summary', { done: teamSummary.done, total: teamSummary.total }) : t('team.authRequired')}
+                  onClick={() => setTeamOpen((value) => !value)}
+                >
+                  <UsersRound size={17} />
+                  <span className="team-progress-trigger-label">{t('team.label')}</span>
+                  {member && teamSummary.total > 0 ? (
+                    <>
+                      <span className="team-progress-trigger-meter" aria-hidden="true"><i style={{ width: `${teamSummary.percent}%` }} /></span>
+                      <strong>{teamSummary.percent}%</strong>
+                    </>
+                  ) : <span className="team-progress-trigger-state" aria-hidden="true">{member ? '—' : <LockKeyhole size={13} />}</span>}
+                  <ChevronDown size={14} className="team-progress-trigger-chevron" aria-hidden="true" />
+                </button>
+                {teamOpen && (
+                  <div className="team-progress-popover" id="workspace-team-progress" role="dialog" aria-label={t('team.label')}>
+                    <TeamProgressPanel
+                      members={teamWorkflows}
+                      currentKeyId={member?.keyId ?? null}
+                      loading={Boolean(member) && teamWorkflows.length === 0}
+                      onClose={() => setTeamOpen(false)}
+                      t={t}
+                    />
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -656,20 +635,12 @@ function App2() {
             )}
             {workspaceView === 'workflow' && (
               <WorkflowBoard
-                workflow={visibleWorkflow}
+                workflow={workflow}
                 entries={entries}
                 t={t}
-                live={Boolean(workflow)}
-                member={member}
-                selectedId={selectedTask?.id ?? null}
-                selectedEntry={selectedEntry}
-                selectedTask={selectedTask}
-                busy={busy}
-                onSelect={selectTask}
-                onOpen={() => selectedEntry && openEntry(selectedEntry)}
-                onComplete={() => selectedTask && completeTask(selectedTask)}
-                onLoadDefault={() => { void loadDefaultWorkflow() }}
-                onUnlock={() => setKeyOpen(true)}
+                selectedModule={selectedModule}
+                onSelect={setSelectedModule}
+                onOpen={() => openEntry(entries[selectedModule])}
               />
             )}
             {workspaceView === 'insight' && (
@@ -681,20 +652,6 @@ function App2() {
                 onSelect={markRead}
                 onUnlock={() => setKeyOpen(true)}
                 onOpenFastRead={() => openEntry(entries['fast-read'])}
-                t={t}
-              />
-            )}
-            {workspaceView === 'team' && (
-              <div className="workspace-team-page">
-                <TeamProgressPanel members={teamWorkflows} currentKeyId={member?.keyId ?? null} loading={Boolean(member) && teamWorkflows.length === 0} t={t} />
-              </div>
-            )}
-            {workspaceView === 'routing' && (
-              <FastInsightRosterEditor
-                session={session}
-                onAdminOpen={() => setAdminOpen(true)}
-                onSessionExpired={expireAdminSession}
-                onToast={setToast}
                 t={t}
               />
             )}
@@ -724,6 +681,17 @@ function App2() {
           onClose={() => setAdminOpen(false)}
           t={t}
         />
+      )}
+      {routingOpen && session && (
+        <Dialog title={t('workspace.routing')} onClose={() => setRoutingOpen(false)} className="routing-dialog" t={t}>
+          <FastInsightRosterEditor
+            session={session}
+            onAdminOpen={() => setAdminOpen(true)}
+            onSessionExpired={expireAdminSession}
+            onToast={setToast}
+            t={t}
+          />
+        </Dialog>
       )}
       {toast && <div className="tech-toast"><Check size={15} /> {toast}</div>}
     </div>
@@ -824,7 +792,7 @@ function FastTaskTodayPanel({ member, today, onUnlock, onRefresh, onOpenFastTask
   )
 }
 
-function TeamProgressPanel({ members, currentKeyId, loading, t }: { members: TeamWorkflow[]; currentKeyId: string | null; loading: boolean; t: Translate }) {
+function TeamProgressPanel({ members, currentKeyId, loading, onClose, t }: { members: TeamWorkflow[]; currentKeyId: string | null; loading: boolean; onClose?: () => void; t: Translate }) {
   const assigned = members.filter((member) => member.workflow)
   const completed = assigned.reduce((total, member) => total + (member.workflow?.doneCount ?? 0), 0)
   const taskTotal = assigned.reduce((total, member) => total + (member.workflow?.total ?? 0), 0)
@@ -833,7 +801,14 @@ function TeamProgressPanel({ members, currentKeyId, loading, t }: { members: Tea
     <section className="team-progress-panel" aria-label={t('team.label')}>
       <div className="team-progress-heading">
         <span className="intel-kicker"><ListTodo size={14} /> {t('team.label')}</span>
-        <span className="meter-badge">{t('team.people', { count: members.length })}</span>
+        <span className="team-progress-heading-actions">
+          <span className="meter-badge">{t('team.people', { count: members.length })}</span>
+          {onClose && (
+            <button type="button" className="icon-button team-progress-close" onClick={onClose} aria-label={t('dialog.close')} title={t('dialog.close')}>
+              <X size={14} />
+            </button>
+          )}
+        </span>
       </div>
       <div className="team-progress-summary">
         {loading ? t('team.syncing') : currentKeyId ? t('team.summary', { done: completed, total: taskTotal }) : t('team.authRequired')}
@@ -890,51 +865,49 @@ function TeamProgressPanel({ members, currentKeyId, loading, t }: { members: Tea
   )
 }
 
-function WorkflowBoard({ workflow, live, member, selectedId, selectedEntry, selectedTask, busy, onSelect, onOpen, onComplete, onLoadDefault, onUnlock, entries, t }: {
-  workflow: Workflow
-  live: boolean
-  member: MemberSession | null
-  selectedId: string | null
-  selectedEntry: Entry | null
-  selectedTask?: WorkflowTask
-  busy: boolean
-  onSelect: (task: WorkflowTask) => void
+function WorkflowBoard({ workflow, selectedModule, onSelect, onOpen, entries, t }: {
+  workflow: Workflow | null
+  selectedModule: WorkflowModule
+  onSelect: (module: WorkflowModule) => void
   onOpen: () => void
-  onComplete: () => void
-  onLoadDefault: () => void
-  onUnlock: () => void
   entries: Record<EntryId, Entry>
   t: Translate
 }) {
-  const current = workflow.tasks.find((task) => task.status === 'active')
+  const selectedEntry = getWorkflowEntry(entries, selectedModule)
+  const selectedTask = workflow?.tasks.find((task) => task.module === selectedModule) ?? null
   const Icon = selectedEntry?.Icon ?? ListTodo
-  const canComplete = live && selectedTask?.status === 'active'
-  const canOpen = Boolean(selectedEntry?.url) && (!live || selectedTask?.status !== 'pending')
+  const moduleIndex = MODULE_HUB_ORDER.indexOf(selectedModule)
+  const moduleTitle = selectedTask?.title ?? t(`task.${selectedModule}.title`)
+  const moduleDescription = selectedTask?.description || selectedEntry?.description || t('board.externalModuleDescription')
 
   return (
     <section className="workflow-board" id="modules">
       <aside className="workflow-rail">
         <div className="workflow-rail-head">
           <span>{t('board.list')}</span>
-          <small className="rail-counter">{live ? t('board.completed', { done: workflow.doneCount, total: workflow.total }) : t('board.reference')}</small>
+          <small className="rail-counter">
+            {t('board.allModules', { count: MODULE_HUB_ORDER.length })}
+          </small>
         </div>
         <ol className="workflow-steps">
-          {workflow.tasks.map((task, index) => {
-            const entry = getWorkflowEntry(entries, task.module)
-            const active = task.id === selectedId
-            const StatusIcon = task.status === 'done' ? CheckCircle2 : task.status === 'active' ? CircleDot : Circle
+          {MODULE_HUB_ORDER.map((module, index) => {
+            const entry = getWorkflowEntry(entries, module)
+            const task = workflow?.tasks.find((item) => item.module === module) ?? null
+            const status = task?.status ?? 'available'
+            const active = module === selectedModule
+            const StatusIcon = status === 'done' ? CheckCircle2 : status === 'active' ? CircleDot : status === 'pending' ? Circle : ArrowUpRight
             return (
-              <li key={task.id}>
+              <li key={module}>
                 <button
                   type="button"
-                  className={`workflow-step is-${task.status} ${active ? 'is-selected' : ''} tone-${entry?.tone ?? 'neutral'}`}
-                  onClick={() => onSelect(task)}
-                  aria-current={task.status === 'active' ? 'step' : undefined}
+                  className={`workflow-step is-${status} ${active ? 'is-selected' : ''} tone-${entry?.tone ?? 'neutral'}`}
+                  onClick={() => onSelect(module)}
+                  aria-current={active ? 'true' : undefined}
                 >
                   <span className="step-index">0{index + 1}</span>
                   <span className="step-copy">
-                    <em>{getWorkflowModuleName(entries, task.module)} · {entry?.label.split(' · ')[0] ?? t('board.externalModuleLabel')}</em>
-                    <strong>{task.title}</strong>
+                    <em>{getWorkflowModuleName(entries, module)} · {entry?.label.split(' · ')[0] ?? t('board.externalModuleLabel')}</em>
+                    <strong>{task?.title ?? t(`task.${module}.title`)}</strong>
                   </span>
                   <span className="step-status-icon">
                     <StatusIcon size={16} />
@@ -948,69 +921,40 @@ function WorkflowBoard({ workflow, live, member, selectedId, selectedEntry, sele
 
       <article className={`workflow-stage ${selectedEntry ? `tone-${selectedEntry.tone}` : ''}`}>
         {selectedEntry && selectedEntry.id !== 'fast-ppt' && selectedEntry.id !== 'fast-lab' && <ModuleShowcase entries={entries} selectedId={selectedEntry.id} t={t} />}
-        {!live && (
-          <div className="workflow-banner">
-            <div className="workflow-banner-icon"><Layers size={18} /></div>
-            <div className="workflow-banner-content">
-              {member
-                ? <p>{t('board.noWorkflow')}</p>
-                : <p>{t('board.authSync')}</p>}
-              <div className="workflow-banner-actions">
-                {member
-                  ? <button type="button" className="outline-button" onClick={onLoadDefault} disabled={busy}>{t('board.loadDefault')}</button>
-                  : <button type="button" className="outline-button" onClick={onUnlock}>{t('board.authenticate')} <KeyRound size={14} /></button>}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {workflow.completed ? (
-          <div className="workflow-complete">
-            <div className="complete-icon-box"><CheckCircle2 size={36} /></div>
-            <strong>{t('board.allDone')}</strong>
-            <p>{t('board.allDoneDescription')}</p>
-            {member && <button type="button" className="outline-button" onClick={onLoadDefault} disabled={busy}>{t('board.reload')}</button>}
-          </div>
-        ) : selectedTask ? (
-          <>
-            <div className="stage-top-bar">
-              <span className="stage-badge">{selectedEntry?.label ?? t('board.externalModuleLabel')}</span>
-              <span className="card-number">{t('board.stage', { current: String(workflow.tasks.findIndex((task) => task.id === selectedTask.id) + 1).padStart(2, '0'), total: String(workflow.tasks.length).padStart(2, '0') })}</span>
-            </div>
-            <div className="stage-identity">
-              <span className="module-icon"><Icon size={22} /></span>
-              <div className="stage-identity-text">
-                <span className="module-system-name">{getWorkflowModuleName(entries, selectedTask.module)}</span>
-                <h2>{selectedTask.title}</h2>
-              </div>
-            </div>
-            <div className="stage-brief">
-              <h4>{t('board.brief')}</h4>
-              <p>{selectedTask.description || selectedEntry?.description || t('board.externalModuleDescription')}</p>
-            </div>
-            {current && selectedTask.id !== current.id && live && (
-              <div className="workflow-note">
-                <span>{t('board.suggestion', { name: getWorkflowModuleName(entries, current.module), title: current.title })}</span>
-              </div>
+        <div className="stage-top-bar">
+          <span className="stage-badge">{selectedEntry?.label ?? t('board.externalModuleLabel')}</span>
+          <span className="stage-top-meta">
+            {selectedTask && (
+              <span className={`stage-status is-${selectedTask.status}`}>
+                {selectedTask.status === 'done' ? t('board.taskDone') : selectedTask.status === 'active' ? t('board.taskActive') : t('board.taskPending')}
+              </span>
             )}
-            <div className="workflow-actions">
-              {selectedEntry && (
-                <button type="button" className="primary-button" onClick={onOpen} disabled={!canOpen || busy}>
-                  {t('board.open', { name: selectedEntry.name })} <ArrowUpRight size={15} />
-                </button>
-              )}
-              <button type="button" className="outline-button" onClick={onComplete} disabled={!canComplete || busy}>
-                {selectedTask.status === 'active' && workflow.currentIndex >= workflow.total - 1 ? t('board.finish') : t('board.finishNext')}
-              </button>
-            </div>
-          </>
-        ) : (
-          <div className="workflow-complete">
-            <div className="complete-icon-box"><LockKeyhole size={28} /></div>
-            <strong>{t('board.waiting')}</strong>
-            <p>{t('board.waitingDescription')}</p>
+            <span className="card-number">{t('board.moduleIndex', { current: String(moduleIndex + 1).padStart(2, '0'), total: String(MODULE_HUB_ORDER.length).padStart(2, '0') })}</span>
+          </span>
+        </div>
+        <div className="stage-identity">
+          <span className="module-icon"><Icon size={22} /></span>
+          <div className="stage-identity-text">
+            <span className="module-system-name">{selectedEntry?.name ?? getWorkflowModuleName(entries, selectedModule)}</span>
+            <h2>{moduleTitle}</h2>
+          </div>
+        </div>
+        <div className="stage-brief">
+          <h4>{t('board.brief')}</h4>
+          <p>{moduleDescription}</p>
+        </div>
+        {selectedEntry && !selectedEntry.url && (
+          <div className="workflow-note is-muted">
+            <span>{t('board.notConfigured', { name: selectedEntry.name })}</span>
           </div>
         )}
+        <div className="workflow-actions">
+          {selectedEntry && (
+            <button type="button" className="primary-button" onClick={onOpen} disabled={!selectedEntry.url}>
+              {t('board.open', { name: selectedEntry.name })} <ArrowUpRight size={15} />
+            </button>
+          )}
+        </div>
       </article>
     </section>
   )
@@ -1100,20 +1044,33 @@ function InsightMailbox({ member, items, selectedId, readIds, onSelect, onUnlock
               const active = (selected?.id ?? '') === item.id
               const unreadItem = !readIds.has(item.id)
               return (
-                <button
-                  type="button"
+                <div
                   role="listitem"
                   key={item.id}
                   className={`mailbox-row ${active ? 'is-active' : ''} ${unreadItem ? 'is-unread' : ''}`}
-                  onClick={() => onSelect(item.id)}
                 >
-                  <span className="mailbox-dot" aria-hidden="true" />
-                  <span className="mailbox-row-copy">
-                    <em>{item.direction ? t('insight.reading', { direction: item.direction }) : t('insight.card')}</em>
-                    <strong>{item.title}</strong>
-                    <small>{formatTime(item.receivedAt)}{item.source ? ` · ${item.source}` : ''}</small>
-                  </span>
-                </button>
+                  <button type="button" className="mailbox-row-select" onClick={() => onSelect(item.id)}>
+                    <span className="mailbox-dot" aria-hidden="true" />
+                    <span className="mailbox-row-copy">
+                      <em>{item.direction ? t('insight.reading', { direction: item.direction }) : t('insight.card')}</em>
+                      <strong>{item.title}</strong>
+                      <small>{formatTime(item.receivedAt)}{item.source ? ` · ${item.source}` : ''}</small>
+                    </span>
+                  </button>
+                  {item.url && (
+                    <a
+                      className="mailbox-row-arrive"
+                      href={item.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      title={t('insight.arrive')}
+                      aria-label={t('insight.arriveAria', { title: item.title })}
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <span>{t('insight.arrive')}</span> <ArrowUpRight size={13} />
+                    </a>
+                  )}
+                </div>
               )
             })}
           </div>
@@ -1142,8 +1099,8 @@ function InsightMailbox({ member, items, selectedId, readIds, onSelect, onUnlock
                   )}
                   {selected.url && (
                     <div className="paper-meta-row">
-                      <span className="meta-label">{t('insight.source')}</span>
-                      <span className="meta-val paper-link-text">{selected.url}</span>
+                      <span className="meta-label">{t('insight.paperUrl')}</span>
+                      <a className="meta-val paper-link-text" href={selected.url} target="_blank" rel="noreferrer" title={selected.url}>{selected.url}</a>
                     </div>
                   )}
                 </div>
@@ -1486,10 +1443,10 @@ function FastInsightRosterEditor({ session, onAdminOpen, onSessionExpired, onToa
   )
 }
 
-function Dialog({ title, children, onClose, wide, t }: { title: string; children: React.ReactNode; onClose: () => void; wide?: boolean; t: Translate }) {
+function Dialog({ title, children, onClose, wide, className, t }: { title: string; children: React.ReactNode; onClose: () => void; wide?: boolean; className?: string; t: Translate }) {
   return (
     <div className="dialog-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <section className={`tech-dialog ${wide ? 'admin-dialog' : ''}`} role="dialog" aria-modal="true">
+      <section className={['tech-dialog', wide ? 'admin-dialog' : '', className ?? ''].filter(Boolean).join(' ')} role="dialog" aria-modal="true">
         <div className="dialog-title">
           <span>{title}</span>
           <button type="button" className="icon-button" onClick={onClose} aria-label={t('dialog.close')}><X size={15} /></button>
