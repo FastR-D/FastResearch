@@ -4,6 +4,7 @@ import { ServiceIngest, ServiceIngestError } from './service-ingest.mjs'
 import { handleFastCAS } from './fastcas-routes.mjs'
 import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
+import { isIP } from 'node:net'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { AccountStore, TokenStore } from './account-store.mjs'
 import { migrateAccounts } from './account-migration.mjs'
@@ -484,6 +485,25 @@ function isSecureRequest(request) {
   return forwarded === 'https'
 }
 
+// Host-only cookies make the member session invisible on the other hostname
+// (fastrd.io vs www.fastrd.io). Prefer an explicit FASTRESEARCH_COOKIE_DOMAIN;
+// otherwise scope the cookie to the current apex so both forms share it.
+function requestHostname(request) {
+  const raw = String(request?.headers?.['x-forwarded-host'] ?? request?.headers?.host ?? '')
+    .split(',')[0]
+    .trim()
+  if (!raw || raw.startsWith('[')) return ''
+  return raw.split(':')[0].trim().toLowerCase().replace(/\.$/, '')
+}
+
+function cookieDomain(request) {
+  if (COOKIE_DOMAIN) return COOKIE_DOMAIN
+  const host = requestHostname(request)
+  if (!host || !host.includes('.') || isLocalHostname(host) || isIP(host)) return ''
+  const apex = host.startsWith('www.') ? host.slice(4) : host
+  return apex.includes('.') ? `.${apex}` : ''
+}
+
 function serializeCookie(value, { maxAge, request, sameSite = COOKIE_SAMESITE } = {}) {
   const parts = [
     `${COOKIE_NAME}=${encodeURIComponent(value)}`,
@@ -492,7 +512,8 @@ function serializeCookie(value, { maxAge, request, sameSite = COOKIE_SAMESITE } 
     `Max-Age=${Math.max(0, Math.floor(maxAge ?? 0))}`,
     `SameSite=${sameSite}`,
   ]
-  if (COOKIE_DOMAIN) parts.push(`Domain=${COOKIE_DOMAIN}`)
+  const domain = cookieDomain(request)
+  if (domain) parts.push(`Domain=${domain}`)
   if (isSecureRequest(request) || String(sameSite).toLowerCase() === 'none') parts.push('Secure')
   return parts.join('; ')
 }

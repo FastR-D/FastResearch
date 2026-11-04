@@ -2,7 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App2'
 import PromoPage from './PromoPage'
-import { hasActiveMemberSession } from './member-session'
+import { hasServerMemberSession, migrateLegacyMemberSession } from './member-session'
 import './index.css'
 import './promo.css'
 
@@ -12,10 +12,20 @@ const normalizedPath = window.location.pathname.replace(/\/+$/, '')
 const introPath = `${basePath}/intro`
 const workspacePath = `${basePath}/workspace`
 
-if (normalizedPath === basePath) {
+// Member login state lives in the project database behind an HttpOnly cookie.
+// Migrate any legacy browser copy once so fastrd.io and www.fastrd.io agree.
+void migrateLegacyMemberSession()
+
+async function redirectRoot() {
+  await migrateLegacyMemberSession()
   const params = new URLSearchParams(window.location.search)
-  const workspaceReturn = hasActiveMemberSession() || params.has('fastcas') || params.get('launch') === 'fast-task' || ['#home', '#modules'].includes(window.location.hash)
+  const forcedWorkspace = params.has('fastcas') || params.get('launch') === 'fast-task' || ['#home', '#modules'].includes(window.location.hash)
+  const workspaceReturn = forcedWorkspace || await hasServerMemberSession()
   window.location.replace(`${workspaceReturn ? workspacePath : introPath}${window.location.search}${window.location.hash}`)
+}
+
+if (normalizedPath === basePath) {
+  void redirectRoot()
 } else {
   const isIntro = normalizedPath === introPath
   if (isIntro) document.documentElement.classList.add('promo-route')

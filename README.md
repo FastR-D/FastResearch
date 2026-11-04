@@ -68,6 +68,9 @@ FASTREAD_URL=http://127.0.0.1:3015
 FASTNEWS_URL=http://127.0.0.1:4173
 
 # Cookie 配置
+# 成员登录态保存在 data/accounts.sqlite，由 HttpOnly Cookie 引用。
+# 部署在 fastrd.io 时建议设为 .fastrd.io，保证裸域和 www 共用登录态；
+# 留空时服务会按请求 Host 自动推断（www.fastrd.io -> .fastrd.io）。
 FASTRESEARCH_COOKIE_NAME=fr_session
 FASTRESEARCH_COOKIE_DOMAIN=
 FASTRESEARCH_COOKIE_SAMESITE=Lax

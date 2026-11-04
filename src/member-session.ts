@@ -1,39 +1,76 @@
-export const MEMBER_SESSION_TTL_MS = 2 * 24 * 60 * 60 * 1000
-export const memberStorageKey = 'fastresearch-member-session'
+const legacyMemberStorageKey = 'fastresearch-member-session'
+const apiBase = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '')
 
-type ExpiringSession = { expiresAt: number }
+function clearLegacyMemberSession() {
+  try { localStorage.removeItem(legacyMemberStorageKey) } catch { /* optional storage */ }
+  try { sessionStorage.removeItem(legacyMemberStorageKey) } catch { /* optional storage */ }
+}
 
-export function loadMemberSession<T extends ExpiringSession>(): T | null {
+function readLegacyToken() {
   try {
-    const raw = localStorage.getItem(memberStorageKey) ?? sessionStorage.getItem(memberStorageKey)
-    if (!raw) return null
-    const value = JSON.parse(raw) as T | null
-    if (!value || typeof value.expiresAt !== 'number' || value.expiresAt <= Date.now()) {
-      clearMemberSession()
-      return null
-    }
-    if (!localStorage.getItem(memberStorageKey)) saveMemberSession(value)
-    return value
+    const raw = localStorage.getItem(legacyMemberStorageKey) ?? sessionStorage.getItem(legacyMemberStorageKey)
+    if (!raw) return ''
+    const value = JSON.parse(raw) as { token?: unknown; expiresAt?: unknown }
+    if (typeof value?.token !== 'string' || !value.token) return ''
+    if (typeof value.expiresAt === 'number' && value.expiresAt <= Date.now()) return ''
+    return value.token
   } catch {
-    clearMemberSession()
-    return null
+    return ''
   }
 }
 
-export function saveMemberSession<T extends ExpiringSession>(value: T) {
+async function runLegacyMigration(): Promise<boolean> {
+  const token = readLegacyToken()
+  if (!token) {
+    clearLegacyMemberSession()
+    return false
+  }
   try {
-    localStorage.setItem(memberStorageKey, JSON.stringify(value))
-    sessionStorage.removeItem(memberStorageKey)
+    // This call makes the server persist/refresh the session and re-issue the
+    // HttpOnly cookie, so both fastrd.io and www.fastrd.io share it.
+    const response = await fetch(`${apiBase}/api/content/me`, {
+      method: 'GET',
+      credentials: 'include',
+      cache: 'no-store',
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(5000),
+    })
+    return response.ok
   } catch {
-    // Private browsing can reject persistent storage; the HttpOnly session cookie still works.
+    return false
+  } finally {
+    clearLegacyMemberSession()
   }
 }
 
-export function clearMemberSession() {
-  try { localStorage.removeItem(memberStorageKey) } catch { /* optional storage */ }
-  try { sessionStorage.removeItem(memberStorageKey) } catch { /* optional storage */ }
+let migration: Promise<boolean> | null = null
+
+/**
+ * Older builds kept the member session in localStorage, which made the login
+ * state differ between fastrd.io and www.fastrd.io. Move that session into the
+ * server-side cookie once, then remove the browser copy.
+ */
+export function migrateLegacyMemberSession(): Promise<boolean> {
+  migration ??= runLegacyMigration()
+  return migration
 }
 
-export function hasActiveMemberSession() {
-  return Boolean(loadMemberSession<ExpiringSession>())
+/**
+ * Ask the server whether the current browser already has a valid member
+ * session. The session itself lives in the project database and is referenced
+ * by the HttpOnly `fr_session` cookie.
+ */
+export async function hasServerMemberSession(): Promise<boolean> {
+  try {
+    const response = await fetch(`${apiBase}/api/content/me`, {
+      method: 'GET',
+      credentials: 'include',
+      cache: 'no-store',
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(5000),
+    })
+    return response.ok
+  } catch {
+    return false
+  }
 }

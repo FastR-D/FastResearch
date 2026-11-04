@@ -16,7 +16,7 @@
 4. **FastNews 和 FastRead 都走一次性 SSO 票据。** FastNews 由 `serve.py` 服务端兑换后写入 HttpOnly Cookie；不要把凭证放进 URL。
 5. **有后端的模块必须在服务端兑换票据。** FastNews 兑换后用同源 `/api` 反代 + `credentials: include`；不要再把 `research_api` 拼进跳转地址，也不要直开静态站。
 6. **服务号密钥 ≠ 个人 Key。** FastInsight / 最近阅读写入用请求头 `X-FastInsight-Key`，与成员 Key 无关。
-7. **浏览器登录状态保留 2 天。** 成功解锁后浏览器会保存成员会话标记；2 天内访问站点根地址会直接进入 `/workspace`。过期后根地址回到宣传首页，从首页进入工作台时重新登录。原始个人 Key 不写入浏览器存储。
+7. **浏览器登录状态由服务端持久化。** 成功解锁后，成员会话写入项目数据库，浏览器只保留 HttpOnly Cookie `fr_session`（2 天），不再写入 localStorage。服务端 Cookie 默认按请求 Host 推断（去掉 `www.` 后的主机名，例如 `.fastrd.io`），因此 `fastrd.io` 和 `www.fastrd.io` 共享同一个登录状态；部署时也可显式设置 `FASTRESEARCH_COOKIE_DOMAIN=.fastrd.io`。2 天内访问站点根地址会直接进入 `/workspace`。原始个人 Key 不写入浏览器存储。
 
 ---
 

@@ -1,7 +1,7 @@
 import { ArrowUpRight, BookOpenText, CalendarCheck, CalendarClock, Check, CheckCircle2, ChevronDown, Circle, CircleDot, Clock, ExternalLink, FlaskConical, Inbox, KeyRound, Languages, Layers, ListTodo, LockKeyhole, LogIn, Moon, Newspaper, PenLine, Plus, RefreshCw, Save, Settings2, ShieldCheck, Sun, Terminal, Trash2, UsersRound, X } from 'lucide-react'
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createTranslator, getInitialLocale, saveLocale, type Locale, type Translate } from './i18n'
-import { clearMemberSession, loadMemberSession, saveMemberSession } from './member-session'
+import { migrateLegacyMemberSession } from './member-session'
 
 type EntryId = 'fast-write' | 'fast-read' | 'fast-news' | 'fast-ppt' | 'fast-lab'
 type SsoEntryId = 'fast-read' | 'fast-news'
@@ -120,7 +120,7 @@ function App2() {
   const [casOpen, setCasOpen] = useState(false)
   const [adminOpen, setAdminOpen] = useState(false)
   const [session, setSession] = useState<AdminSession | null>(() => loadStoredSession<AdminSession>(adminStorageKey))
-  const [member, setMember] = useState<MemberSession | null>(() => new URLSearchParams(window.location.search).get('fastcas') === 'complete' ? null : loadMemberSession<MemberSession>())
+  const [member, setMember] = useState<MemberSession | null>(null)
   const [insightItems, setInsightItems] = useState<InsightItem[]>([])
   const [selectedInsight, setSelectedInsight] = useState<string | null>(null)
   const [readIds, setReadIds] = useState<Set<string>>(() => new Set())
@@ -161,13 +161,34 @@ function App2() {
     void request<{enabled: boolean}>('/api/auth/fastcas/available').then(value => setCasEnabled(value.enabled)).catch(() => {})
     const marker = new URLSearchParams(window.location.search).get('fastcas')
     if (marker === 'complete') {
-      clearMemberSession()
-      void request<{session: string; person: string; keyId: string; expiresAt: number}>('/api/content/me').then(result => {
-        const value = { token: result.session, person: result.person, keyId: result.keyId, expiresAt: result.expiresAt }
-        saveMemberSession(value); setMember(value); setToast('FastCAS 操作已完成')
+      void request<{session: string; person: string; keyId: string; accountId?: string; expiresAt: number}>('/api/content/me').then(result => {
+        const value = { token: result.session, person: result.person, keyId: result.keyId, accountId: result.accountId, expiresAt: result.expiresAt }
+        setMember(value); setToast('FastCAS 操作已完成')
       }).catch(() => { setMember(null); setToast('请重新登录以确认认证状态') })
     } else if (marker === 'failed') setToast('FastCAS 操作未完成，请使用原 Key 登录，在账号认证中检查或重试')
     if (marker) { const url = new URL(window.location.href); url.searchParams.delete('fastcas'); window.history.replaceState(null, '', url.pathname + url.search + url.hash) }
+  }, [])
+
+  // Member login state lives in the project database and is referenced by the
+  // HttpOnly session cookie, so fastrd.io and www.fastrd.io share one session.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('fastcas') === 'complete') return
+    let cancelled = false
+    void migrateLegacyMemberSession()
+      .then(() => request<{ session: string; person: string; keyId: string; accountId?: string; expiresAt: number }>('/api/content/me'))
+      .then((result) => {
+        if (cancelled) return
+        setMember({
+          token: result.session,
+          person: result.person,
+          keyId: result.keyId,
+          accountId: result.accountId,
+          expiresAt: result.expiresAt,
+          source: 'key',
+        })
+      })
+      .catch(() => { /* no active server-side session */ })
+    return () => { cancelled = true }
   }, [])
 
   useEffect(() => {
@@ -187,7 +208,6 @@ function App2() {
     }
     void request<{ session: string; person: string; keyId: string; accountId: string; source: string; expiresAt: number }>('/api/content/me').then((result) => {
       const value = { token: '', person: result.person, keyId: result.keyId, accountId: result.accountId, source: result.source, expiresAt: result.expiresAt }
-      saveMemberSession(value)
       setMember(value)
       setToast(flag === 'linked' ? t('cas.linked') : t('toast.unlocked', { person: result.person }))
     }).catch(() => setToast(t('error.memberExpired')))
@@ -241,7 +261,6 @@ function App2() {
         setFastTaskToday(today.today ?? null)
       } catch (err) {
         if (cancelled) return
-        clearMemberSession()
         setMember(null)
         setToast(err instanceof Error ? err.message : t('error.memberExpired'))
       }
@@ -341,7 +360,6 @@ function App2() {
       openInNewTab(launch.toString(), popup)
     } catch (err) {
       popup?.close()
-      clearMemberSession()
       setMember(null)
       pendingLaunch.current = { entryId, popup: popup ?? null }
       setKeyOpen(true)
@@ -354,7 +372,6 @@ function App2() {
       await request('/api/content/me', {}, memberSession)
     } catch (err) {
       popup?.close()
-      clearMemberSession()
       setMember(null)
       pendingLaunch.current = { entryId: 'fast-write', popup: popup ?? null }
       setKeyOpen(true)
@@ -379,7 +396,6 @@ function App2() {
       launch.searchParams.set('next', next)
       window.location.assign(launch.toString())
     } catch (err) {
-      clearMemberSession()
       setMember(null)
       pendingFastTaskLaunch.current = next
       setKeyOpen(true)
@@ -449,7 +465,6 @@ function App2() {
   const unlock = async (key: string) => {
     const result = await request<{ session: string; person: string; keyId: string; expiresAt: number; insightItems?: InsightItem[]; workflow?: Workflow | null }>('/api/content/unlock', { method: 'POST', body: JSON.stringify({ key: key.trim() }) })
     const value: MemberSession = { token: result.session, person: result.person, keyId: result.keyId, expiresAt: result.expiresAt, source: 'key' }
-    saveMemberSession(value)
     sessionStorage.removeItem(personalKeyStorage)
     setMember(value)
     setInsightItems(result.insightItems ?? [])

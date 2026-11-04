@@ -124,7 +124,7 @@ test('Key identity persists across FastRead, FastWrite and rotation', async () =
       headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...more },
       body: body === undefined ? undefined : JSON.stringify(body),
     })
-    return { status: response.status, body: await response.json() }
+    return { status: response.status, body: await response.json(), headers: response.headers }
   }
   try {
     const fastTaskPublicURL = `http://127.0.0.1:${fastTaskAddress.port}`
@@ -156,6 +156,23 @@ test('Key identity persists across FastRead, FastWrite and rotation', async () =
     const memberSessionTtl = seeded.body.expiresAt - Date.now()
     assert.ok(memberSessionTtl > 47 * 60 * 60 * 1000)
     assert.ok(memberSessionTtl <= 48 * 60 * 60 * 1000)
+    // The session lives in the project database and is referenced by an
+    // HttpOnly cookie. Scope it to the apex so www.fastrd.io and fastrd.io
+    // share the same login state instead of relying on localStorage.
+    const wwwUnlock = await call('/api/content/unlock', 'POST', { key: seededRawKey }, undefined, { 'X-Forwarded-Host': 'www.fastrd.io' })
+    assert.equal(wwwUnlock.status, 200)
+    const wwwCookie = wwwUnlock.headers.get('set-cookie') ?? ''
+    assert.match(wwwCookie, /Domain=\.fastrd\.io/i)
+    const apexUnlock = await call('/api/content/unlock', 'POST', { key: seededRawKey }, undefined, { 'X-Forwarded-Host': 'fastrd.io' })
+    assert.match(apexUnlock.headers.get('set-cookie') ?? '', /Domain=\.fastrd\.io/i)
+    const localUnlock = await call('/api/content/unlock', 'POST', { key: seededRawKey }, undefined, { 'X-Forwarded-Host': '127.0.0.1:8787' })
+    assert.doesNotMatch(localUnlock.headers.get('set-cookie') ?? '', /Domain=/i)
+    const lanUnlock = await call('/api/content/unlock', 'POST', { key: seededRawKey }, undefined, { 'X-Forwarded-Host': '192.168.1.10:8787' })
+    assert.doesNotMatch(lanUnlock.headers.get('set-cookie') ?? '', /Domain=/i)
+    const cookieSession = wwwCookie.split(';')[0]
+    const cookieOnly = await call('/api/content/me', 'GET', undefined, undefined, { Cookie: cookieSession })
+    assert.equal(cookieOnly.status, 200)
+    assert.equal(cookieOnly.body.accountId, seededAccountId)
     process.env.FASTTASK_PUBLIC_URL = base
     const callback = new URL('/api/v1/auth/fastresearch/callback?state=FastTaskState_0123456789abcdefghijk', base)
     const launch = await fetch(base + '/api/sso/launch?audience=fast-task&next=' + encodeURIComponent(callback.toString()), {
