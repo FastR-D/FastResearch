@@ -744,15 +744,51 @@ function normalizeItems(items, source) {
   if (!Array.isArray(items)) return []
   return items.slice(0, 100).map((item, index) => ({
     id: String(item.id ?? `${Date.now()}-${index}`),
-    title: String(item.title ?? item.headline ?? '未命名内容').slice(0, 300),
+    title: String(item.title ?? item.paper_name ?? item.paperName ?? item.paper_title ?? item.paperTitle ?? item.headline ?? '未命名内容').slice(0, 300),
     summary: String(item.summary ?? item.abstract ?? item.trend_summary ?? '').slice(0, 1200),
-    url: String(item.url ?? item.paper_url ?? '').slice(0, 1000) || undefined,
+    url: String(item.url ?? item.paper_url ?? item.paperUrl ?? item.paper_address ?? item.paperAddress ?? '').slice(0, 1000) || undefined,
     source: String(item.source ?? source).slice(0, 80),
     direction: String(item.direction ?? item.matched_direction ?? '').slice(0, 120) || undefined,
     authors: String(item.authors ?? item.author ?? '').slice(0, 300) || undefined,
     venue: String(item.venue ?? item.year_venue ?? item.yearVenue ?? '').slice(0, 200) || undefined,
     receivedAt: String(item.receivedAt ?? item.received_at ?? new Date().toISOString()),
   }))
+}
+
+// FastInsight's one-click case arrival only needs the paper name and address.
+// Accept both flat and { item: ... } / { case: ... } payloads so existing
+// clients can migrate without changing their envelope.
+function paperCaseItem(body) {
+  const value = body && typeof body === 'object' ? body : {}
+  const nested = [value.item, value.case].find((candidate) => candidate && typeof candidate === 'object') ?? {}
+  const text = (...candidates) => {
+    for (const candidate of candidates) {
+      if (candidate === undefined || candidate === null) continue
+      const normalized = String(candidate).trim()
+      if (normalized) return normalized
+    }
+    return ''
+  }
+  const title = text(value.paper_name, value.paperName, value.paper_title, value.paperTitle, nested.paper_name, nested.paperName, nested.paper_title, nested.paperTitle, nested.title, value.title)
+  const url = text(value.paper_url, value.paperUrl, value.paper_address, value.paperAddress, nested.paper_url, nested.paperUrl, nested.paper_address, nested.paperAddress, nested.url, value.url)
+  if (!title) throw new Error('论文名称不能为空')
+  if (!url) throw new Error('论文地址不能为空')
+  if (url.length > 1000) throw new Error('论文地址不能超过 1000 个字符')
+  let parsed
+  try { parsed = new URL(url) } catch { throw new Error('论文地址必须是有效的 http(s) 链接') }
+  if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) throw new Error('论文地址必须是公开的 http(s) 链接')
+  return {
+    ...nested,
+    id: text(value.id, value.case_id, value.caseId, nested.id, nested.case_id, nested.caseId, url),
+    title,
+    url,
+    summary: text(value.summary, value.abstract, nested.summary, nested.abstract),
+    direction: text(value.direction, nested.direction),
+    authors: text(value.authors, nested.authors),
+    venue: text(value.venue, nested.venue),
+    source: text(value.source, nested.source, 'FastInsight'),
+    receivedAt: text(value.receivedAt, value.received_at, nested.receivedAt, nested.received_at) || undefined,
+  }
 }
 
 const WORKFLOW_MODULES = {
@@ -1451,10 +1487,15 @@ async function handle(request, response) {
     return
   }
 
-  if (request.method === 'POST' && ['/api/insight/publish', '/api/content/reading/publish'].includes(route)) {
+  if (request.method === 'POST' && ['/api/insight/publish', '/api/content/reading/publish', '/api/fastinsight/case'].includes(route)) {
     const body = await readBody(request)
+    let caseItem
+    if (route === '/api/fastinsight/case') {
+      try { caseItem = paperCaseItem(body) }
+      catch (error) { sendError(response, 400, error.message || '案件内容无效'); return }
+    }
     let serviceTargets
-    try { serviceTargets = route === '/api/insight/publish' ? await serviceIngest.targets(request, body, data.keys, accountStore) : null }
+    try { serviceTargets = route !== '/api/content/reading/publish' ? await serviceIngest.targets(request, body, data.keys, accountStore) : null }
     catch (error) { sendError(response, error instanceof ServiceIngestError ? error.status : 502, '服务投递认证失败'); return }
     let targets
     if (serviceTargets) { targets = serviceTargets.targets }
@@ -1469,7 +1510,9 @@ async function handle(request, response) {
       return
     }
     const channel = route.includes('reading') ? 'recentArticles' : 'insightItems'
-    const items = normalizeItems([body.item ?? body], route.includes('reading') ? 'FastRead' : 'FastInsight')
+    const items = route === '/api/fastinsight/case'
+      ? normalizeItems([caseItem], 'FastInsight')
+      : normalizeItems([body.item ?? body], route.includes('reading') ? 'FastRead' : 'FastInsight')
     if (serviceTargets) for (const item of items) item.publisherClientId = serviceTargets.clientId
     for (const target of targets) target[channel] = [...items, ...(target[channel] ?? [])].slice(0, 100)
     await persist()

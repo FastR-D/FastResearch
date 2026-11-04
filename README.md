@@ -125,8 +125,9 @@ FastTask 可使用 `FASTTASK_INGEST_KEY` 配置专用 `X-FastTask-Key` 发布凭
 
 FastResearch 回传工序完成证据时使用 `FASTTASK_URL` + `FASTTASK_API_KEY`，请求 FastTask 的 `/api/v1/integrations/fastresearch/progress`，并通过 `X-API-Key` 认证。FastTask 对应配置为 `FASTTASK_FASTRESEARCH_INGEST_KEY`；同一工序事件使用稳定 `event_id` 幂等，服务重启后会继续重试待同步事件。
 
-- `POST /api/reading/push` - FastRead 推送阅读记录
-- `POST /api/insight/push` - FastInsight 推送研究信号
+- `POST /api/content/reading/publish` - FastRead 推送阅读记录
+- `POST /api/insight/publish` - FastInsight 推送研究信号
+- `POST /api/fastinsight/case` - FastInsight 一键到达：发布论文名称与论文地址
 
 详细 API 文档见 [docs/api.md](docs/api.md)
 

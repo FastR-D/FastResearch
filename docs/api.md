@@ -100,6 +100,7 @@ Base URL：`http://127.0.0.1:8787`（`PORT` / `FASTRESEARCH_PUBLIC_URL`）。
 | POST | `/api/sso/consume` | 无；`fast-task` 需 `X-FastTask-SSO-Secret` | 200 | 兑换票据，Set-Cookie `fr_session` |
 | GET | `/api/fasttask/login` | 无 | 302 | 跳转到 FastTask 的 FastResearch 登录入口 |
 | POST | `/api/insight/publish` | `X-FastInsight-Key` | 201 | 写入 Insight 信箱 |
+| POST | `/api/fastinsight/case` | `X-FastInsight-Key` / FastCAS 服务令牌 | 201 | FastInsight 一键到达：发布论文名称与论文地址 |
 | POST | `/api/content/reading/publish` | 同上 | 201 | 写入最近阅读 |
 | GET | `/api/workflow` | 成员 | 200 | 读取当前任务列表 |
 | GET | `/api/workflow/team` | 成员 | 200 | 查看所有有效成员的任务和完成进度，含 FastTask 当日任务 |
@@ -416,11 +417,42 @@ X-FastInsight-Key: <FASTINSIGHT_INGEST_KEY>
 成功 201：`{ "ok": true, "deliveredTo": ["张三"] }`。  
 无匹配 Key → `404 没有匹配的成员 Key`。凭证错 → `401 FastInsight 发布凭证无效`。
 
+#### 3.6.1 FastInsight 一键到达（论文名称 + 论文地址）
+
+FastInsight 分拣出一篇论文后，可以只提交**论文名称**与**论文地址**，由 FastResearch 写入目标成员信箱；信箱列表提供「一键到达」直接打开论文地址。
+
+```http
+POST /api/fastinsight/case
+X-FastInsight-Key: <FASTINSIGHT_INGEST_KEY>
+```
+
+```json
+{
+  "person": "张三",
+  "paper_name": "Attention Is All You Need",
+  "paper_url": "https://arxiv.org/abs/1706.03762"
+}
+```
+
+| 字段 | 说明 |
+|---|---|
+| `person` | 旧版 ingest key 模式使用；省略时发给**所有有效 Key**，有值时按显示名大小写不敏感匹配。FastCAS 服务投递改用 `receiver_ref` 定位成员 |
+| `receiver_ref` | FastCAS 服务令牌模式必填，值为稳定的成员 `accountId` |
+| `paper_name` | 必填，论文名称，最长 300 |
+| `paper_url` | 必填，论文地址，必须是公开的 `http(s)` 链接（不能带用户名密码），最长 1000 |
+| `summary` / `direction` / `authors` / `venue` | 可选，用于填充信箱详情 |
+| `source` | 可选，默认 `FastInsight` |
+
+也接受 `item` 或 `case` 包裹（`{ "item": { "paper_name": …, "paper_url": … } }`），以及 `paper_title` / `paper_address` 等别名。旧接口 `/api/insight/publish` 同样识别 `paper_name` / `paper_url`。
+
+成功 201：`{ "ok": true, "deliveredTo": ["张三"] }`。  
+失败：`400 论文名称不能为空` / `400 论文地址不能为空` / `400 论文地址不能超过 1000 个字符` / `400 论文地址必须是有效的 http(s) 链接` / `400 论文地址必须是公开的 http(s) 链接`；无匹配成员 → `404 没有匹配的成员 Key`；凭证错 → `401 FastInsight 发布凭证无效`。
+
 ### 3.7 错误码
 
 | 状态 | error |
 |---|---|
-| 400 | 个人 Key 不能为空 / 不支持的登录入口 / FastNews 或 FastRead 地址无效 / 请求格式无效 / 请求内容过大 / 缺少个人 Key / FastInsight 名册字段无效 |
+| 400 | 个人 Key 不能为空 / 不支持的登录入口 / FastNews 或 FastRead 地址无效 / 请求格式无效 / 请求内容过大 / 缺少个人 Key / FastInsight 名册字段无效 / 论文名称或论文地址无效 |
 | 401 | 管理员账号或密码错误 / 管理员登录已失效 / 成员登录已失效 / 个人 Key 无效、已撤销或已过期 / 登录票据无效或已过期 / FastInsight 发布凭证无效 |
 | 404 | 个人 Key 不存在 / 没有匹配的成员 Key / 接口不存在 |
 | 409 | FastInsight 名册已被其他会话修改 |
@@ -683,6 +715,16 @@ FastInsight **没有**对外 HTTP 服务。飞书长连接在本地跑流水线�
 ```http
 POST {FASTRESEARCH_URL}/api/insight/publish
 X-FastInsight-Key: {FASTINSIGHT_INGEST_KEY}
+```
+
+只发布论文名称和论文地址时，使用一键到达接口：
+
+```http
+POST {FASTRESEARCH_URL}/api/fastinsight/case
+X-FastInsight-Key: {FASTINSIGHT_INGEST_KEY}
+Content-Type: application/json
+
+{ "person": "成员名", "paper_name": "论文名称", "paper_url": "https://…" }
 ```
 
 脚本：`FastInsight/scripts/publish_to_research.py`。

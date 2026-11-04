@@ -240,6 +240,14 @@ test('Key identity persists across FastRead, FastWrite and rotation', async () =
     // legacy header) as a client error before it validates the bearer token.
     assert.equal((await call('/api/insight/publish', 'POST', { person: '同名成员' }, 'bad-token', { 'X-FastInsight-Key': 'integration-ingest-key' })).status, 400)
     assert.equal((await call('/api/insight/publish', 'POST', { person: '同名成员' }, '', { 'X-FastInsight-Key': 'integration-ingest-key' })).status, 201)
+    // FastInsight's one-click case arrival publishes only the paper name and
+    // paper address, validates both, and delivers into the member inbox.
+    assert.equal((await call('/api/fastinsight/case', 'POST', { person: '同名成员', paper_name: '一键到达论文', paper_url: 'https://example.com/paper' })).status, 401)
+    assert.equal((await call('/api/fastinsight/case', 'POST', { person: '同名成员', paper_url: 'https://example.com/paper' }, '', { 'X-FastInsight-Key': 'integration-ingest-key' })).status, 400)
+    assert.equal((await call('/api/fastinsight/case', 'POST', { person: '同名成员', paper_name: '一键到达论文', paper_url: 'javascript:alert(1)' }, '', { 'X-FastInsight-Key': 'integration-ingest-key' })).status, 400)
+    const arrived = await call('/api/fastinsight/case', 'POST', { person: '同名成员', paper_name: '一键到达论文', paper_url: 'https://example.com/paper' }, '', { 'X-FastInsight-Key': 'integration-ingest-key' })
+    assert.equal(arrived.status, 201)
+    assert.ok(arrived.body.deliveredTo.includes('同名成员'))
     const dispatch = {
       schema_version: 'fasttask-dispatch-v1',
       dispatch_id: 'fasttask-integration-001',
@@ -271,7 +279,9 @@ test('Key identity persists across FastRead, FastWrite and rotation', async () =
     const after = await call('/api/content/me', 'GET', undefined, relogged.body.session)
     assert.equal(after.status, 200)
     assert.equal(after.body.accountId, accountId)
-    assert.equal(after.body.insightItems.length, 1)
+    assert.equal(after.body.insightItems.length, 2)
+    assert.equal(after.body.insightItems[0].title, '一键到达论文')
+    assert.equal(after.body.insightItems[0].url, 'https://example.com/paper')
   } finally {
     await new Promise((resolve) => server.close(resolve))
     await new Promise((resolve) => fastWrite.close(resolve))
