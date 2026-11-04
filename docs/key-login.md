@@ -109,7 +109,7 @@
 | FastNews | 已实现服务端票据登录 | Panel `unlock` → `/api/sso/launch` 302 到 `{NEWS}?sso=` → **serve.py consume** → HttpOnly Cookie | 不要 `python -m http.server`；不要把票据/JWT 放进 URL；不要再要 Key |
 | FastRead | 已实现 | Panel `unlock` → `/api/sso/launch` 302 到 `{READ}?sso=` → **服务端** `consume` → 按 `accountId` 复用本模块工作区并写 Cookie | 不要用邮箱密码替代 Key 身份；不要信 `research_api`；不要在 FastRead 做 Key 输入框 |
 | FastWrite | 已实现 | Panel 验证 Key → 服务端调用 FastWrite `/api/integration/auth/token`，传递 `accountId` → 自动进入对应 FastWrite 账户 | 不要把原始 Key 放进 URL；不要要求用户重复注册 |
-| FastTask | 已实现 | Panel 验证 Key → `/api/fasttask/login` 或 FastTask `/api/v1/auth/fastresearch/login` → 浏览器带一次性票据回到 Panel → Panel `/api/sso/launch?audience=fast-task` 302 到 FastTask 回调 → **FastTask 服务端** `consume` | 不要各自做 Key 表单；不要在 FastTask 保存原始 Key |
+| FastTask | 已实现 | Panel 验证 Key → `/api/fasttask/login` 或 FastTask `/api/v1/auth/fastresearch/login` → FastTask 302 到 Panel `/api/sso/launch?audience=fast-task` → 已有会话时 Panel 服务端直接 302 到 FastTask 回调（不再加载中间页面）→ **FastTask 服务端** `consume` | 不要各自做 Key 表单；不要在 FastTask 保存原始 Key |
 | FastInsight | 发布通道 | 服务号 `X-FastInsight-Key` 写入该成员的 FastInsight 信箱 | 不要用个人 Key 当发布凭证 |
 
 `audience` 必须是下面的精确字符串（大小写敏感）：

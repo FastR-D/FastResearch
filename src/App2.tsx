@@ -425,9 +425,20 @@ function App2() {
       return
     }
     pendingFastTaskLaunch.current = next
-    if (member) void launchFastTaskSso(member, next)
-    else setKeyOpen(true)
+    if (member) {
+      pendingFastTaskLaunch.current = null
+      void launchFastTaskSso(member, next)
+    } else setKeyOpen(true)
   }, [launchFastTaskSso, member, t])
+
+  useEffect(() => {
+    if (!member) return
+    const next = pendingFastTaskLaunch.current
+    if (!next) return
+    pendingFastTaskLaunch.current = null
+    setKeyOpen(false)
+    void launchFastTaskSso(member, next)
+  }, [launchFastTaskSso, member])
 
   const openEntry = (entry: Entry, popup?: Window | null) => {
     const tab = popup && !popup.closed ? popup : window.open('about:blank', '_blank')

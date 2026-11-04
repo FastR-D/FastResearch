@@ -175,6 +175,12 @@ test('Key identity persists across FastRead, FastWrite and rotation', async () =
     assert.equal(cookieOnly.body.accountId, seededAccountId)
     process.env.FASTTASK_PUBLIC_URL = base
     const callback = new URL('/api/v1/auth/fastresearch/callback?state=FastTaskState_0123456789abcdefghijk', base)
+    const unauthenticatedLaunch = await fetch(base + '/api/sso/launch?audience=fast-task&next=' + encodeURIComponent(callback.toString()), { redirect: 'manual' })
+    assert.equal(unauthenticatedLaunch.status, 302)
+    const loginFallback = new URL(unauthenticatedLaunch.headers.get('location'))
+    assert.equal(loginFallback.pathname, '/workspace')
+    assert.equal(loginFallback.searchParams.get('launch'), 'fast-task')
+    assert.equal(loginFallback.searchParams.get('next'), callback.toString())
     const launch = await fetch(base + '/api/sso/launch?audience=fast-task&next=' + encodeURIComponent(callback.toString()), {
       headers: { Authorization: 'Bearer ' + seeded.body.session },
       redirect: 'manual',

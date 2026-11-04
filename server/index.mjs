@@ -611,18 +611,30 @@ function requireAdmin(request, response) {
   return session
 }
 
-function requireMember(request, response) {
+function requireMember(request, response, fallback = '') {
+  const reject = (message) => {
+    if (fallback) {
+      response.writeHead(302, {
+        Location: fallback,
+        'Cache-Control': 'no-store',
+        ...corsHeaders(request),
+        ...clearMemberCookieHeader(request),
+      })
+      response.end()
+      return null
+    }
+    sendError(response, 401, message, clearMemberCookieHeader(request))
+    return null
+  }
   const session = getSession(request)
   if (!session || session.role !== 'member') {
-    sendError(response, 401, '成员登录已失效', clearMemberCookieHeader(request))
-    return null
+    return reject('成员登录已失效')
   }
   const record = data.keys.find((item) => item.id === session.keyId)
   const permitted = record && !record.accountDisabledAt && (session.authSource === 'fastcas' || (keyIsActive(record) && session.credentialVersion === (record.credentialVersion ?? 1)))
   if (!permitted) {
     sessions.delete(session.sessionId)
-    sendError(response, 401, '个人 Key 无效、已撤销或已过期', clearMemberCookieHeader(request))
-    return null
+    return reject('个人 Key 无效、已撤销或已过期')
   }
   return { ...session, record: ensureKeyCollections(record) }
 }
@@ -1474,8 +1486,6 @@ async function handle(request, response) {
   }
 
   if (request.method === 'GET' && route === '/api/sso/launch') {
-    const member = requireMember(request, response)
-    if (!member) return
     const audience = String(url.searchParams.get('audience') ?? '').trim()
     const config = SSO_LAUNCH[audience]
     if (!config) {
@@ -1487,6 +1497,15 @@ async function handle(request, response) {
       sendError(response, 400, config.invalid)
       return
     }
+    let fallback = ''
+    if (audience === 'fast-task') {
+      const loginPage = new URL('/workspace', PUBLIC_API_URL)
+      loginPage.searchParams.set('launch', 'fast-task')
+      loginPage.searchParams.set('next', target)
+      fallback = loginPage.toString()
+    }
+    const member = requireMember(request, response, fallback)
+    if (!member) return
     let location = target
     if (config.mode === 'ticket' && member.authSource !== 'fastcas') {
       pruneTickets()
