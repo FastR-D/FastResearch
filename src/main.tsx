@@ -1,4 +1,6 @@
 import { StrictMode } from 'react'
+import './color-mode'
+import '@fastrd/ui-react/styles.css'
 import { createRoot } from 'react-dom/client'
 import App from './App2'
 import PromoPage from './PromoPage'

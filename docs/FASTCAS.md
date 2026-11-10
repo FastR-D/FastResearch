@@ -4,7 +4,7 @@
 
 四项配置必须一起提供：`FASTRESEARCH_FASTCAS_ISSUER`、`FASTRESEARCH_FASTCAS_CLIENT_ID`、`FASTRESEARCH_FASTCAS_CLIENT_SECRET`、`FASTRESEARCH_FASTCAS_REDIRECT_URI`。回调为本实例 `/api/auth/fastcas/callback`；scope 为 `openid profile email`；事件端点为 `/api/auth/fastcas/events`。开发环回 HTTP 可设置 `FASTRESEARCH_FASTCAS_ALLOW_LOOPBACK_HTTP=true`。未配置时不导入 SDK，不访问 FastCAS。
 
-当前 SDK 是本地 `file:../FastCAS/sdk/typescript` 依赖，需要先构建 SDK，再安装本项目依赖。锁文件已更新；网络恢复后 `npm ci --no-audit --no-fund` 完成，`npm run build`（TypeScript + Vite）通过。
+SDK 使用正式发行包 `@fastrd/fastcas@0.1.1`，由根 package.json 与 package-lock.json 精确锁定。从本仓根目录执行 `npm ci --no-audit --no-fund`，随后 `npm run build`（TypeScript + Vite）；安装与生产构建均不需要相邻 FastCAS checkout 或预构建 SDK。
 
 FastCAS 认证操作要求页面 Origin 与回调 Origin 完全一致；部署采用前端/API 同源。回调仅接收发起浏览器的 HttpOnly 绑定 Cookie 和原项目会话 Cookie，使用 SDK 的 state/nonce/PKCE 验证。登录结果通过 HttpOnly 项目会话返回，前端经既有 `/api/content/me` 恢复项目会话，不接收上游 token。
 
@@ -12,7 +12,7 @@ FastCAS 认证操作要求页面 Origin 与回调 Origin 完全一致；部署�
 
 API 前缀 `/api/auth/fastcas`：GET `available/login/callback/status`；POST `link/reconcile/revoke/events`。link/revoke 的 JSON body 为 `{key}`。
 
-容器本地 SDK 构建上下文：`docker build --build-context fastcas-sdk=../FastCAS/sdk/typescript -t fastresearch .`。Dockerfile 已更新，容器构建尚未验证。
+容器仅使用本仓上下文：`docker build -t fastresearch .`。Dockerfile 的 `npm ci` 安装同一 registry 锁，运行层直接复制已安装的 node_modules；不再需要 SDK named context。Compose 同样只用 `context: .`：部署前准备 `.env.production` 后执行 `docker compose build fastresearch`。镜像实构结果与宿主 Docker daemon 阻碍见根实施记录；不能用宿主 npm 构建成功代替镜像验收。
 
 验证现状：`node --test server/*.test.mjs` 7 项通过，涵盖原服务真实 HTTP 生命周期、关闭 CAS 的接口、迁移和服务层。完整前端类型检查及生产构建通过；真实 Go/PostgreSQL 提供方 → Node SDK → FastResearch HTTP 服务联调已通过。新增真实 Chrome 移动端契约：项目页面 Key 登录、显式绑定、原生 FastCAS 授权确认和回调、独立浏览器 FastCAS 登录均回到同一账号及研究笔记；浏览器解绑后 CAS 会话失效而 Key 会话与内容可用，同时修复登录后页头横向溢出。FastCAS 登录页的 CSP 现允许本次已登记的精确回调源，浏览器跨端口自动跳转在 race 模式连续三次通过；生产域名流程仍待验收。全局退出和身份停用的标准退出通知已通过真实跨进程投递。
 

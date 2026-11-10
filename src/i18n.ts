@@ -248,8 +248,11 @@ const messages: Record<Locale, Record<string, Message>> = {
 }
 
 export function getInitialLocale(): Locale {
-  const stored = localStorage.getItem('fastresearch-locale')
-  return stored === 'en-US' ? 'en-US' : 'zh-CN'
+  try {
+    return localStorage.getItem('fastresearch-locale') === 'en-US' ? 'en-US' : 'zh-CN'
+  } catch {
+    return 'zh-CN'
+  }
 }
 
 export function createTranslator(locale: Locale): Translate {
@@ -261,5 +264,5 @@ export function createTranslator(locale: Locale): Translate {
 }
 
 export function saveLocale(locale: Locale) {
-  localStorage.setItem('fastresearch-locale', locale)
+  try { localStorage.setItem('fastresearch-locale', locale) } catch { /* optional preference storage */ }
 }

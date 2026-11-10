@@ -49,8 +49,7 @@ jobs:
           VITE_FASTLAB_URL: ""
         run: |
           npm ci
-          npm run build
-          test -f dist/index.html
+          bash .github/scripts/ci-node.sh
 
   deploy:
     needs: [secrets-gate, build]

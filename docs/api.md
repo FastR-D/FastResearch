@@ -216,7 +216,7 @@ Authorization: Bearer <成员会话>
 
 ### 3.2.2 FastTask 当日任务
 
-`GET /api/fasttask/today` 返回当前成员在 FastTask 的当天计划。FastResearch 服务端使用 `FASTTASK_URL` + `FASTTASK_API_KEY` 调用 FastTask 的 `POST /api/v1/integrations/fastresearch/today`；FastTask 侧校验 `FASTTASK_FASTRESEARCH_INGEST_KEY`，并按 `receiver_ref`（即 `accountId`）找到对应 FastTask 用户。
+`GET /api/fasttask/today` 返回当前成员在 FastTask 的当天计划。FastResearch 服务端使用 `FASTTASK_URL` 和独立的 `FASTTASK_SERVICE_ISSUER/CLIENT_ID/CLIENT_SECRET` 配置，通过 FastCAS SDK 的 client_credentials 获取 `integrations:fastresearch` scope 服务 token，调用 Task 的 `POST /api/v1/integrations/fastresearch/today`。Task 校验 audience（默认 `fasttask-api`）、client allowlist 及 `receiver_ref`（即 `accountId`）授权。未配置服务身份的既有 Key 部署需要 Task 显式打开 legacy ingest 开关；失败的服务认证不会降级。wire 合同见 `contracts/fastresearch-today/v1/`。
 
 ```json
 {

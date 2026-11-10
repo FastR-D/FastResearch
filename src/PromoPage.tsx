@@ -1,7 +1,6 @@
 import { ArrowRight, ArrowUp, BookOpenText, Check, FlaskConical, Inbox, KeyRound, ListTodo, Menu, Newspaper, PenLine, UsersRound, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createTranslator, getInitialLocale, saveLocale, type Locale, type Translate } from './i18n'
-import './promo.css'
 
 const WORKSPACE_HREF = `${import.meta.env.BASE_URL}workspace`
 const API_BASE = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '')
@@ -133,7 +132,7 @@ function PromoPage() {
   ]
 
   return (
-    <div className="promo-page" id="top">
+    <div className="promo-page" data-fastui-theme="light" id="top">
       <nav className={`promo-nav ${scrolled || menuOpen ? 'is-scrolled' : ''}`} aria-label="FastResearch">
         <div className="promo-container promo-nav-inner">
           <a className="promo-brand" href="#top">

@@ -2,7 +2,9 @@ name: Tag CI FastResearch
 
 on:
   push:
+    branches: [main]
     tags: ['v*']
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -14,15 +16,4 @@ concurrency:
 
 jobs:
   validate:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-      - run: npm ci
-      - run: npm test
-      - run: npm run build
-      - run: test -f dist/index.html
+    uses: FastR-D/.github/.github/workflows/node-npm-check.yml@98eac6706014d070c5563eb75e3899611507f176
