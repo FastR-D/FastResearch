@@ -1,19 +1,140 @@
-name: Tag CI FastResearch
+name: Validate and deploy FastResearch
 
 on:
+  pull_request:
+    branches: [main]
   push:
     branches: [main]
     tags: ['v*']
-  pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: tag-ci-fastresearch-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  validate:
+  node-gate:
     uses: FastR-D/.github/.github/workflows/node-npm-check.yml@98eac6706014d070c5563eb75e3899611507f176
+
+  validate:
+    needs: node-gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    concurrency:
+      group: tag-ci-fastresearch-${{ github.ref }}
+      cancel-in-progress: true
+    env:
+      # Vite embeds these public values during the build.
+      VITE_API_URL: ''
+      VITE_READ_URL: https://fastrd.io/read/
+      VITE_WRITE_URL: https://fastrd.io/write
+      VITE_FASTTASK_URL: https://task.fastrd.io
+      VITE_FASTNEWS_URL: https://47.110.133.67/news/
+      VITE_FASTPPT_URL: /fastppt/
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: test -f dist/index.html
+      - name: Package the tested application and production dependencies
+        env:
+          RELEASE_DIR: ${{ runner.temp }}/fastresearch-release
+        run: |
+          npm prune --omit=dev --ignore-scripts --no-audit --no-fund
+          mkdir -p "$RELEASE_DIR"
+          tar --dereference --hard-dereference \
+            --exclude='.env' --exclude='.env.*' --exclude='.git' \
+            --exclude='*.test.mjs' \
+            -czf "$RELEASE_DIR/release.tar.gz" \
+            server dist node_modules package.json package-lock.json
+          python3 - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          root = Path(os.environ['RELEASE_DIR'])
+          with (root / 'release.tar.gz').open('rb') as stream:
+              digest = hashlib.file_digest(stream, 'sha256').hexdigest()
+          (root / 'manifest.json').write_text(json.dumps({
+              'repository': os.environ['GITHUB_REPOSITORY'],
+              'sha': os.environ['GITHUB_SHA'],
+              'archive_sha256': digest,
+          }))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ github.sha }}
+          path: ${{ runner.temp }}/fastresearch-release/
+          if-no-files-found: error
+          retention-days: 7
+
+  deploy:
+    needs: validate
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    # FastDeploy v2: pin the reviewed implementation, including its server scripts.
+    uses: FastR-D/FastDeploy/.github/workflows/deploy.yml@cc223a0b83b0ef2389974dd70a4b74148cd1af87
+    with:
+      app: fastresearch
+      artifact-name: release-${{ github.sha }}
+      runtime-env: |
+        HOST=127.0.0.1
+        PORT=8787
+        NODE_ENV=production
+        FASTRESEARCH_PUBLIC_URL=https://fastrd.io
+        FASTRESEARCH_COOKIE_DOMAIN=
+        FASTRESEARCH_COOKIE_SAMESITE=Lax
+        FASTRESEARCH_CORS_ORIGINS=http://47.110.133.67,https://47.110.133.67,https://47.110.133.67:3015,https://fastrd.io
+        FASTRESEARCH_DATA_DIR=/home/dev/FastResearch/data
+        FASTINSIGHT_ROSTER=/home/dev/fastinsight/assets/colleagues.yaml
+        VITE_API_URL=
+        VITE_READ_URL=https://fastrd.io/read/
+        FASTREAD_URL=https://fastrd.io/read/
+        FASTREAD_PROXY_URL=https://47.110.133.67:3015
+        VITE_WRITE_URL=https://fastrd.io/write
+        FASTWRITE_URL=http://127.0.0.1:3003
+        FASTWRITE_PUBLIC_URL=https://fastrd.io/write
+        VITE_FASTTASK_URL=https://task.fastrd.io
+        VITE_FASTNEWS_URL=https://47.110.133.67/news/
+        FASTNEWS_URL=https://47.110.133.67/news/
+        VITE_FASTPPT_URL=/fastppt/
+        FASTTASK_PUBLIC_URL=https://task.fastrd.io
+        FASTTASK_URL=http://127.0.0.1:10000
+        FASTRESEARCH_FASTCAS_ISSUER=https://cas.fastrd.io
+        FASTRESEARCH_FASTCAS_CLIENT_ID=research
+        FASTRESEARCH_FASTCAS_REDIRECT_URI=https://fastrd.io/api/auth/fastcas/callback
+        FASTRESEARCH_FASTCAS_AUDIENCE=research-api
+        FASTRESEARCH_FASTCAS_ALLOW_LOOPBACK_HTTP=false
+        FASTRESEARCH_FASTCAS_INGEST_ISSUER=https://cas.fastrd.io
+        FASTRESEARCH_FASTCAS_INGEST_CLIENT_ID=fastinsight
+        FASTRESEARCH_ALLOW_LEGACY_FASTWRITE_KEY=false
+        FASTRESEARCH_ALLOW_LEGACY_FASTTASK_KEYS=false
+        FASTRESEARCH_ALLOW_LEGACY_FASTINSIGHT_KEY=false
+        FASTWRITE_FASTCAS_SERVICE_ENABLED=true
+        FASTWRITE_FASTCAS_SERVICE_ISSUER=https://cas.fastrd.io
+        FASTWRITE_FASTCAS_SERVICE_CLIENT_ID=fastresearch
+        FASTWRITE_FASTCAS_SERVICE_ALLOW_LOOPBACK_HTTP=false
+        FASTTASK_FASTCAS_SERVICE_ENABLED=true
+        FASTTASK_FASTCAS_SERVICE_ISSUER=https://cas.fastrd.io
+        FASTTASK_FASTCAS_SERVICE_CLIENT_ID=fastresearch
+        FASTTASK_FASTCAS_SERVICE_ALLOW_LOOPBACK_HTTP=false
+    secrets:
+      SSH_HOST: ${{ secrets.FASTRD_SSH_HOST }}
+      SSH_PORT: ${{ secrets.FASTRD_SSH_PORT }}
+      SSH_USER: ${{ secrets.FASTRD_SSH_USER }}
+      SSH_PRIVATE_KEY: ${{ secrets.FASTRD_SSH_PRIVATE_KEY }}
+      SSH_KNOWN_HOSTS: ${{ secrets.FASTRD_SSH_KNOWN_HOSTS }}
+      # The three legacy shared keys are empty on production and intentionally
+      # omitted: FASTINSIGHT_INGEST_KEY, FASTTASK_API_KEY, FASTWRITE_API_KEY.
+      runtime-secrets: |
+        {
+          "FASTRESEARCH_JWT_SECRET": ${{ toJSON(secrets.FASTRESEARCH_JWT_SECRET) }},
+          "ADMIN_USERNAME": ${{ toJSON(secrets.ADMIN_USERNAME) }},
+          "ADMIN_PASSWORD": ${{ toJSON(secrets.ADMIN_PASSWORD) }},
+          "FASTRESEARCH_FASTTASK_SSO_SECRET": ${{ toJSON(secrets.FASTRESEARCH_FASTTASK_SSO_SECRET) }},
+          "FASTRESEARCH_FASTCAS_CLIENT_SECRET": ${{ toJSON(secrets.FASTRESEARCH_FASTCAS_CLIENT_SECRET) }},
+          "FASTRESEARCH_FASTCAS_INGEST_ALLOWED_ACCOUNT_IDS": ${{ toJSON(secrets.FASTRESEARCH_FASTCAS_INGEST_ALLOWED_ACCOUNT_IDS) }},
+          "FASTWRITE_FASTCAS_SERVICE_CLIENT_SECRET": ${{ toJSON(secrets.FASTWRITE_FASTCAS_SERVICE_CLIENT_SECRET) }},
+          "FASTTASK_FASTCAS_SERVICE_CLIENT_SECRET": ${{ toJSON(secrets.FASTTASK_FASTCAS_SERVICE_CLIENT_SECRET) }}
+        }
