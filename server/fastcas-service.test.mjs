@@ -46,3 +46,28 @@ test('Key proof, CAS login, stale activation, revoke recovery and source isolati
   await assert.rejects(disabled.sdk(),/未启用/)
  }finally{store?.close();rmSync(dir,{recursive:true,force:true})}
 })
+
+test('independent modes reject new flows without disabling local sessions or revocation',async()=>{
+ const dir=mkdtempSync(path.join(tmpdir(),'research-modes-'));let store
+ try{
+  const source=path.join(dir,'access.json'),database=path.join(dir,'accounts.sqlite')
+  writeFileSync(source,JSON.stringify({keys:[{id:'key',person:'Reader',keyHash:createHash('sha256').update('original-key').digest('hex')}]}))
+  migrateAccounts(source,database,{apply:true});store=new AccountStore(database)
+  const sessions=new TokenStore(store,'session'),accountId=store.accountIdForKey('key')
+  sessions.set('local-session',{role:'member',keyId:'key',accountId,credentialVersion:1,authSource:'key',expiresAt:Date.now()+300000})
+  let remote={id:'link',client_id:'research',local_account_ref:accountId,subject:'subject',state:'prepared',version:1}
+  const sdk={getLink:async()=>({...remote}),activateLink:async()=>assert.fail('disabled link mode activated'),beginLogin:async()=>assert.fail('disabled login mode contacted provider')}
+  const service=new FastCASService(store,sessions,{env:{...env,FASTRESEARCH_FASTCAS_LOGIN_ENABLED:'false',FASTRESEARCH_FASTCAS_LINK_ENABLED:'false'},sdk})
+  service.store.save(remote)
+  assert.ok(service.enabled)
+  await assert.rejects(service.beginLogin('binding'),/关闭 FastCAS 登录/)
+  await assert.rejects(service.beginLink('local-session','original-key','peer','binding'),/关闭新的/)
+  await assert.rejects(service.reconcile(accountId),/关闭新的/)
+  remote={...remote,state:'revoked',version:2}
+  await service.revoke('local-session','original-key','peer')
+  assert.ok(sessions.get('local-session'))
+  const disabled=new FastCASService(store,sessions,{env:{FASTRESEARCH_FASTCAS_ENABLED:'false',FASTRESEARCH_FASTCAS_ISSUER:env.FASTRESEARCH_FASTCAS_ISSUER}})
+  assert.equal(disabled.enabled,false)
+  await assert.rejects(disabled.sdk(),/未启用/)
+ }finally{store?.close();rmSync(dir,{recursive:true,force:true})}
+})

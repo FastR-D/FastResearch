@@ -8,7 +8,7 @@ export async function handleFastCAS(request,response,context) {
   const bindingCookie=(value,age)=>`fr_fastcas_binding=${encodeURIComponent(value)}; Path=/api/auth/fastcas; HttpOnly; SameSite=Lax; Max-Age=${age}${secure?'; Secure':''}`
   const redirect=(location,cookies=[])=>{response.writeHead(302,{Location:location,'Set-Cookie':cookies,'Cache-Control':'no-store','Referrer-Policy':'no-referrer'});response.end()}
   try{
-    if(route==='/api/auth/fastcas/available'&&request.method==='GET'){send(200,{enabled:service.enabled});return true}
+    if(route==='/api/auth/fastcas/available'&&request.method==='GET'){send(200,{enabled:service.enabled,login_enabled:service.enabled&&service.loginEnabled,link_enabled:service.enabled&&service.linkEnabled});return true}
     if(!service.enabled){send(404,{error:'未启用 FastCAS'});return true}
     if(route==='/api/auth/fastcas/events'&&request.method==='POST'){
       if(String(request.headers['content-type']??'').split(';')[0]!=='application/jwt'){send(415,{error:'需要签名事件'});return true}
@@ -50,7 +50,7 @@ export async function handleFastCAS(request,response,context) {
     if(!member)return true
     const accountId=member.accountId??service.accounts.accountIdForKey(member.keyId)
     if(route==='/api/auth/fastcas/status'&&request.method==='GET'){
-      send(200,{enabled:true,link:service.store.current(accountId)});return true
+      send(200,{enabled:true,link_enabled:service.linkEnabled,link:service.store.current(accountId)});return true
     }
     const raw=getRequestToken(request)
     if(route==='/api/auth/fastcas/link'&&request.method==='POST'){

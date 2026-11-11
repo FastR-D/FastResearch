@@ -21,7 +21,7 @@ const issued = await json(`${origin}/api/admin/keys`, {
 assert.ok(issued.key?.startsWith('fk_'))
 
 const browser = await chromium.launch({ executablePath: process.env.CHROME_BIN || '/usr/bin/google-chrome', headless: true, args: ['--no-sandbox'] })
-const context = await browser.newContext({ viewport: { width: 390, height: 844 } })
+const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
 const page = await context.newPage()
 page.setDefaultTimeout(10000)
 
@@ -34,10 +34,10 @@ async function authorize(target) {
 }
 
 try {
-  await page.goto(origin, { waitUntil: 'networkidle' })
-  await page.getByRole('button', { name: '科研凭证认证' }).click()
-  await page.getByLabel('个人科研凭证 (PERSONAL KEY)').fill(issued.key)
-  await page.getByRole('button', { name: '验证凭证并进入工作空间' }).click()
+  await page.goto(origin + '/workspace', { waitUntil: 'networkidle' })
+  await page.getByRole('button', { name: '验证个人Key', exact: true }).first().click()
+  await page.getByLabel('个人科研 Key (PERSONAL KEY)').fill(issued.key)
+  await page.getByRole('button', { name: '验证并进入工作台' }).click()
   await page.getByText('👤 Alice').waitFor()
   const before = await page.evaluate(() => fetch('/api/content/me').then(response => response.json()))
   assert.ok(before.accountId && before.keyId)
@@ -57,11 +57,11 @@ try {
   assert.equal(afterLink.accountId, before.accountId)
   assert.equal(afterLink.impression.text, 'Browser preserved notes')
 
-  const second = await browser.newContext({ viewport: { width: 390, height: 844 } })
+  const second = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
   try {
     const login = await second.newPage()
     login.setDefaultTimeout(10000)
-    await login.goto(origin, { waitUntil: 'networkidle' })
+    await login.goto(origin + '/workspace', { waitUntil: 'networkidle' })
     await login.getByRole('link', { name: '使用 FastCAS 登录' }).click()
     await authorize(login)
     await login.getByText('👤 Alice').waitFor()
@@ -72,7 +72,7 @@ try {
     assert.notEqual(cas.session, before.session)
     const overflow = await login.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth,
       elements: [...document.querySelectorAll('*')].filter(element => element.getBoundingClientRect().right > innerWidth + 2).slice(0, 10).map(element => ({ tag: element.tagName, className: String(element.className).slice(0, 80), right: element.getBoundingClientRect().right })) }))
-    assert.equal(overflow.scroll > overflow.width, false, `mobile Research page overflow: ${JSON.stringify(overflow)}`)
+    assert.equal(overflow.scroll > overflow.width, false, `Research desktop page overflow: ${JSON.stringify(overflow)}`)
 
     await page.getByRole('button', { name: 'FastCAS 认证' }).click()
     await page.getByLabel('当前账号的原 Key').fill(issued.key)

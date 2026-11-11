@@ -19,7 +19,7 @@
   "dependencies": {
     "@fastrd/ui-foundation": "0.1.2",
     "@fastrd/ui-react": "0.1.2",
-    "@fastrd/fastcas": "0.1.1",
+    "@fastrd/fastcas": "0.1.2",
     "lucide-react": "^0.468.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
