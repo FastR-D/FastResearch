@@ -1499,8 +1499,15 @@ html.dark .routing-dialog .roster-editor-header { background: #111c2f; }
   padding-left: 0;
 }
 
-.input-wrap input:focus {
-  box-shadow: none;
+/* The wrapper owns the border and focus ring, including in dark mode. */
+.dialog-form .input-wrap input,
+.dialog-form .input-wrap input:focus,
+html.dark .dialog-form .input-wrap input,
+html.dark .dialog-form .input-wrap input:focus {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
 }
 
 .form-error {
