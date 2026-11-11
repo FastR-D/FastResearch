@@ -59,6 +59,13 @@ try {
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, name + ' overflow')
       await page.screenshot({ path: path.join(output, `${scheme}-${width}-${name}.png`), fullPage: true })
     }
+    const fieldAppearance = async locator => locator.evaluate(async element => {
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+      const style = getComputedStyle(element)
+      return { borders: [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth],
+        background: style.backgroundColor, shadow: style.boxShadow, outline: style.outlineWidth,
+        outlineStyle: style.outlineStyle, outlineColor: style.outlineColor, borderColor: style.borderTopColor }
+    })
     await page.goto(origin + '/workspace', { waitUntil: 'load' })
     await page.locator('.research-workspace').waitFor()
     assert.equal(await page.locator('html').getAttribute('data-fastui-theme'), scheme)
@@ -66,6 +73,10 @@ try {
     const trigger = page.getByRole('button', { name: '管理员登录', exact: true })
     await trigger.click()
     await page.locator('#admin-user').fill('ui-review')
+    const adminField = await fieldAppearance(page.locator('#admin-user'))
+    assert.deepEqual(adminField.borders, ['1px', '1px', '1px', '1px'])
+    assert.equal(adminField.outline, '2px')
+    await snapshot('admin-form-focus')
     await page.locator('#admin-pass').fill('ui-local-only-password')
     await page.locator('dialog .dialog-form button[type=submit]').click()
     await page.locator('.admin-key-row').nth(23).waitFor()
@@ -82,6 +93,10 @@ try {
     await page.locator('.roster-direction-card').nth(11).waitFor()
     const firstName = page.locator('.roster-direction-card input').first()
     await firstName.fill(`UI edited ${scheme} ${width}`)
+    await firstName.focus()
+    const rosterField = await fieldAppearance(firstName)
+    assert.deepEqual(rosterField.borders, ['1px', '1px', '1px', '1px'])
+    assert.equal(rosterField.outline, '2px')
     await snapshot('roster')
     const [saved] = await Promise.all([
       page.waitForResponse(response => response.request().method() === 'PUT' && response.url().endsWith('/api/admin/fastinsight/roster')),
@@ -91,7 +106,28 @@ try {
     assert.equal((await saved.json()).roster.directions[0].name, `UI edited ${scheme} ${width}`)
     await page.keyboard.press('Escape')
     await page.getByRole('button', { name: '验证个人Key', exact: true }).first().click()
-    await page.locator('#personal-key').fill(memberKey)
+    const keyField = page.locator('#personal-key')
+    const keyWrapper = page.locator('.input-wrap')
+    await keyField.fill(memberKey)
+    const keyFocused = await fieldAppearance(keyField)
+    const wrapperFocused = await fieldAppearance(keyWrapper)
+    assert.deepEqual(keyFocused.borders, ['0px', '0px', '0px', '0px'])
+    assert.equal(keyFocused.background, 'rgba(0, 0, 0, 0)')
+    assert.equal(keyFocused.shadow, 'none')
+    assert.equal(keyFocused.outlineStyle, 'none')
+    assert.deepEqual(wrapperFocused.borders, ['1px', '1px', '1px', '1px'])
+    assert.equal(wrapperFocused.outline, '2px')
+    assert.equal(wrapperFocused.outlineStyle, 'solid')
+    assert.equal(wrapperFocused.outlineColor, wrapperFocused.borderColor)
+    await snapshot('key-focus')
+    await page.keyboard.press('Tab')
+    const keyBlurred = await fieldAppearance(keyField)
+    const wrapperBlurred = await fieldAppearance(keyWrapper)
+    assert.deepEqual(keyBlurred.borders, ['0px', '0px', '0px', '0px'])
+    assert.equal(keyBlurred.shadow, 'none')
+    assert.equal(keyBlurred.outlineStyle, 'none')
+    assert.equal(wrapperBlurred.outlineStyle, 'none')
+    await snapshot('key-blur')
     await page.locator('dialog form button[type=submit]').click()
     await page.locator('.header-identity').waitFor()
     await page.locator('.workspace-tabs button').filter({ hasText: '科研工具' }).click()
@@ -104,7 +140,8 @@ try {
     assert.equal(await page.locator('.promo-page').getAttribute('data-fastui-theme'), 'light')
     await snapshot('intro')
     assert.deepEqual(errors, [])
-    results.push({ scheme, width, classes: [...classes].sort(), pageErrors: errors, roster: 'saved', keys: 'long list scrolls', dialog: 'native/focus cycle/Escape/restore', overflow: false })
+    results.push({ scheme, width, classes: [...classes].sort(), pageErrors: errors, roster: 'saved', keys: 'long list scrolls', dialog: 'native/focus cycle/Escape/restore', overflow: false,
+      fields: { adminField, rosterField, keyFocused, wrapperFocused, keyBlurred, wrapperBlurred } })
     await context.close()
   }
 } finally {

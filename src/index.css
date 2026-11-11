@@ -217,7 +217,7 @@ button { cursor: pointer; }
 .dialog-form input:focus { border-color: var(--fastui-focus); }
 .input-wrap { display: flex; align-items: center; gap: 8px; border-radius: 6px; border: 1px solid var(--fastui-border-strong); padding-left: 12px; background: var(--fastui-surface); color: var(--fastui-focus); transition: border-color 0.15s; }
 .input-wrap:focus-within { border-color: var(--fastui-focus); }
-.input-wrap input { border: 0; padding-left: 0; }
+.dialog-form .input-wrap input { border: 0; padding-left: 0; background: transparent; box-shadow: none; }
 .form-error { display: block; margin-top: 10px; color: var(--fastui-danger); font-size: 12px; }
 .admin-status-badge { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 6px; background: var(--color-primary-light); border: 1px solid var(--fastui-border); color: var(--fastui-focus); margin-bottom: 18px; }
 .admin-status-badge strong { display: block; font-size: 13px; color: var(--fastui-focus); }
@@ -603,3 +603,5 @@ button { cursor: pointer; }
 @keyframes mobile-sheet-in { from { opacity: 0.6; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
 .tech-dialog::backdrop { background: var(--fastui-overlay); }
 .tech-app :is(button, input, textarea, select, a):focus-visible { outline: 2px solid var(--fastui-focus); outline-offset: 2px; }
+.tech-app .input-wrap:focus-within { outline: 2px solid var(--fastui-focus); outline-offset: 2px; }
+.tech-app .dialog-form .input-wrap input:focus-visible { outline: none; }

@@ -25,10 +25,10 @@ jobs:
     env:
       # Vite embeds these public values during the build.
       VITE_API_URL: ''
-      VITE_READ_URL: https://fastrd.io/read/
-      VITE_WRITE_URL: https://fastrd.io/write
+      VITE_READ_URL: https://read.fastrd.io/
+      VITE_WRITE_URL: https://write.fastrd.io
       VITE_FASTTASK_URL: https://task.fastrd.io
-      VITE_FASTNEWS_URL: https://47.110.133.67/news/
+      VITE_FASTNEWS_URL: https://news.fastrd.io/
       VITE_FASTPPT_URL: /fastppt/
     steps:
       - uses: actions/checkout@v4
@@ -74,7 +74,7 @@ jobs:
     needs: validate
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     # FastDeploy v2: pin the reviewed implementation, including its server scripts.
-    uses: FastR-D/FastDeploy/.github/workflows/deploy.yml@cc223a0b83b0ef2389974dd70a4b74148cd1af87
+    uses: FastR-D/FastDeploy/.github/workflows/deploy.yml@9a2c51dcd63f47a0e6c8f6bb07bd22ea589abbd2
     with:
       app: fastresearch
       artifact-name: release-${{ github.sha }}
@@ -89,15 +89,15 @@ jobs:
         FASTRESEARCH_DATA_DIR=/home/dev/FastResearch/data
         FASTINSIGHT_ROSTER=/home/dev/fastinsight/assets/colleagues.yaml
         VITE_API_URL=
-        VITE_READ_URL=https://fastrd.io/read/
-        FASTREAD_URL=https://fastrd.io/read/
+        VITE_READ_URL=https://read.fastrd.io/
+        FASTREAD_URL=https://read.fastrd.io/
         FASTREAD_PROXY_URL=https://47.110.133.67:3015
-        VITE_WRITE_URL=https://fastrd.io/write
+        VITE_WRITE_URL=https://write.fastrd.io
         FASTWRITE_URL=http://127.0.0.1:3003
-        FASTWRITE_PUBLIC_URL=https://fastrd.io/write
+        FASTWRITE_PUBLIC_URL=https://write.fastrd.io
         VITE_FASTTASK_URL=https://task.fastrd.io
-        VITE_FASTNEWS_URL=https://47.110.133.67/news/
-        FASTNEWS_URL=https://47.110.133.67/news/
+        VITE_FASTNEWS_URL=https://news.fastrd.io/
+        FASTNEWS_URL=https://news.fastrd.io/
         VITE_FASTPPT_URL=/fastppt/
         FASTTASK_PUBLIC_URL=https://task.fastrd.io
         FASTTASK_URL=http://127.0.0.1:10000
