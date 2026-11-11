@@ -120,14 +120,13 @@ jobs:
       SSH_USER: ${{ secrets.FASTRD_SSH_USER }}
       SSH_PRIVATE_KEY: ${{ secrets.FASTRD_SSH_PRIVATE_KEY }}
       SSH_KNOWN_HOSTS: ${{ secrets.FASTRD_SSH_KNOWN_HOSTS }}
+      # The three legacy shared keys are empty on production and intentionally
+      # omitted: FASTINSIGHT_INGEST_KEY, FASTTASK_API_KEY, FASTWRITE_API_KEY.
       runtime-secrets: |
         {
           "FASTRESEARCH_JWT_SECRET": ${{ toJSON(secrets.FASTRESEARCH_JWT_SECRET) }},
           "ADMIN_USERNAME": ${{ toJSON(secrets.ADMIN_USERNAME) }},
           "ADMIN_PASSWORD": ${{ toJSON(secrets.ADMIN_PASSWORD) }},
-          "FASTINSIGHT_INGEST_KEY": ${{ toJSON(secrets.FASTINSIGHT_INGEST_KEY) }},
-          "FASTWRITE_API_KEY": ${{ toJSON(secrets.FASTWRITE_API_KEY) }},
-          "FASTTASK_API_KEY": ${{ toJSON(secrets.FASTTASK_API_KEY) }},
           "FASTRESEARCH_FASTTASK_SSO_SECRET": ${{ toJSON(secrets.FASTRESEARCH_FASTTASK_SSO_SECRET) }},
           "FASTRESEARCH_FASTCAS_CLIENT_SECRET": ${{ toJSON(secrets.FASTRESEARCH_FASTCAS_CLIENT_SECRET) }},
           "FASTRESEARCH_FASTCAS_INGEST_ALLOWED_ACCOUNT_IDS": ${{ toJSON(secrets.FASTRESEARCH_FASTCAS_INGEST_ALLOWED_ACCOUNT_IDS) }},
