@@ -117,6 +117,7 @@ function App2() {
   const [locale, setLocale] = useState<Locale>(getInitialLocale)
   const [keyOpen, setKeyOpen] = useState(false)
   const [casEnabled, setCasEnabled] = useState(false)
+  const [casLoginEnabled,setCasLoginEnabled]=useState(false)
   const [casOpen, setCasOpen] = useState(false)
   const [adminOpen, setAdminOpen] = useState(false)
   const [session, setSession] = useState<AdminSession | null>(() => loadStoredSession<AdminSession>(adminStorageKey))
@@ -158,7 +159,7 @@ function App2() {
   }
 
   useEffect(() => {
-    void request<{enabled: boolean}>('/api/auth/fastcas/available').then(value => setCasEnabled(value.enabled)).catch(() => {})
+    void request<{enabled: boolean;login_enabled?:boolean}>('/api/auth/fastcas/available').then(value => {setCasEnabled(value.enabled);setCasLoginEnabled(value.enabled&&value.login_enabled!==false)}).catch(() => {})
     const marker = new URLSearchParams(window.location.search).get('fastcas')
     if (marker === 'complete') {
       void request<{session: string; person: string; keyId: string; accountId?: string; expiresAt: number}>('/api/content/me').then(result => {
@@ -547,7 +548,7 @@ function App2() {
           <span>{new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '.')}</span>
         </div>
         <div className="header-actions">
-          {casEnabled && (member ? <button type="button" className="ghost-button" onClick={() => setCasOpen(true)}>FastCAS 认证</button> : <a className="ghost-button" href={apiUrl('/api/auth/fastcas/login')}>使用 FastCAS 登录</a>)}
+          {casEnabled && (member ? <button type="button" className="ghost-button" onClick={() => setCasOpen(true)}>FastCAS 认证</button> : casLoginEnabled && <a className="ghost-button" href={apiUrl('/api/auth/fastcas/login')}>使用 FastCAS 登录</a>)}
           {member && <span className="header-identity" title={`当前认证成员：${member.person}`}>👤 {member.person}</span>}
           <button type="button" className="ghost-button" onClick={openFastTaskInNewTab} aria-label={t('header.fastTask')} title={t('header.fastTask')}>
             <ListTodo size={14} />
@@ -691,7 +692,7 @@ function App2() {
       </footer>
 
       {casOpen && member && <FastCASDialog member={member} onClose={() => setCasOpen(false)} t={t} />}
-      {keyOpen && <KeyDialog onClose={closeKeyDialog} onUnlock={unlock} casAvailable={casEnabled} t={t} />}
+      {keyOpen && <KeyDialog onClose={closeKeyDialog} onUnlock={unlock} casAvailable={casLoginEnabled} t={t} />}
       {adminOpen && (
         <AdminDialog
           session={session}
@@ -1711,10 +1712,11 @@ export default App2
 function FastCASDialog({member, onClose, t}: {member: MemberSession; onClose: () => void; t: Translate}) {
   const [link, setLink] = useState<{state: string} | null>(null)
   const [loaded, setLoaded] = useState(false)
+  const [linkEnabled,setLinkEnabled]=useState(true)
   const [key, setKey] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const load = useCallback(async () => { const value = await request<{link: {state: string} | null}>('/api/auth/fastcas/status', {}, member); setLink(value.link); setLoaded(true) }, [member])
+  const load = useCallback(async () => { const value = await request<{link: {state: string} | null;link_enabled?:boolean}>('/api/auth/fastcas/status', {}, member); setLink(value.link);setLinkEnabled(value.link_enabled!==false); setLoaded(true) }, [member])
   useEffect(() => { void load().catch(err => setError(err.message)) }, [load])
   async function act(action: 'link' | 'revoke' | 'reconcile') {
     setBusy(true); setError('')
@@ -1731,8 +1733,8 @@ function FastCASDialog({member, onClose, t}: {member: MemberSession; onClose: ()
     <p>关联当前项目账号，个人内容保持不变。原 Key 登录继续可用。</p>
     <label>当前账号的原 Key<input type="password" maxLength={256} autoComplete="off" value={key} onChange={event => setKey(event.target.value)} /></label>
     {error && <p className="form-error" role="alert">{error}</p>}
-    {loaded && (!link ? <button disabled={busy || !key} onClick={() => void act('link')}>认证当前账号</button> : <>
-      {link.state === 'prepared' && <button disabled={busy} onClick={() => void act('reconcile')}>重试完成认证</button>}
+    {loaded && (!link ? <button disabled={!linkEnabled || busy || !key} onClick={() => void act('link')}>认证当前账号</button> : <>
+      {link.state === 'prepared' && <button disabled={!linkEnabled || busy} onClick={() => void act('reconcile')}>重试完成认证</button>}
       <button disabled={busy || !key} onClick={() => void act('revoke')}>解除认证</button>
     </>)}
   </div></Dialog>

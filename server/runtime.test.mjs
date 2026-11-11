@@ -32,7 +32,7 @@ test('real server persists accounts, rotates Key without data loss and preserves
    const response=await fetch(running.origin+route,{method,headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:body?JSON.stringify(body):undefined})
    return {status:response.status,data:await response.json()}
   }
-  assert.deepEqual((await request('/api/auth/fastcas/available')).data,{enabled:false})
+  assert.deepEqual((await request('/api/auth/fastcas/available')).data,{enabled:false,login_enabled:false,link_enabled:false})
   assert.equal((await request('/api/auth/fastcas/login')).status,404)
   let admin=(await request('/api/admin/login','POST',{username:'test-admin',password:'test-admin-password'})).data.session
   assert.ok(admin)

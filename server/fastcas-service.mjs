@@ -12,8 +12,11 @@ export class FastCASService {
     this.accounts=accounts;this.sessions=sessions;this.db=accounts.db
     this.config={issuer:env.FASTRESEARCH_FASTCAS_ISSUER??'',clientId:env.FASTRESEARCH_FASTCAS_CLIENT_ID??'',clientSecret:env.FASTRESEARCH_FASTCAS_CLIENT_SECRET??'',redirectUri:env.FASTRESEARCH_FASTCAS_REDIRECT_URI??'',allowLoopbackHTTP:env.FASTRESEARCH_FASTCAS_ALLOW_LOOPBACK_HTTP==='true'}
     const values=['issuer','clientId','clientSecret','redirectUri'].map(key=>this.config[key])
-    if(values.some(Boolean)&&!values.every(Boolean))throw new Error('FastCAS requires all four connection settings')
-    this.enabled=values.every(Boolean)
+    const configured=env.FASTRESEARCH_FASTCAS_ENABLED!=='false'
+    this.loginEnabled=configured&&env.FASTRESEARCH_FASTCAS_LOGIN_ENABLED!=='false'
+    this.linkEnabled=configured&&env.FASTRESEARCH_FASTCAS_LINK_ENABLED!=='false'
+    if(configured&&values.some(Boolean)&&!values.every(Boolean))throw new Error('FastCAS requires all four connection settings')
+    this.enabled=configured&&values.every(Boolean)
     this.sdkInstance=sdk
     this.store=new FastCASStore(accounts,this.config.issuer,this.config.clientId)
     this.db.exec('CREATE TABLE IF NOT EXISTS auth_limits(id TEXT PRIMARY KEY,attempts INTEGER NOT NULL,expires REAL NOT NULL)')
@@ -45,8 +48,9 @@ export class FastCASService {
     if(session.authSource==='key'&&session.credentialVersion!==(account.credentialVersion??1))throw new CASFailure('原会话已失效',401)
     return session
   }
-  async beginLogin(binding){return (await this.sdk()).beginLogin({browserBinding:binding})}
+  async beginLogin(binding){if(!this.loginEnabled)throw new CASFailure('此实例已关闭 FastCAS 登录');return (await this.sdk()).beginLogin({browserBinding:binding})}
   async beginLink(raw,key,peer,binding){
+    if(!this.linkEnabled)throw new CASFailure('此实例已关闭新的 FastCAS 认证')
     const session=this.prove(raw,key,peer)
     return (await this.sdk()).beginLink({browserBinding:binding,localAccountRef:session.accountId,localSessionId:hash(raw)})
   }
@@ -62,7 +66,7 @@ export class FastCASService {
     if(!local)throw new CASFailure('没有待处理的认证',404)
     const sdk=await this.sdk();let remote=await sdk.getLink(local.id)
     if(!this.sameIdentity(local,remote))throw new CASFailure('认证关系不匹配')
-    if(remote.state==='prepared')remote=await sdk.activateLink(remote.id)
+    if(remote.state==='prepared'){if(!this.linkEnabled)throw new CASFailure('此实例已关闭新的 FastCAS 认证');remote=await sdk.activateLink(remote.id)}
     await this.accept(remote)
     return remote
   }
@@ -70,6 +74,7 @@ export class FastCASService {
     const sdk=await this.sdk(),session=this.session(raw)
     const result=await sdk.finishLogin(new URL(callback),{browserBinding:binding,localAccountRef:session?.accountId,localSessionId:session?hash(raw):undefined})
     if(result.transaction.purpose==='link'){
+      if(!this.linkEnabled)throw new CASFailure('此实例已关闭新的 FastCAS 认证')
       const link=await sdk.prepareLink(result),current=this.session(raw),account=current?this.account(current.accountId):null
       if(!current||current.accountId!==session?.accountId||link.local_account_ref!==current.accountId||!account||account.accountDisabledAt)throw new CASFailure('原账号会话已失效',401)
       if(current.authSource==='key'&&(account.revokedAt||current.credentialVersion!==(account.credentialVersion??1)))throw new CASFailure('原 Key 已失效',401)
@@ -77,6 +82,7 @@ export class FastCASService {
       await this.accept(await sdk.activateLink(link.id))
       return null
     }
+    if(!this.loginEnabled)throw new CASFailure('此实例已关闭 FastCAS 登录')
     if(result.transaction.purpose!=='login')throw new CASFailure('请先获取项目账号')
     const local=this.store.bySubject(result.identity.subject)
     if(!local)throw new CASFailure('尚未绑定项目账号，请先用 Key 登录并认证',409)
