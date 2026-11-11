@@ -69,8 +69,8 @@ jobs:
   deploy:
     needs: validate
     if: startsWith(github.ref, 'refs/tags/v')
-    # FastDeploy v1: pin the reviewed implementation, including its server scripts.
-    uses: FastR-D/FastDeploy/.github/workflows/deploy.yml@3ff77d285b3028587ddc5992a88dd59f5c4215a1
+    # FastDeploy v2: pin the reviewed implementation, including its server scripts.
+    uses: FastR-D/FastDeploy/.github/workflows/deploy.yml@fb455c57d06cc7d8d9bd3b3fb505e65270caa260
     with:
       app: fastresearch
       artifact-name: release-${{ github.sha }}
