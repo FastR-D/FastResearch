@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   rollback:
-    uses: FastR-D/FastDeploy/.github/workflows/rollback.yml@885662a21788848f3190257302a9c3a5c561a94e
+    uses: FastR-D/FastDeploy/.github/workflows/rollback.yml@3ff77d285b3028587ddc5992a88dd59f5c4215a1
     with:
       app: fastresearch
       expected-release: ${{ inputs.expected-release }}

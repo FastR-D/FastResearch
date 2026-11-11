@@ -19,6 +19,8 @@ bash scripts/deploy-local.sh --skip-pull --force
 2. 打包已测试的源码、前端和生产依赖，生成提交及 SHA256 清单，上传 artifact。
 3. 调用 FastDeploy 的 reusable workflow；验证完成后 SSH 上传、切换版本、重启和检查健康，失败时恢复旧服务与配置。
 
+针对 `main` 的 PR 也执行验证和打包，部署 job 仅在版本 tag 上运行。手动从普通分支运行只做验证。
+
 普通生产变量直接写在 `deploy.with.runtime-env`；敏感变量在 `deploy.secrets.runtime-secrets` 中逐项引用仓库 Secrets，通过 `toJSON` 保留特殊字符。前端 `VITE_*` 还需写到 `validate.env`，在构建时生效。不要把私密值写进 YAML。
 
 SSH 配置来自组织 Secrets：`FASTRD_SSH_HOST`、`FASTRD_SSH_PORT`、`FASTRD_SSH_USER`、`FASTRD_SSH_PRIVATE_KEY`、`FASTRD_SSH_KNOWN_HOSTS`。组织需授权给 FastResearch，主机公钥必须预先核验。项目 Secrets 的完整名称以该 YAML 的 `runtime-secrets` 映射为准。
