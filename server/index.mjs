@@ -19,6 +19,7 @@ import { createFastTaskClient } from './fasttask-client.mjs'
 import { RosterConflictError, RosterValidationError, readRoster, writeRoster } from './fastinsight-roster.mjs'
 import { handleFastReadProxy, isFastReadProxyPath } from './fastread-proxy.mjs'
 import { handleFastTaskProxy, isFastTaskProxyHost } from './fasttask-proxy.mjs'
+import { createSubdomainProxy } from './subdomain-proxy.mjs'
 import { ADMIN_SESSION_TTL_MS, MEMBER_SESSION_TTL_MS } from './session-config.mjs'
 
 function loadEnvFiles() {
@@ -1088,7 +1089,10 @@ async function serveStatic(request, response) {
   }
 }
 
+const subdomainProxy = createSubdomainProxy()
+
 async function handle(request, response) {
+  if (subdomainProxy.handle(request, response)) return
   const url = new URL(request.url, `http://${request.headers.host ?? 'localhost'}`)
   const requestHost = request.headers['x-forwarded-host'] ?? request.headers.host
   if (isFastTaskProxyHost(requestHost)) {
@@ -2008,7 +2012,7 @@ export async function startServer(port = PORT, host = HOST) {
         const proxiedModuleRequest = isFastReadProxyPath(requestUrl.pathname)
         const requestHost = request.headers['x-forwarded-host'] ?? request.headers.host
         const proxiedTaskRequest = isFastTaskProxyHost(requestHost)
-        if (proxiedModuleRequest || proxiedTaskRequest) {
+        if (proxiedModuleRequest || proxiedTaskRequest || subdomainProxy.matches(request)) {
           await handle(request, response)
           return
         }
@@ -2027,6 +2031,9 @@ export async function startServer(port = PORT, host = HOST) {
         sendError(response, 400, error.message || '请求失败')
       }
     })
+  })
+  server.on('upgrade', (request, socket, head) => {
+    if (!subdomainProxy.upgrade(request, socket, head)) socket.destroy()
   })
   server.on('close', () => {
     if (fastTaskSyncTimer) clearInterval(fastTaskSyncTimer)
