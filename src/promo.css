@@ -2,24 +2,24 @@
    Scoped under .promo-* so the workspace styles stay untouched. */
 
 html.promo-route {
-  background: #f6f6f9;
+  background: var(--fastui-page);
 }
 
 html.promo-route body {
-  background: #f6f6f9;
-  color: #475467;
+  background: var(--fastui-page);
+  color: var(--fastui-secondary);
 }
 
 .promo-page {
-  --promo-ink: #101820;
-  --promo-body: #475467;
-  --promo-muted: #667085;
-  --promo-line: #e3e6ec;
-  --promo-bg: #f6f6f9;
-  --promo-blue: #2f8af5;
-  --promo-blue-deep: #004ab2;
-  --promo-blue-soft: #e8f3ff;
-  --promo-green: #1e7f5c;
+  --promo-ink: var(--fastui-text);
+  --promo-body: var(--fastui-secondary);
+  --promo-muted: var(--fastui-muted);
+  --promo-line: var(--fastui-border);
+  --promo-bg: var(--fastui-page);
+  --promo-blue: var(--fastui-primary);
+  --promo-blue-deep: var(--fastui-focus);
+  --promo-blue-soft: var(--fastui-selected);
+  --promo-green: var(--fastui-success);
   --promo-gutter: clamp(20px, 3.4vw, 48px);
   background: var(--promo-bg);
   color: var(--promo-body);

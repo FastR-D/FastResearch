@@ -13,9 +13,12 @@
     "test:fasttask": "node --test server/fasttask-integration.test.mjs",
     "test:integration": "node --test server/integration.test.mjs",
     "test:visual": "node scripts/visual-check.mjs",
+    "test:fastui": "node scripts/fastui-browser.mjs",
     "start": "node --env-file=.env.production server/index.mjs"
   },
   "dependencies": {
+    "@fastrd/ui-foundation": "0.1.2",
+    "@fastrd/ui-react": "0.1.2",
     "@fastrd/fastcas": "0.1.2",
     "lucide-react": "^0.468.0",
     "react": "^19.0.0",

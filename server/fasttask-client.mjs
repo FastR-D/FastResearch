@@ -1,4 +1,6 @@
-/** FastTask client used by FastResearch to send stage evidence and create tasks. */
+/** Reserved Task write/account integration; Task main exposes only today.
+ * The live today consumer uses fasttask-today-client.mjs and its own identity.
+ */
 export class FastTaskClient {
   constructor(baseURL, apiKey) {
     this.baseURL = String(baseURL).replace(/\/$/, '')
@@ -33,26 +35,6 @@ export class FastTaskClient {
         ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
       },
       body: JSON.stringify(payload),
-    })
-    const data = await response.json().catch(() => ({}))
-    if (!response.ok) {
-      const error = new Error(data.detail || data.error || `FastTask API error: ${response.status}`)
-      error.status = response.status
-      throw error
-    }
-    return data
-  }
-
-  async fetchToday(receiverRefs) {
-    const response = await fetch(`${this.baseURL}/api/v1/integrations/fastresearch/today`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-        'X-API-Key': this.apiKey,
-      },
-      body: JSON.stringify({ receiver_refs: receiverRefs }),
-      signal: AbortSignal.timeout(4000),
     })
     const data = await response.json().catch(() => ({}))
     if (!response.ok) {

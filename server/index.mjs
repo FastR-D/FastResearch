@@ -16,6 +16,7 @@ import { openWorkflowStore, getWorkflowsByAccount, getWorkflowById, getPendingEv
 import { receiveDispatch, startWorkflow, completeStage, formatWorkflowView } from './fasttask-dispatch.mjs'
 import { createFastWriteClient } from './fastwrite-client.mjs'
 import { createFastTaskClient } from './fasttask-client.mjs'
+import { createFastTaskTodayClient } from './fasttask-today-client.mjs'
 import { RosterConflictError, RosterValidationError, readRoster, writeRoster } from './fastinsight-roster.mjs'
 import { handleFastReadProxy, isFastReadProxyPath } from './fastread-proxy.mjs'
 import { handleFastTaskProxy, isFastTaskProxyHost } from './fasttask-proxy.mjs'
@@ -192,6 +193,7 @@ async function loadData() {
   fastTaskBaseURL = String(fastTaskUrl ?? '').trim()
   const fastTaskApiKey = process.env.FASTTASK_API_KEY
   fastTaskClient = createFastTaskClient(fastTaskUrl, fastTaskApiKey)
+  fastTaskTodayClient = createFastTaskTodayClient()
   const fastTaskProvisionKey = process.env.FASTTASK_PROVISION_KEY
   fastTaskProvisionClient = createFastTaskClient(fastTaskUrl, fastTaskProvisionKey)
   fastTaskClients = new Map()
@@ -277,10 +279,11 @@ function startFastTaskSync() {
 }
 
 const FASTTASK_TODAY_CACHE_MS = 8000
+let fastTaskTodayClient = null
 let fastTaskTodayCache = { key: '', at: 0, byAccount: null }
 
 function fastTaskReadClient() {
-  return fastTaskClient ?? fastTaskProvisionClient
+  return fastTaskTodayClient
 }
 
 function emptyFastTaskToday(extra = {}) {

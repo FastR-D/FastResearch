@@ -2,8 +2,6 @@ services:
   fastresearch:
     build:
       context: .
-      additional_contexts:
-        fastcas-sdk: ../FastCAS/sdk/typescript
       args:
         VITE_API_URL: ${VITE_API_URL:-}
         VITE_READ_URL: ${VITE_READ_URL:-}

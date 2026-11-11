@@ -126,7 +126,7 @@ FASTRESEARCH_CORS_ORIGINS=
 
 FastTask 可使用 `FASTTASK_INGEST_KEY` 配置专用 `X-FastTask-Key` 发布凭证；该凭证只用于工作流发布，不影响 FastInsight 的 `FASTINSIGHT_INGEST_KEY`。
 
-FastResearch 回传工序完成证据时使用 `FASTTASK_URL` + `FASTTASK_API_KEY`，请求 FastTask 的 `/api/v1/integrations/fastresearch/progress`，并通过 `X-API-Key` 认证。FastTask 对应配置为 `FASTTASK_FASTRESEARCH_INGEST_KEY`；同一工序事件使用稳定 `event_id` 幂等，服务重启后会继续重试待同步事件。
+Research 已预留工序完成证据的 outbox 和 `/api/v1/integrations/fastresearch/progress` 客户端，使用稳定 `event_id` 重试；当前 Task 接收端仅有 `/today`，尚未实现 progress/tasks/accounts。部署时不能把这些预留调用视为已可用的跨产品能力，today 的独立服务身份也不授权这些写操作。
 
 - `POST /api/content/reading/publish` - FastRead 推送阅读记录
 - `POST /api/insight/publish` - FastInsight 推送研究信号
@@ -209,7 +209,7 @@ FastTask 使用 `fasttask-dispatch-v1` 协议版本发布任务：
 | `FASTTASK_FASTRESEARCH_PUBLIC_URL` | FastTask | 浏览器访问 FastResearch 的公开地址 |
 | `FASTTASK_FASTRESEARCH_SSO_SECRET` | FastTask | 与 FastResearch 侧一致 |
 
-FastResearch 工作台通过 `GET /api/fasttask/today` 展示当前成员在 FastTask 的当天任务，`GET /api/workflow/team` 同时返回每位成员当天的 FastTask 任务进度。FastResearch 服务端使用 `FASTTASK_URL` + `FASTTASK_API_KEY` 调用 FastTask 的 `/api/v1/integrations/fastresearch/today`；FastTask 侧对应配置为 `FASTTASK_FASTRESEARCH_INGEST_KEY`，两边的 Key 必须一致。没有收到任务时，工作台显示「未接受到任务」。
+FastResearch 工作台通过 `GET /api/fasttask/today` 展示当前成员在 FastTask 的当天任务，`GET /api/workflow/team` 同时返回每位成员当天的 FastTask 任务进度。服务端配置 `FASTTASK_URL` 及 `FASTTASK_SERVICE_ISSUER`、`FASTTASK_SERVICE_CLIENT_ID`、`FASTTASK_SERVICE_CLIENT_SECRET`，通过已发行 FastCAS SDK 获取 scope 为 `integrations:fastresearch` 的服务 token。该身份独立于浏览器登录，FastCAS 注册须签发 Task audience（默认 `fasttask-api`）；Task 侧还须允许此 client 和对应 accountId 的 receiver refs。仅本地 HTTP issuer 需要 `FASTTASK_SERVICE_ALLOW_LOOPBACK_HTTP=true`。现有 `FASTTASK_API_KEY`（或 `FASTTASK_PROVISION_KEY`）部署仍可查询，但要求 Task 显式启用 `FASTTASK_FASTRESEARCH_LEGACY_INGEST_KEY_ENABLED` 且共享 Key 一致；服务身份配置不全或获取 token 失败不会降级到 Key。没有收到任务时，工作台显示「未接受到任务」。接收合同见 `contracts/fastresearch-today/v1/`；Task 当前未实现 tasks/progress/accounts 接收端。
 
 本机以 `FASTTASK_ENV=production` 运行且公开地址为回环 HTTP 时，FastTask 还需设置 `FASTTASK_FASTRESEARCH_LOOPBACK_HTTP=true`。完整接口与安全规则见 [docs/key-login.md](docs/key-login.md)。
 

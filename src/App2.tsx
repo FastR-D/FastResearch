@@ -1,5 +1,7 @@
 import { ArrowUpRight, BookOpenText, CalendarCheck, CalendarClock, Check, CheckCircle2, ChevronDown, Circle, CircleDot, Clock, ExternalLink, FlaskConical, Inbox, KeyRound, Languages, Layers, ListTodo, LockKeyhole, LogIn, Moon, Newspaper, PenLine, Plus, RefreshCw, Save, Settings2, ShieldCheck, Sun, Terminal, Trash2, UsersRound, X } from 'lucide-react'
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Button, Dialog as UIDialog, TextField } from '@fastrd/ui-react'
+import { useColorMode } from './color-mode'
 import { createTranslator, getInitialLocale, saveLocale, type Locale, type Translate } from './i18n'
 import { migrateLegacyMemberSession } from './member-session'
 
@@ -112,8 +114,7 @@ function getWorkflowModuleName(entries: Record<EntryId, Entry>, module: Workflow
 }
 
 function App2() {
-  // Default to the light BlockSec-inspired blue research theme
-  const [dark, setDark] = useState(() => localStorage.getItem('fastresearch-theme') === 'dark')
+  const { dark, toggle: toggleColorMode } = useColorMode()
   const [locale, setLocale] = useState<Locale>(getInitialLocale)
   const [keyOpen, setKeyOpen] = useState(false)
   const [casEnabled, setCasEnabled] = useState(false)
@@ -191,11 +192,6 @@ function App2() {
       .catch(() => { /* no active server-side session */ })
     return () => { cancelled = true }
   }, [])
-
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', dark)
-    localStorage.setItem('fastresearch-theme', dark ? 'dark' : 'light')
-  }, [dark])
 
   useEffect(() => {
     const flag = new URLSearchParams(window.location.search).get('fastcas')
@@ -564,9 +560,9 @@ function App2() {
               <span>{t('workspace.routing')}</span>
             </button>
           )}
-          <button type="button" className="icon-button" onClick={() => setDark((value) => !value)} aria-label={dark ? t('header.lightTheme') : t('header.darkTheme')} title={dark ? t('header.lightTheme') : t('header.darkTheme')}>
+          <Button variant="icon" className="icon-button" onClick={toggleColorMode} aria-label={dark ? t('header.lightTheme') : t('header.darkTheme')} title={dark ? t('header.lightTheme') : t('header.darkTheme')}>
             {dark ? <Sun size={15} /> : <Moon size={15} />}
-          </button>
+          </Button>
           <button type="button" className="icon-button" onClick={() => setAdminOpen(true)} aria-label={t('header.adminLogin')} title={t('header.adminTitle')}>
             {session ? <ShieldCheck size={16} /> : <LogIn size={15} />}
           </button>
@@ -1472,15 +1468,13 @@ function FastInsightRosterEditor({ session, onAdminOpen, onSessionExpired, onToa
 
 function Dialog({ title, children, onClose, wide, className, t }: { title: string; children: React.ReactNode; onClose: () => void; wide?: boolean; className?: string; t: Translate }) {
   return (
-    <div className="dialog-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <section className={['tech-dialog', wide ? 'admin-dialog' : '', className ?? ''].filter(Boolean).join(' ')} role="dialog" aria-modal="true">
-        <div className="dialog-title">
-          <span>{title}</span>
-          <button type="button" className="icon-button" onClick={onClose} aria-label={t('dialog.close')}><X size={15} /></button>
-        </div>
-        {children}
-      </section>
-    </div>
+    <UIDialog open onClose={onClose} label={title} size={wide ? 'lg' : 'md'} className={['tech-dialog', wide ? 'admin-dialog' : '', className ?? ''].filter(Boolean).join(' ')}>
+      <div className="dialog-title">
+        <span>{title}</span>
+        <button type="button" className="icon-button" onClick={onClose} aria-label={t('dialog.close')}><X size={15} /></button>
+      </div>
+      {children}
+    </UIDialog>
   )
 }
 
@@ -1509,7 +1503,7 @@ function KeyDialog({ onClose, onUnlock, casAvailable, t }: { onClose: () => void
         <label htmlFor="personal-key">{t('key.label')}</label>
         <div className="input-wrap">
           <KeyRound size={15} />
-          <input
+          <TextField
             id="personal-key"
             type="password"
             value={value}
