@@ -8,13 +8,19 @@
 
 工作台位于 `/workspace`。框架、工具页、个人动态、今日任务、信箱、团队进度、Key / FastCAS 登录、管理账号和分发设置统一使用 FastUI 组件及官方 `fastui-*` HTML 类：
 
-- 控件使用 Button、TextField、TextArea；弹窗使用原生 FastUI Dialog，按标准 header / modal-body 结构组织。
+- 控件使用 Button、TextField、TextArea；弹窗使用原生 FastUI Dialog，标题栏使用紧凑的 PanelHeader，正文保留 modal-body 结构与独立的舒适触摸密度。
 - 内容使用 Section、PanelHeader、Toolbar、ListRow、Divider；提示、状态、空内容和加载使用 Alert、Badge、EmptyState、Loading。
 - 进度使用原生 `progress.fastui-progress`，链接使用 `fastui-link` 或官方按钮样式类。
 - 颜色、字体、圆角、边框、焦点、交互状态和触摸密度由 FastUI 提供。不得添加工作台专用 CSS、内联样式、自定义色板、控件覆盖规则或自定义动画。
-- UnoCSS 标准工具类仅组织布局、间距、宽度、响应式排列、内容换行、滚动和标题层次；根容器的字体、字号及页面颜色直接引用 FastUI token。不重新定义组件视觉样式。
+- UnoCSS 标准工具类仅组织布局、间距、宽度、响应式排列、内容换行、滚动和标题层次；根容器的字体与页面颜色直接引用 FastUI token，正文使用 14px 字号和宽松行距。不重新定义组件视觉样式。
 
-没有工作台专用样式表或 footer。移动端由菜单按钮展开导航，Escape 收起；选择页面后聚焦主内容。`?tool=fast-read` 选中工具，`?view=today|insight|team` 打开辅助页面，支持刷新、前进和返回。个人 Key、管理员、FastCAS、分发名册、今日任务和信箱沿用现有 API。
+没有工作台专用样式表或 footer。参考 FastWrite 的全高工作区：根容器占满 `100dvh`，顶栏不收缩，其余高度交给左右布局；桌面侧栏宽 256px、撑满剩余高度，管理入口靠底，侧栏与主内容分别滚动。导航采用官方 `data-fastui-density="touch"`，行高至少 44px，标签为 14px；分组、卡片、列表与正文增加留白，通过共享 `PanelBody`、`PanelHeading` 和 `PanelRow` 组织。
+
+模态框标题栏使用原生 FastUI PanelHeader，桌面约 38px；触摸端保留可用的关闭按钮尺寸。标题栏保持在滚动区域顶部，正文表单使用舒适密度，不跟随标题栏压缩。
+
+已登录且当前应用入口已配置时，隐藏该应用的宣传标题、介绍、能力要点、使用步骤、介绍页链接和通用认证说明，仅保留应用跳转按钮与联动信息。未登录或应用未部署时继续显示介绍和配置说明。
+
+移动端由菜单按钮展开有高度限制的可滚动导航，Escape 收起；选择页面后聚焦主内容并复位主区域滚动。`?tool=fast-read` 选中工具，`?view=today|insight|team` 打开辅助页面，支持刷新、前进和返回。个人 Key、管理员、FastCAS、分发名册、今日任务和信箱沿用现有 API。
 
 ## 产品页
 

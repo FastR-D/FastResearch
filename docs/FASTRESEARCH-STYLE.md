@@ -4,7 +4,7 @@
 
 - `/`：FastResearch 总产品页。即使已有成员会话，也默认展示产品内容。
 - `/intro/news`、`/intro/read`、`/intro/write`、`/intro/ppt`、`/intro/lab`、`/intro/task`、`/intro/insight`、`/intro/figure`、`/intro/cas`、`/intro/ui`：各应用介绍。路径使用不带 fast 的短名称。
-- `/workspace`：左侧工具导航，右侧展示所选工具的简介、能力要点、进入按钮与介绍页链接。今日任务、信箱、团队进度与管理功能放入侧栏，移除 footer。
+- `/workspace`：左侧工具导航，右侧在未登录或工具未部署时展示简介、能力要点、进入按钮与介绍页链接；已登录且工具已部署时只展示跳转按钮和联动信息。今日任务、信箱、团队进度与管理功能放入侧栏，移除 footer。
 - `/intro` 兼容跳回 `/`，旧 `/fastppt` 页面跳转至 `/intro/ppt`；旧图片资产仍可访问。
 - 根路径的 FastCAS 回调、FastTask 登录参数与既有工作台锚点继续进入 `/workspace`。不迁移到 console。
 
@@ -21,7 +21,7 @@
 - 产品总页六屏：起点、发现、研读、表达、推进、开始。各应用四屏：概览、能力、路径、开始。
 - 滚轮、触控滑动和 PageUp / PageDown 每次推进或后退一屏。专用控制器拦截惯性尾段，不累计跳屏；一屏为 Sticky 顶栏下方的完整可视区域。普通切屏约 620ms，使用平缓的正弦缓动。Home / End 和章节链接可直达。
 - 产品页和工作台使用通栏 Sticky 顶栏，高约 54–56px，无外圆角、外阴影或悬浮间距；内部内容居中排列。
-- Workspace 顶栏仅放了解 FastResearch、登录或头像姓名与退出、CAS 认证和主题图标；移动端侧栏由菜单展开。工具选择使用 `?tool=fast-read` 等参数，辅助页面使用 `?view=today|insight|team`，支持刷新与浏览器返回。工作台使用普通滚动。
+- Workspace 顶栏仅放了解 FastResearch、登录或头像姓名与退出、CAS 认证和主题图标；移动端侧栏由菜单展开。工具选择使用 `?tool=fast-read` 等参数，辅助页面使用 `?view=today|insight|team`，支持刷新与浏览器返回。工作台参考 FastWrite 使用占满视口的布局，侧栏填满顶栏下方高度，主内容与侧栏各自普通滚动；导航至少 44px 行高，正文 14px，并增加卡片与列表间距。模态框标题栏保持紧凑。
 - 产品目录、应用菜单与工作台“了解应用”入口形成互相可达的页面体系。产品 CTA 进入对应工具或工作台，外部工具是否可用由部署配置决定。
 - 文字区域下方使用带柔和渐隐的模糊遮挡，降低线路干扰；不使用文字发光，尤其主按钮保持清晰。图片使用真实脱敏界面或案例；没有截图的应用使用连续路线与步骤图示，不冒充运行数据。
 
@@ -43,7 +43,7 @@
 
 启动构建后的服务后，执行 `FASTRESEARCH_CHECK_URL=http://127.0.0.1:8787 npm run test:fastui`，覆盖深浅色、320/390/768/1024/1440px、管理员入口与原生 Dialog 关闭及焦点恢复。
 
-`FASTRESEARCH_CHECK_URL=http://127.0.0.1:8787 npm run test:workspace` 使用确定性 API fixture，覆盖深浅色、四视口、五个工具、URL 与浏览器返回、任务进度、信箱切换与已读记录、团队与空状态、管理员长列表、分发名册编辑与带 revision 的保存请求。截图位于 `test-results/workspace-refactor/`。
+`FASTRESEARCH_CHECK_URL=http://127.0.0.1:8787 npm run test:workspace` 使用确定性 API fixture，覆盖深浅色、四视口、五个工具、URL 与浏览器返回、任务进度、信箱切换与已读记录、团队与空状态、管理员长列表、分发名册编辑与带 revision 的保存请求，并验证侧栏全高、独立滚动、导航密度、模态框标题高度及登录/部署组合下的宣传内容显示。截图位于 `test-results/workspace-refactor/`。
 
 `npm run test:activity` 使用隔离服务验证真实个人 Key 登录，以及三个应用的 active/missing/unavailable 动态状态。浏览器可通过 `EDGE_PATH` 指定；工作台截图目录可通过 `FASTRESEARCH_CHECK_OUTPUT` 指定。
 

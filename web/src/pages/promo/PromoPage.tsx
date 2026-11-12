@@ -1,4 +1,5 @@
 import '../../styles/promo.css'
+import { BrandLink } from '../../shared/ui/BrandLink'
 import { Button } from '@fastrd/ui-react'
 import { ArrowDown,ArrowRight,ArrowUpRight,Check,FlaskConical,Menu,Mouse,ScanLine,X } from 'lucide-react'
 import { useEffect,useMemo,useRef,useState,type CSSProperties } from 'react'
@@ -93,7 +94,7 @@ export default function PromoPage({ product }: { product?: Product }) {
     <a className="story-skip" href="#story-content">跳至主要内容</a>
     <nav ref={navRef} className="story-nav" aria-label="产品导航">
       <div className="story-nav-inner">
-        <a className="story-brand" href={import.meta.env.BASE_URL}><span className="story-brand-mark"><BrandIcon size={19} aria-hidden="true" /></span><span>{product?.name ?? 'FastResearch'}</span><small>{product ? product.category : '研究，向前一步'}</small></a>
+        <BrandLink className="story-brand" href={import.meta.env.BASE_URL} name={product?.name} Icon={BrandIcon} tagline={product ? product.category : '研究，向前一步'} />
         <div className="story-nav-links"><a href="#chapter-0">{product ? '产品概览' : '研究起点'}</a><a href="#chapter-1">{product ? '核心能力' : '研究路线'}</a>{product?.id === 'ppt' && <a href="#chapter-2">前后对比</a>}<a href={`#chapter-${chapters.length - 1}`}>{product ? '开始使用' : '产品矩阵'}</a>{product && <a href={import.meta.env.BASE_URL}>全部产品</a>}</div>
         <div className="story-nav-actions"><a className="story-button story-button--small" href={workspaceHref}>工作台<ArrowUpRight size={14} aria-hidden="true" /></a><Button ref={triggerRef} variant="icon" className="story-menu-toggle" aria-label={menuOpen ? '关闭产品菜单' : '打开产品菜单'} aria-controls="story-menu" aria-expanded={menuOpen} onClick={() => setMenuOpen(value => !value)}>{menuOpen ? <X size={19} /> : <Menu size={19} />}</Button></div>
       </div>

@@ -1,5 +1,6 @@
-import { Alert, Badge, Button, EmptyState, Loading, PanelHeader, Section, TextArea, TextField, Toolbar } from '@fastrd/ui-react'
-import { Plus,Save,Settings2,ShieldCheck,Trash2,UsersRound,X } from 'lucide-react'
+import { Alert, Badge, Button, EmptyState, Loading, Section, TextArea, TextField, Toolbar } from '@fastrd/ui-react'
+import { PanelHeading } from '../../shared/ui/WorkspaceLayout'
+import { Plus,Save,ShieldCheck,Trash2,UsersRound,X } from 'lucide-react'
 import { FormEvent,useEffect,useRef,useState } from 'react'
 import { request } from '../../shared/api/client'
 import { type Copy } from '../../shared/copy'
@@ -147,8 +148,7 @@ export function FastInsightRosterEditor({ session, onAdminOpen, onSessionExpired
 
   const ownerCount = roster?.directions.reduce((count, direction) => count + direction.owners.length, 0) ?? 0
   const keywordCount = roster?.directions.reduce((count, direction) => count + direction.keywords.filter(Boolean).length, 0) ?? 0
-  return <form onSubmit={save} aria-label={t('routing.title')} className="grid gap-4">
-    <PanelHeader><Settings2 size={14} /><h2>{t('routing.title')}</h2></PanelHeader>
+  return <form onSubmit={save} aria-label={t('routing.title')} className="grid gap-6">
     <p>{t('routing.description')} <code className="break-all">{fileName}</code></p>
     <Toolbar label="分发名册操作">
       {dirty && <Badge tone="warning">{t('routing.unsaved')}</Badge>}
@@ -160,7 +160,7 @@ export function FastInsightRosterEditor({ session, onAdminOpen, onSessionExpired
     {loading ? <Loading label={t('routing.loading')} /> : roster && <>
       {!roster.directions.length && <EmptyState title={t('routing.empty')} />}
       {roster.directions.map((direction, directionIndex) => <Section key={directionIndex}>
-        <PanelHeader className="justify-between"><h3>研究方向 {directionIndex + 1}</h3><Button variant="icon" aria-label={t('routing.removeDirection')} onClick={() => changeRoster(current => ({ ...current, directions: current.directions.filter((_, index) => index !== directionIndex) }))}><Trash2 size={15} /></Button></PanelHeader>
+        <PanelHeading><h3>研究方向 {directionIndex + 1}</h3><Button variant="icon" aria-label={t('routing.removeDirection')} onClick={() => changeRoster(current => ({ ...current, directions: current.directions.filter((_, index) => index !== directionIndex) }))}><Trash2 size={15} /></Button></PanelHeading>
         <div className="fastui-modal-body">
           <div className="grid sm:grid-cols-2 gap-4">
             <label className="fastui-field">{t('routing.directionName')}<TextField value={direction.name} onChange={event => changeDirection(directionIndex, { name: event.target.value })} placeholder={t('routing.directionPlaceholder')} required /></label>
@@ -168,7 +168,7 @@ export function FastInsightRosterEditor({ session, onAdminOpen, onSessionExpired
           </div>
           <label className="fastui-field">{t('routing.keywords')}<small>{t('routing.keywordsHint')}</small><TextArea value={direction.keywords.join('\n')} onChange={event => changeDirection(directionIndex, { keywords: event.target.value.split(/\r?\n/).map(keyword => keyword.trim()) })} placeholder={t('routing.keywordsPlaceholder')} rows={4} /></label>
           <Toolbar label="研究方向负责人"><UsersRound size={15} />{t('routing.owners')}<Button variant="quiet" onClick={() => addOwner(directionIndex)}><Plus size={14} />{t('routing.addOwner')}</Button></Toolbar>
-          {direction.owners.map((owner, ownerIndex) => <div className="grid sm:grid-cols-2 gap-3 items-end" key={ownerIndex}>
+          {direction.owners.map((owner, ownerIndex) => <div className="grid sm:grid-cols-2 gap-4 items-end" key={ownerIndex}>
             <label className="fastui-field">{t('routing.ownerName')}<TextField value={owner.name} onChange={event => changeOwner(directionIndex, ownerIndex, { name: event.target.value })} placeholder={t('routing.ownerNamePlaceholder')} required /></label>
             <label className="fastui-field">{t('routing.feishuOpenId')}<TextField value={owner.feishu_open_id ?? ''} onChange={event => changeOwner(directionIndex, ownerIndex, { feishu_open_id: event.target.value })} placeholder={t('routing.feishuPlaceholder')} /></label>
             <Button variant="secondary" aria-label={t('routing.removeOwner')} onClick={() => changeDirection(directionIndex, { owners: direction.owners.filter((_, index) => index !== ownerIndex) })}><X size={15} />{t('routing.removeOwner')}</Button>
@@ -176,7 +176,7 @@ export function FastInsightRosterEditor({ session, onAdminOpen, onSessionExpired
         </div>
       </Section>)}
       <Section>
-        <PanelHeader><ShieldCheck size={16} /><h3>{t('routing.defaultOwner')}</h3></PanelHeader>
+        <PanelHeading><ShieldCheck size={16} /><h3>{t('routing.defaultOwner')}</h3></PanelHeading>
         <div className="fastui-modal-body"><p>{t('routing.defaultOwnerHint')}</p><div className="grid sm:grid-cols-2 gap-4">
           <label className="fastui-field">{t('routing.ownerName')}<TextField value={roster.default_owner?.name ?? ''} onChange={event => changeDefaultOwner({ name: event.target.value })} placeholder={t('routing.ownerNamePlaceholder')} /></label>
           <label className="fastui-field">{t('routing.feishuOpenId')}<TextField value={roster.default_owner?.feishu_open_id ?? ''} onChange={event => changeDefaultOwner({ feishu_open_id: event.target.value })} placeholder={t('routing.feishuPlaceholder')} /></label>

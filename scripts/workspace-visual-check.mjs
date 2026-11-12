@@ -21,12 +21,15 @@ try {
     let revision = 'v1'
     let saved = null
     let emptyTeam = false
+    let signedIn = true
     await page.route('**/api/**', async route => {
       const url = new URL(route.request().url())
       let json
       switch (url.pathname) {
         case '/api/auth/fastcas/available': json = { enabled: true, login_enabled: true, legacy_key_enabled: true }; break
-        case '/api/content/me': json = { person: '测试管理员', keyId: 'key-1', accountId: 'account-1', role: 'admin', expiresAt: 9999999999999, insightItems: items }; break
+        case '/api/content/me':
+          if (!signedIn) return route.fulfill({ status: 401, json: { error: '请先登录' } })
+          json = { person: '测试管理员', keyId: 'key-1', accountId: 'account-1', role: 'admin', expiresAt: 9999999999999, insightItems: items }; break
         case '/api/admin/me': json = { username: '测试管理员', expiresAt: 9999999999999 }; break
         case '/api/admin/keys': json = { keys: Array.from({ length: 60 }, (_, i) => ({ id: `key-${i}`, person: `研究员 ${i} ${longText}` })) }; break
         case '/api/auth/fastcas/status': json = { role: 'admin' }; break
@@ -51,6 +54,22 @@ try {
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `overflow at ${colorScheme}/${width}: ${page.url()}`)
       assert.equal(await page.locator('h1').count(), 1)
       assert.equal(await page.locator('footer').count(), 0)
+      const layout = await page.evaluate(() => {
+        const sidebar = document.getElementById('workspace-sidebar')
+        const main = document.getElementById('workspace-content')
+        const header = document.querySelector('header')
+        const firstNav = sidebar.querySelector('button')
+        return { sidebarTop: sidebar.getBoundingClientRect().top, sidebarBottom: sidebar.getBoundingClientRect().bottom, sidebarHeight: sidebar.clientHeight, viewport: innerHeight, headerBottom: header.getBoundingClientRect().bottom, mainBottom: main.getBoundingClientRect().bottom, documentHeight: document.documentElement.scrollHeight, rowHeight: firstNav.getBoundingClientRect().height, navFont: getComputedStyle(firstNav.querySelector('span')).fontSize, mainFont: getComputedStyle(main).fontSize }
+      })
+      assert.equal(layout.mainFont, '14px')
+      assert.ok(Math.abs(layout.mainBottom - layout.viewport) <= 1)
+      assert.ok(layout.documentHeight <= layout.viewport + 1)
+      if (width >= 768) {
+        assert.ok(Math.abs(layout.sidebarTop - layout.headerBottom) <= 1)
+        assert.ok(Math.abs(layout.sidebarBottom - layout.viewport) <= 1)
+        assert.ok(layout.rowHeight >= 44)
+        assert.equal(layout.navFont, '14px')
+      }
     }
     const nav = async label => {
       if (width < 768 && await page.getByRole('button', { name: '工具导航', exact: true }).getAttribute('aria-expanded') === 'false') await page.getByRole('button', { name: '工具导航', exact: true }).click()
@@ -59,6 +78,10 @@ try {
     await page.goto(origin + '/workspace?tool=fast-news', { waitUntil: 'networkidle' })
     await page.getByRole('region', { name: 'FastNews 个人动态', exact: true }).getByText(longText, { exact: true }).first().waitFor()
     await assertLayout()
+    assert.equal(await page.getByText('从这里开始', { exact: true }).count(), 0)
+    assert.equal(await page.getByRole('link', { name: '了解 FastNews', exact: true }).count(), 0)
+    assert.equal(await page.locator('#workspace-content ol').count(), 0)
+    assert.equal(await page.getByRole('button', { name: '使用 CAS 进入', exact: true }).isEnabled(), true)
     assert.equal(await page.locator('link[rel=stylesheet]').evaluateAll(links => links.some(link => link.href.includes('PromoPage'))), false)
     await page.screenshot({ path: path.join(output, `${colorScheme}-${width}-tool.png`), fullPage: true })
     for (const name of ['FastRead', 'FastWrite', 'FastPPT', 'FastLab']) {
@@ -67,6 +90,8 @@ try {
       await assertLayout()
     }
     assert.equal(await page.getByRole('button', { name: '使用 CAS 进入', exact: true }).isDisabled(), true)
+    assert.equal(await page.getByText('从这里开始', { exact: true }).count(), 1)
+    assert.equal(await page.getByRole('link', { name: '了解 FastLab', exact: true }).count(), 1)
     await nav('今日任务')
     await page.getByRole('progressbar').waitFor()
     assert.equal(await page.getByRole('progressbar').getAttribute('value'), '33')
@@ -87,6 +112,8 @@ try {
     await nav('论文分发设置')
     const dialog = page.getByRole('dialog')
     await dialog.getByLabel('研究方向', { exact: true }).fill('新方向')
+    const modalHeaderHeight = await dialog.locator(':scope > .fastui-panel-header').evaluate(el => el.getBoundingClientRect().height)
+    assert.ok(modalHeaderHeight <= (width < 768 ? 58 : 42), `modal header is too tall: ${modalHeaderHeight}`)
     // The direction name previously formed its React key and lost focus on edits.
     assert.equal(await dialog.getByLabel('研究方向', { exact: true }).evaluate(el => el === document.activeElement), true)
     await dialog.getByLabel('匹配关键词', { exact: false }).fill('Agent\nSecurity')
@@ -106,8 +133,14 @@ try {
     emptyTeam = true
     await page.goto(origin + '/workspace?view=team', { waitUntil: 'networkidle' })
     await page.getByText('暂无团队任务数据', { exact: false }).waitFor()
+    signedIn = false
+    await page.goto(origin + '/workspace?tool=fast-news', { waitUntil: 'networkidle' })
+    await page.getByRole('link', { name: '了解 FastNews', exact: true }).waitFor()
+    assert.equal(await page.getByText('从这里开始', { exact: true }).count(), 1)
+    await assertLayout()
+    await page.screenshot({ path: path.join(output, `${colorScheme}-${width}-guest.png`), fullPage: true })
     await context.close()
   }
   assert.deepEqual(errors, [])
-  console.log('Workspace checks passed: 4 widths × 2 themes, tool navigation/history, tasks, mailbox/read state, team/empty state, long admin list, roster editing and revision save')
+  console.log('Workspace checks passed: 4 widths × 2 themes, tool navigation/history, tasks, mailbox/read state, team/empty state, long admin list, roster editing and revision save, full-height sidebar/scrolling, comfortable spacing, compact modal headers, member/deployment-specific content')
 } finally { await browser.close() }
