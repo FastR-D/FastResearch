@@ -10,7 +10,7 @@ export const SUBDOMAIN_SITES = Object.freeze({
   'read.fastrd.io': { app: 'fastread', port: 8584 },
   'write.fastrd.io': { app: 'fastwrite', port: 3003 },
   'news.fastrd.io': { app: 'fastnews', port: 8788, stripPrefix: '/news' },
-  'ui.fastrd.io': { app: 'fastui', port: 8792 },
+  'ui.fastrd.io': { app: 'fastui', redirectOrigin: 'https://fastr-d.github.io', redirectBasePath: '/FastUI' },
   'figure.fastrd.io': { app: 'fastfigure', port: 5178, protected: true },
   'fastlabs.fastrd.io': { app: 'fastlabs', port: 8789, protected: true },
 })
@@ -92,7 +92,7 @@ export function createSubdomainProxy({ sites = SUBDOMAIN_SITES,
       const host = hostname(request)
       if (site.redirectOrigin) {
         const url = new URL(request.url, site.redirectOrigin)
-        response.writeHead(308, { Location: site.redirectOrigin + url.pathname + url.search, 'Cache-Control': 'no-store' })
+        response.writeHead(308, { Location: site.redirectOrigin + (site.redirectBasePath || '') + url.pathname + url.search, 'Cache-Control': 'no-store' })
         response.end(); request.resume(); return true
       }
       if (site.botInformation) {

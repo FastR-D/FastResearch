@@ -26,7 +26,8 @@ async function fixture(t, handler, protectedSite = false) {
   const originPort = await listen(origin)
   const host = protectedSite ? 'figure.fastrd.io' : 'write.fastrd.io'
   const sites = { [host]: { app: protectedSite ? 'fastfigure' : 'fastwrite', port: originPort, protected: protectedSite },
-    'news.fastrd.io': { app: 'fastnews', port: originPort, stripPrefix: '/news' } }
+    'news.fastrd.io': { app: 'fastnews', port: originPort, stripPrefix: '/news' },
+    'ui.fastrd.io': SUBDOMAIN_SITES['ui.fastrd.io'] }
   const proxy = createSubdomainProxy({ sites, credentials: () => ({ username: 'preview', password: 'private-password' }) })
   const edge = createServer((req, res) => { if (!proxy.handle(req, res)) { res.writeHead(404); res.end() } })
   edge.on('upgrade', (req, socket, head) => { if (!proxy.upgrade(req, socket, head)) socket.destroy() })
@@ -118,4 +119,16 @@ test('websocket upgrades preserve the initial head and relay both directions', {
   const response = await received
   assert.match(response, /^HTTP\/1\.1 101/)
   assert.match(response, /initial-head/)
+})
+
+
+test('FastUI redirects to GitHub Pages with its project base path', async t => {
+  let upstreamRequests = 0
+  const { port } = await fixture(t, (_req, res) => { upstreamRequests++; res.end() })
+  for (const path of ['/', '/assets/site.js?v=1']) {
+    const response = await request(port, { host: 'ui.fastrd.io', path })
+    assert.equal(response.status, 308)
+    assert.equal(response.headers.location, 'https://fastr-d.github.io/FastUI' + path)
+  }
+  assert.equal(upstreamRequests, 0)
 })

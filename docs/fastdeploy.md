@@ -17,4 +17,6 @@ git push origin v2026.11.11.1
 
 适配 main 提交不会重启当前业务。首个生产标签仍需验证登录、集成功能及数据兼容性。完整运行时、共享目录、旧服务接管和检查限制见 [FastDeploy README](https://github.com/FastR-D/FastDeploy#readme)。
 
-独立预览域名由本服务按精确 Host 转发到固定 loopback 服务：cas、task、read、write、news、ui、figure、fastlabs。`research.fastrd.io` 跳转主站；`insight.fastrd.io` 说明飞书机器人入口。`labs.fastrd.io` 保留原站。Figure 和 FastLabs 的本机 Agent 接口仅在管理员 Basic 登录且 Origin 校验后通过预览网关访问，凭据沿用 FastResearch 管理员，网关不向上游转发 Basic 凭据。
+独立预览域名由本服务按精确 Host 转发到固定 loopback 服务：cas、task、read、write、news、figure、fastlabs。`research.fastrd.io` 跳转主站；`insight.fastrd.io` 说明飞书机器人入口。`labs.fastrd.io` 保留原站。Figure 和 FastLabs 的本机 Agent 接口仅在管理员 Basic 登录且 Origin 校验后通过预览网关访问，凭据沿用 FastResearch 管理员，网关不向上游转发 Basic 凭据。
+
+`ui.fastrd.io` 跳转到 https://fastr-d.github.io/FastUI/，FastUI 文档由 GitHub Pages 托管，服务器不运行 FastUI 服务。
