@@ -13,7 +13,7 @@
     "preview": "npm run preview --workspace @fastrd/fastresearch-web",
     "test": "go test ./cmd/... ./internal/...",
     "test:integration": "go test ./internal/httpapi ./internal/identity ./internal/workflow",
-    "test:visual": "node scripts/visual-check.mjs",
+    "test:visual": "node scripts/fastui-browser.mjs",
     "test:fastui": "node scripts/fastui-browser.mjs",
     "test:promo": "node scripts/promo-visual-check.mjs",
     "test:journey": "node scripts/journey-browser.mjs",

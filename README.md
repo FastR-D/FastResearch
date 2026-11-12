@@ -22,8 +22,6 @@ web/
   public/              静态资源
 contracts/             跨项目接口契约
 scripts/               浏览器验收与本地部署
-scripts/demo/          历史接口示例
-legacy/node/           原 Node 实现与旧迁移工具（不参与生产运行）
 deployments/           systemd 与 FastDeploy Go 部署配置
 ```
 
@@ -106,7 +104,7 @@ CI 构建并打包 `bin/fastresearch` 和 `dist/`，使用 [Go FastDeploy 配置
 
 FastTask 今日计划使用独立服务身份和 `integrations:fastresearch` scope。服务投递必须校验签名、受众、scope、中心 active 状态和明确收件账号白名单。工作流仍使用原 `workflows.sqlite`，完成工序与待回传事件同事务提交。
 
-FastTask 写入、进度回传和 FastWrite 项目 API 的可用性取决于目标项目实现及服务权限配置；目标服务未提供接口时返回错误，不假报成功。真实生产 FastCAS / FastTask / FastWrite 联调仍需在部署环境验收。若要让受保护的预览子域共用 Research 管理会话，需显式配置 `FASTRESEARCH_COOKIE_DOMAIN=.fastrd.io`；默认 Cookie 只属于主站。旧协议与历史联调记录位于 `docs/`，其 Node 源码引用对应 `legacy/node/server/`。
+FastTask 写入、进度回传和 FastWrite 项目 API 的可用性取决于目标项目实现及服务权限配置；目标服务未提供接口时返回错误，不假报成功。真实生产 FastCAS / FastTask / FastWrite 联调仍需在部署环境验收。若要让受保护的预览子域共用 Research 管理会话，需显式配置 `FASTRESEARCH_COOKIE_DOMAIN=.fastrd.io`；默认 Cookie 只属于主站。旧协议与历史联调记录位于 `docs/`，旧 Node 实现已删除，相关源码可在 Git 历史查阅。
 
 Read / News / Write 个人动态、服务权限与开通入口配置见 [workspace-activity.md](docs/integrations/workspace-activity.md)。原 Key 登录默认保留；没有已验证 CAS 绑定的 Key 不会按姓名或邮箱查找子应用账号。
 

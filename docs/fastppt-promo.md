@@ -1,4 +1,4 @@
-> 历史文档：Node 时代的实现和验收记录。当前结构、认证政策与启动方式以 [README](../README.md) 和 [Go 迁移说明](go-migration.md) 为准。
+> 历史文档：Node 时代的实现和验收记录。旧实现与脚本已移除，源码仅保留在 Git 历史中。当前结构、认证政策与启动方式以 [README](../README.md) 和 [Go 迁移说明](go-migration.md) 为准。
 
 # FastPPT 宣传页部署说明
 
