@@ -5,7 +5,6 @@ import '../shared/auth/color-mode'
 import { migrateLegacyMemberSession } from '../shared/auth/member-session'
 import { productHref,products,workspaceHref } from '../shared/products'
 import '../styles/index.css'
-import '../styles/promo.css'
 
 const App = lazy(() => import('../features/workspace/WorkspacePage'))
 const PromoPage = lazy(() => import('../pages/promo/PromoPage'))

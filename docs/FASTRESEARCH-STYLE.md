@@ -14,7 +14,7 @@
 
 ## 视觉与交互
 
-设计沿用 [UI UX Pro Max](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill) 的可访问性、React 与滚动建议，并以用户指定的蓝色节点路线为核心。底层使用 FastUI 0.3.0 的颜色、主题和控件。
+设计沿用 [UI UX Pro Max](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill) 的可访问性、React 与滚动建议，并以用户指定的蓝色节点路线为核心。产品页底层使用 FastUI 0.3.0 的颜色、主题和控件。Workspace 各部分完全采用 FastUI 组件和官方样式类，删除专用 CSS、内联样式及自定义视觉覆盖；只用标准 UnoCSS 工具类组织响应式布局，详见 `web/src/FASTUI.md`。
 
 - 一条蓝色缓弯曲线贯穿整个屏幕，每屏仅保留一段主路线。屏间连线放在视口外，避免重复线条。光点沿连续路线与切屏同步移动，节点对应当前章节。
 - 右侧章节导航沿纵向节点推进；章节名称与位置不只依赖颜色表达。
@@ -41,7 +41,11 @@
 
 `npm run build`、`npm run lint`、`npm test`。
 
-`npm run test:fastui -- /path/to/chromium /path/to/evidence` 覆盖工作台深浅色、三视口、个人 Key、管理员长列表、原生 dialog 焦点与分发名册实际保存。
+启动构建后的服务后，执行 `FASTRESEARCH_CHECK_URL=http://127.0.0.1:8787 npm run test:fastui`，覆盖深浅色、320/390/768/1024/1440px、管理员入口与原生 Dialog 关闭及焦点恢复。
+
+`FASTRESEARCH_CHECK_URL=http://127.0.0.1:8787 npm run test:workspace` 使用确定性 API fixture，覆盖深浅色、四视口、五个工具、URL 与浏览器返回、任务进度、信箱切换与已读记录、团队与空状态、管理员长列表、分发名册编辑与带 revision 的保存请求。截图位于 `test-results/workspace-refactor/`。
+
+`npm run test:activity` 使用隔离服务验证真实个人 Key 登录，以及三个应用的 active/missing/unavailable 动态状态。浏览器可通过 `EDGE_PATH` 指定；工作台截图目录可通过 `FASTRESEARCH_CHECK_OUTPUT` 指定。
 
 `EDGE_PATH=/path/to/chromium PROMO_CHECK_URL=http://127.0.0.1:8787/ npm run test:promo` 覆盖总产品页五视口、十个应用各桌面和移动端、一屏切换与章节推进、菜单、直达路由、中文固定、旧地址兼容、减少动效、图片回退与工作台无 footer。
 

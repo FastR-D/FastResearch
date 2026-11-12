@@ -28,11 +28,11 @@ try {
     const page = await context.newPage()
     page.on('pageerror', error => errors.push(error.message))
     await page.goto(origin + '/workspace', { waitUntil: 'networkidle' })
-    await page.locator('.ws-activity').getByRole('button').click()
+    await page.getByRole('region', { name: 'FastNews 个人动态', exact: true }).getByRole('button').click()
     await page.locator('#personal-key').fill('fixture-personal-key')
     await page.locator('dialog form button[type=submit]').click()
     await page.getByRole('dialog').waitFor({ state: 'hidden' })
-    await page.locator('.ws-activity').getByText('使用关联的 FastCAS 账号登录', { exact: true }).waitFor()
+    await page.getByRole('region', { name: /个人动态$/ }).getByText('使用关联的 FastCAS 账号登录', { exact: true }).waitFor()
     let state = 'active'
     await page.route('**/api/workspace/apps/*/activity', route => {
       const appId = new URL(route.request().url()).pathname.split('/')[4]
@@ -40,18 +40,18 @@ try {
     })
     for (const [id, name] of [['fast-news','FastNews'], ['fast-read','FastRead'], ['fast-write','FastWrite']]) {
       await page.goto(origin + '/workspace?tool=' + id, { waitUntil: 'networkidle' })
-      await page.locator('.ws-activity-items').getByText('个人研究动态已更新').waitFor()
-      assert.equal(await page.locator('.ws-activity-metrics strong').innerText(), '3')
+      await page.getByRole('region', { name: /个人动态$/ }).locator('ul').getByText('个人研究动态已更新').waitFor()
+      assert.equal(await page.getByRole('region', { name: /个人动态$/ }).locator('dd').innerText(), '3')
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false)
       state = 'missing'
       await page.getByRole('button', { name: `刷新 ${name} 动态`, exact: true }).click()
-      await page.locator('.ws-activity').getByRole('link', { name: `注册 / 开通 ${name} 账号` }).waitFor()
-      assert.equal(await page.locator('.ws-activity-items').count(), 0)
+      await page.getByRole('region', { name: /个人动态$/ }).getByRole('link', { name: `注册 / 开通 ${name} 账号` }).waitFor()
+      assert.equal(await page.getByRole('region', { name: /个人动态$/ }).locator('ul').count(), 0)
       await page.screenshot({ path: `test-results/activity/${id}-${width}-missing.png` })
       state = 'unavailable'
       await page.getByRole('button', { name: `刷新 ${name} 动态`, exact: true }).click()
-      await page.locator('.ws-activity').getByText('暂时无法读取个人动态，请稍后重试').waitFor()
-      assert.equal(await page.locator('.ws-activity a').count(), 0)
+      await page.getByRole('region', { name: /个人动态$/ }).getByText('暂时无法读取个人动态，请稍后重试').waitFor()
+      assert.equal(await page.getByRole('region', { name: /个人动态$/ }).getByRole('link').count(), 0)
       state = 'active'
     }
     await context.close()

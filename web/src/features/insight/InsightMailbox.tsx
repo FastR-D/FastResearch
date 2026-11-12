@@ -1,152 +1,42 @@
-import { ArrowUpRight,BookOpenText,ExternalLink,Inbox,KeyRound,LockKeyhole } from 'lucide-react'
+import { Badge, Button, EmptyState, PanelHeader, Section, Toolbar } from '@fastrd/ui-react'
+import { BookOpenText, ExternalLink, Inbox, KeyRound } from 'lucide-react'
 import { useMemo } from 'react'
-import { type Copy } from '../../shared/copy'
-import { formatTime,splitInsight } from '../../shared/lib/format'
-import type { InsightItem,MemberSession } from '../../shared/types'
+import type { Copy } from '../../shared/copy'
+import { formatTime, splitInsight } from '../../shared/lib/format'
+import type { InsightItem, MemberSession } from '../../shared/types'
 export function InsightMailbox({ member, items, selectedId, readIds, onSelect, onUnlock, onOpenFastRead, t }: {
-  member: MemberSession | null
-  items: InsightItem[]
-  selectedId: string | null
-  readIds: Set<string>
-  onSelect: (id: string) => void
-  onUnlock: () => void
-  onOpenFastRead: () => void
-  t: Copy
+  member: MemberSession | null; items: InsightItem[]; selectedId: string | null; readIds: Set<string>; onSelect: (id: string) => void; onUnlock: () => void; onOpenFastRead: () => void; t: Copy
 }) {
-  const selected = useMemo(() => items.find((item) => item.id === selectedId) ?? items[0] ?? null, [items, selectedId])
-  const unread = items.filter((item) => !readIds.has(item.id)).length
+  const selected = useMemo(() => items.find(item => item.id === selectedId) ?? items[0] ?? null, [items, selectedId])
+  const unread = items.filter(item => !readIds.has(item.id)).length
   const detail = splitInsight(selected?.summary)
-
-  return (
-    <section className="insight-mailbox">
-      <div className="mailbox-head">
-        <div className="mailbox-head-meta">
-          <span className="intel-kicker"><Inbox size={14} /> {t('insight.label')}</span>
-          {member && <span className="mailbox-count-pill">{t('insight.count', { count: items.length })} {unread > 0 && t('insight.unread', { count: unread })}</span>}
-        </div>
-        <h2>{t('insight.title')}</h2>
-        <p>
-          {member
-            ? t('insight.personal', { person: member.person })
-            : t('insight.lockedDescription')}
-        </p>
-      </div>
-
-      {!member ? (
-        <div className="mailbox-locked">
-          <div className="locked-icon-wrap"><LockKeyhole size={24} /></div>
-          <strong>{t('insight.lockedTitle')}</strong>
-          <p>{t('insight.lockedHint')}</p>
-          <button type="button" className="outline-button" onClick={onUnlock}>{t('insight.unlock')} <KeyRound size={14} /></button>
-        </div>
-      ) : (
-        <div className="mailbox-body">
-          <div className="mailbox-list" role="list">
-            {items.length === 0 ? (
-              <div className="mailbox-empty">
-                <Inbox size={28} className="mailbox-empty-icon" />
-                <p>{t('insight.empty')}</p>
-                <small>{t('insight.emptyHint')}</small>
-              </div>
-            ) : items.map((item) => {
-              const active = (selected?.id ?? '') === item.id
-              const unreadItem = !readIds.has(item.id)
-              return (
-                <div
-                  role="listitem"
-                  key={item.id}
-                  className={`mailbox-row ${active ? 'is-active' : ''} ${unreadItem ? 'is-unread' : ''}`}
-                >
-                  <button type="button" className="mailbox-row-select" onClick={() => onSelect(item.id)}>
-                    <span className="mailbox-dot" aria-hidden="true" />
-                    <span className="mailbox-row-copy">
-                      <em>{item.direction ? t('insight.reading', { direction: item.direction }) : t('insight.card')}</em>
-                      <strong>{item.title}</strong>
-                      <small>{formatTime(item.receivedAt)}{item.source ? ` · ${item.source}` : ''}</small>
-                    </span>
-                  </button>
-                  {item.url && (
-                    <a
-                      className="mailbox-row-arrive"
-                      href={item.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      title={t('insight.arrive')}
-                      aria-label={t('insight.arriveAria', { title: item.title })}
-                      onClick={(event) => event.stopPropagation()}
-                    >
-                      <span>{t('insight.arrive')}</span> <ArrowUpRight size={13} />
-                    </a>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-
-          <article className="mailbox-card">
-            {selected ? (
-              <>
-                <header className="paper-header">
-                  <span className="paper-tag">📄 {selected.direction ? t('insight.direction', { direction: selected.direction }) : t('insight.result')}</span>
-                  <time className="paper-time">{formatTime(selected.receivedAt)}</time>
-                </header>
-                <h3 className="paper-title">{selected.title}</h3>
-
-                <div className="paper-meta-grid">
-                  {selected.authors && (
-                    <div className="paper-meta-row">
-                      <span className="meta-label">{t('insight.authors')}</span>
-                      <span className="meta-val">{selected.authors}</span>
-                    </div>
-                  )}
-                  {selected.venue && (
-                    <div className="paper-meta-row">
-                      <span className="meta-label">{t('insight.venue')}</span>
-                      <span className="meta-val">{selected.venue}</span>
-                    </div>
-                  )}
-                  {selected.url && (
-                    <div className="paper-meta-row">
-                      <span className="meta-label">{t('insight.paperUrl')}</span>
-                      <a className="meta-val paper-link-text" href={selected.url} target="_blank" rel="noreferrer" title={selected.url}>{selected.url}</a>
-                    </div>
-                  )}
-                </div>
-
-                {detail.abstract && (
-                  <div className="paper-abstract-box">
-                    <div className="box-title">{t('insight.abstract')}</div>
-                    <p className="mailbox-summary">{detail.abstract}</p>
-                  </div>
-                )}
-
-                {detail.trend && (
-                  <div className="paper-trend-box">
-                    <div className="box-title">{t('insight.trend')}</div>
-                    <p className="mailbox-summary">{detail.trend}</p>
-                  </div>
-                )}
-
-                <div className="paper-card-footer">
-                  <small className="paper-note">{t('insight.archived')}</small>
-                  <div className="paper-actions">
-                    <button type="button" className="primary-button paper-open-btn" onClick={onOpenFastRead}>
-                      <BookOpenText size={15} /> {t('insight.fastRead')}
-                    </button>
-                    {selected.url && (
-                      <a className="outline-button paper-source-btn" href={selected.url} target="_blank" rel="noreferrer">
-                        {t('insight.open')} <ExternalLink size={14} />
-                      </a>
-                    )}
-                  </div>
-                </div>
-              </>
-            ) : (
-              <div className="mailbox-empty">{t('insight.select')}</div>
-            )}
+  return <Section aria-label={t('insight.label')}>
+    <PanelHeader className="flex-wrap"><Inbox size={16} /><h2>{t('insight.title')}</h2>{member && <Badge>{t('insight.count', { count: items.length })} {unread > 0 && t('insight.unread', { count: unread })}</Badge>}</PanelHeader>
+    <div className="fastui-modal-body">
+      <p>{member ? t('insight.personal', { person: member.person }) : t('insight.lockedDescription')}</p>
+      {!member ? <EmptyState title={t('insight.lockedTitle')} action={<Button variant="secondary" onClick={onUnlock}>{t('insight.unlock')}<KeyRound size={14} /></Button>}><p>{t('insight.lockedHint')}</p></EmptyState>
+        : !items.length ? <EmptyState title={t('insight.empty')}><p>{t('insight.emptyHint')}</p></EmptyState> : <div className="grid lg:grid-cols-3 gap-4 items-start">
+          <nav aria-label="信箱条目" className="grid gap-1 min-w-0 max-h-96 overflow-y-auto">
+            {items.map(item => <Button variant="navigation" key={item.id} aria-pressed={selected?.id === item.id} aria-controls="insight-detail" onClick={() => onSelect(item.id)} className="justify-start text-left whitespace-normal">
+              <span className="grid gap-1 min-w-0 break-words"><strong>{item.title}</strong><small>{item.direction ? t('insight.reading', { direction: item.direction }) : t('insight.card')}</small><small>{formatTime(item.receivedAt)}{item.source ? ` · ${item.source}` : ''}</small>{!readIds.has(item.id) && <span>{t('insight.unread', { count: 1 })}</span>}</span>
+            </Button>)}
+          </nav>
+          <article id="insight-detail" aria-label="信箱详情" className="lg:col-span-2 min-w-0 break-words grid gap-4" aria-live="polite">
+            {selected ? <>
+              <Badge>{selected.direction ? t('insight.direction', { direction: selected.direction }) : t('insight.result')}</Badge>
+              <h3 className="fastui-heading text-lg">{selected.title}</h3><time>{formatTime(selected.receivedAt)}</time>
+              <dl className="grid gap-2">
+                {selected.authors && <div><dt>{t('insight.authors')}</dt><dd>{selected.authors}</dd></div>}
+                {selected.venue && <div><dt>{t('insight.venue')}</dt><dd>{selected.venue}</dd></div>}
+                {selected.url && <div><dt>{t('insight.paperUrl')}</dt><dd><a className="fastui-link break-all" href={selected.url} target="_blank" rel="noreferrer">{selected.url}</a></dd></div>}
+              </dl>
+              {detail.abstract && <Section><PanelHeader><h3>{t('insight.abstract')}</h3></PanelHeader><p className="p-4 whitespace-pre-line">{detail.abstract}</p></Section>}
+              {detail.trend && <Section><PanelHeader><h3>{t('insight.trend')}</h3></PanelHeader><p className="p-4 whitespace-pre-line">{detail.trend}</p></Section>}
+              <small>{t('insight.archived')}</small>
+              <Toolbar label="论文操作"><Button variant="primary" onClick={onOpenFastRead}><BookOpenText size={15} />{t('insight.fastRead')}</Button>{selected.url && <a className="fastui-button fastui-button--secondary" href={selected.url} target="_blank" rel="noreferrer">{t('insight.open')}<ExternalLink size={14} /></a>}</Toolbar>
+            </> : <EmptyState title={t('insight.select')} />}
           </article>
-        </div>
-      )}
-    </section>
-  )
+        </div>}
+    </div>
+  </Section>
 }

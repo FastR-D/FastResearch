@@ -18,7 +18,7 @@ web/
   src/pages/promo/     公开产品介绍与滚动交互
   src/features/        workspace、auth、admin、today、team、insight
   src/shared/          HTTP 客户端、领域类型、文案、组件、工具
-  src/styles/          公共、宣传页和工作台样式
+  src/styles/          基础 reset 和按需加载的宣传页样式
   public/              静态资源
 contracts/             跨项目接口契约
 scripts/               浏览器验收与本地部署
@@ -78,6 +78,7 @@ Go 测试使用本地签名 OIDC 提供方覆盖登录回调、浏览器绑定�
 
 ```bash
 FASTRESEARCH_CHECK_URL=http://127.0.0.1:8787 npm run test:fastui
+FASTRESEARCH_CHECK_URL=http://127.0.0.1:8787 npm run test:workspace
 PROMO_CHECK_URL=http://127.0.0.1:8787/ npm run test:promo
 PROMO_CHECK_URL=http://127.0.0.1:8787/ npm run test:journey
 ```

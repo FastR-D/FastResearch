@@ -84,7 +84,7 @@ try {
     assert.equal(await page.locator('.story-page').isVisible(), true)
     await context.clearCookies()
     await page.goto(new URL('workspace', origin).href, { waitUntil: 'networkidle' })
-    assert.equal(await page.locator('.research-workspace').isVisible(), true)
+    assert.equal(await page.locator('#workspace-content').isVisible(), true)
     assert.equal(await page.locator('footer').count(), 0)
     assert.equal(await page.getByRole('button', { name: '切换语言' }).count(), 0)
     assert.equal(await page.locator('html').getAttribute('lang'), 'zh-CN')
@@ -124,10 +124,10 @@ try {
   assert.equal(new URL(page.url()).pathname, workspaceUrl.pathname)
   for (const tool of ['fast-read', 'fast-write', 'fast-ppt', 'fast-lab']) {
     await page.goto(`${workspaceUrl}?tool=${tool}`, { waitUntil: 'networkidle' })
-    assert.equal(await page.locator('.ws-tool-nav .ws-nav-item.is-selected').innerText().then(text => text.includes({ 'fast-read': 'FastRead', 'fast-write': 'FastWrite', 'fast-ppt': 'FastPPT', 'fast-lab': 'FastLab' }[tool])), true)
+    assert.equal(await page.getByRole('navigation', { name: '科研工具', exact: true }).locator('[aria-current=page]').innerText().then(text => text.includes({ 'fast-read': 'FastRead', 'fast-write': 'FastWrite', 'fast-ppt': 'FastPPT', 'fast-lab': 'FastLab' }[tool])), true)
   }
   await page.goto(`${workspaceUrl}?view=insight`, { waitUntil: 'networkidle' })
-  assert.equal(await page.locator('.insight-mailbox').isVisible(), true)
+  assert.equal(await page.getByRole('region', { name: 'FASTINSIGHT · 学术文献速递', exact: true }).isVisible(), true)
   await page.goto(new URL('intro/unknown', origin).href, { waitUntil: 'networkidle' })
   assert.equal(await page.locator('.route-not-found').isVisible(), true)
   await page.close()

@@ -1,3 +1,4 @@
+import { Alert, Badge, Button, EmptyState, Loading, PanelHeader, Section, TextArea, TextField, Toolbar } from '@fastrd/ui-react'
 import { Plus,Save,Settings2,ShieldCheck,Trash2,UsersRound,X } from 'lucide-react'
 import { FormEvent,useEffect,useRef,useState } from 'react'
 import { request } from '../../shared/api/client'
@@ -142,163 +143,45 @@ export function FastInsightRosterEditor({ session, onAdminOpen, onSessionExpired
     }
   }
 
-  if (!session) {
-    return (
-      <section className="roster-editor roster-editor--locked" aria-label={t('routing.title')}>
-        <div className="mailbox-locked">
-          <div className="locked-icon-wrap"><Settings2 size={25} /></div>
-          <strong>{t('routing.adminRequired')}</strong>
-          <p>{t('routing.adminRequiredHint')}</p>
-          <button type="button" className="outline-button" onClick={onAdminOpen}><ShieldCheck size={15} /> {t('routing.openAdmin')}</button>
-        </div>
-      </section>
-    )
-  }
+  if (!session) return <EmptyState title={t('routing.adminRequired')} action={<Button variant="secondary" onClick={onAdminOpen}><ShieldCheck size={15} />{t('routing.openAdmin')}</Button>}><p>{t('routing.adminRequiredHint')}</p></EmptyState>
 
   const ownerCount = roster?.directions.reduce((count, direction) => count + direction.owners.length, 0) ?? 0
   const keywordCount = roster?.directions.reduce((count, direction) => count + direction.keywords.filter(Boolean).length, 0) ?? 0
-
-  return (
-    <form className="roster-editor" onSubmit={save} aria-label={t('routing.title')}>
-      <header className="roster-editor-header">
-        <div>
-          <span className="workspace-kicker"><Settings2 size={14} /> FASTINSIGHT / ROUTING</span>
-          <h2>{t('routing.title')}</h2>
-          <p>{t('routing.description')} <code>{fileName}</code></p>
-        </div>
-        <div className="roster-editor-actions">
-          {dirty && <span className="roster-dirty">{t('routing.unsaved')}</span>}
-          <button type="button" className="outline-button" onClick={addDirection}><Plus size={15} /> {t('routing.addDirection')}</button>
-          <button type="submit" className="primary-button" disabled={loading || saving || !roster}>
-            <Save size={15} /> {saving ? t('routing.saving') : t('routing.save')}
-          </button>
-        </div>
-      </header>
-
-      <div className="roster-stats">
-        <div><strong>{roster?.directions.length ?? 0}</strong><span>{t('routing.directionCount')}</span></div>
-        <div><strong>{ownerCount}</strong><span>{t('routing.ownerCount')}</span></div>
-        <div><strong>{keywordCount}</strong><span>{t('routing.keywordCount')}</span></div>
-      </div>
-
-      {error && <div className="roster-error" role="alert">{error}</div>}
-      {loading ? (
-        <div className="roster-loading">{t('routing.loading')}</div>
-      ) : roster && (
-        <>
-          <div className="roster-direction-list">
-            {roster.directions.length === 0 && <div className="roster-empty">{t('routing.empty')}</div>}
-            {roster.directions.map((direction, directionIndex) => (
-              <article className="roster-direction-card" key={`${directionIndex}-${direction.name}`}>
-                <header className="roster-direction-heading">
-                  <span className="roster-index">{String(directionIndex + 1).padStart(2, '0')}</span>
-                  <label>
-                    <span>{t('routing.directionName')}</span>
-                    <input
-                      value={direction.name}
-                      onChange={(event) => changeDirection(directionIndex, { name: event.target.value })}
-                      placeholder={t('routing.directionPlaceholder')}
-                      required
-                    />
-                  </label>
-                  <label className="roster-priority">
-                    <span>{t('routing.priority')}</span>
-                    <input
-                      type="number"
-                      value={direction.priority ?? ''}
-                      onChange={(event) => changeDirection(directionIndex, { priority: event.target.value === '' ? undefined : Number(event.target.value) })}
-                      min="0"
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    className="icon-button roster-remove"
-                    aria-label={t('routing.removeDirection')}
-                    title={t('routing.removeDirection')}
-                    onClick={() => changeRoster((current) => ({ ...current, directions: current.directions.filter((_, index) => index !== directionIndex) }))}
-                  >
-                    <Trash2 size={15} />
-                  </button>
-                </header>
-
-                <label className="roster-keywords">
-                  <span>{t('routing.keywords')} <small>{t('routing.keywordsHint')}</small></span>
-                  <textarea
-                    value={direction.keywords.join('\n')}
-                    onChange={(event) => changeDirection(directionIndex, {
-                      keywords: event.target.value.split(/\r?\n/).map((keyword) => keyword.trim()),
-                    })}
-                    placeholder={t('routing.keywordsPlaceholder')}
-                    rows={4}
-                  />
-                </label>
-
-                <div className="roster-owners">
-                  <div className="roster-subheading">
-                    <strong><UsersRound size={15} /> {t('routing.owners')}</strong>
-                    <button type="button" className="text-button" onClick={() => addOwner(directionIndex)}><Plus size={14} /> {t('routing.addOwner')}</button>
-                  </div>
-                  {direction.owners.map((owner, ownerIndex) => (
-                    <div className="roster-owner-row" key={`${directionIndex}-${ownerIndex}`}>
-                      <label>
-                        <span>{t('routing.ownerName')}</span>
-                        <input
-                          value={owner.name}
-                          onChange={(event) => changeOwner(directionIndex, ownerIndex, { name: event.target.value })}
-                          placeholder={t('routing.ownerNamePlaceholder')}
-                          required
-                        />
-                      </label>
-                      <label>
-                        <span>{t('routing.feishuOpenId')}</span>
-                        <input
-                          value={owner.feishu_open_id ?? ''}
-                          onChange={(event) => changeOwner(directionIndex, ownerIndex, { feishu_open_id: event.target.value })}
-                          placeholder={t('routing.feishuPlaceholder')}
-                        />
-                      </label>
-                      <button
-                        type="button"
-                        className="icon-button roster-remove"
-                        aria-label={t('routing.removeOwner')}
-                        title={t('routing.removeOwner')}
-                        onClick={() => changeDirection(directionIndex, { owners: direction.owners.filter((_, index) => index !== ownerIndex) })}
-                      >
-                        <X size={15} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </article>
-            ))}
+  return <form onSubmit={save} aria-label={t('routing.title')} className="grid gap-4">
+    <PanelHeader><Settings2 size={14} /><h2>{t('routing.title')}</h2></PanelHeader>
+    <p>{t('routing.description')} <code className="break-all">{fileName}</code></p>
+    <Toolbar label="分发名册操作">
+      {dirty && <Badge tone="warning">{t('routing.unsaved')}</Badge>}
+      <Button variant="secondary" onClick={addDirection} disabled={loading || !roster}><Plus size={15} />{t('routing.addDirection')}</Button>
+      <Button variant="primary" type="submit" disabled={loading || !roster} loading={saving}><Save size={15} />{saving ? t('routing.saving') : t('routing.save')}</Button>
+    </Toolbar>
+    <div className="flex flex-wrap gap-2"><Badge>{t('routing.directionCount')} {roster?.directions.length ?? 0}</Badge><Badge>{t('routing.ownerCount')} {ownerCount}</Badge><Badge>{t('routing.keywordCount')} {keywordCount}</Badge></div>
+    {error && <Alert tone="danger">{error}</Alert>}
+    {loading ? <Loading label={t('routing.loading')} /> : roster && <>
+      {!roster.directions.length && <EmptyState title={t('routing.empty')} />}
+      {roster.directions.map((direction, directionIndex) => <Section key={directionIndex}>
+        <PanelHeader className="justify-between"><h3>研究方向 {directionIndex + 1}</h3><Button variant="icon" aria-label={t('routing.removeDirection')} onClick={() => changeRoster(current => ({ ...current, directions: current.directions.filter((_, index) => index !== directionIndex) }))}><Trash2 size={15} /></Button></PanelHeader>
+        <div className="fastui-modal-body">
+          <div className="grid sm:grid-cols-2 gap-4">
+            <label className="fastui-field">{t('routing.directionName')}<TextField value={direction.name} onChange={event => changeDirection(directionIndex, { name: event.target.value })} placeholder={t('routing.directionPlaceholder')} required /></label>
+            <label className="fastui-field">{t('routing.priority')}<TextField type="number" value={direction.priority ?? ''} onChange={event => changeDirection(directionIndex, { priority: event.target.value === '' ? undefined : Number(event.target.value) })} min="0" /></label>
           </div>
-
-          <article className="roster-default-owner">
-            <div className="roster-subheading">
-              <strong><ShieldCheck size={16} /> {t('routing.defaultOwner')}</strong>
-              <small>{t('routing.defaultOwnerHint')}</small>
-            </div>
-            <div className="roster-owner-row">
-              <label>
-                <span>{t('routing.ownerName')}</span>
-                <input
-                  value={roster.default_owner?.name ?? ''}
-                  onChange={(event) => changeDefaultOwner({ name: event.target.value })}
-                  placeholder={t('routing.ownerNamePlaceholder')}
-                />
-              </label>
-              <label>
-                <span>{t('routing.feishuOpenId')}</span>
-                <input
-                  value={roster.default_owner?.feishu_open_id ?? ''}
-                  onChange={(event) => changeDefaultOwner({ feishu_open_id: event.target.value })}
-                  placeholder={t('routing.feishuPlaceholder')}
-                />
-              </label>
-            </div>
-          </article>
-        </>
-      )}
-    </form>
-  )
+          <label className="fastui-field">{t('routing.keywords')}<small>{t('routing.keywordsHint')}</small><TextArea value={direction.keywords.join('\n')} onChange={event => changeDirection(directionIndex, { keywords: event.target.value.split(/\r?\n/).map(keyword => keyword.trim()) })} placeholder={t('routing.keywordsPlaceholder')} rows={4} /></label>
+          <Toolbar label="研究方向负责人"><UsersRound size={15} />{t('routing.owners')}<Button variant="quiet" onClick={() => addOwner(directionIndex)}><Plus size={14} />{t('routing.addOwner')}</Button></Toolbar>
+          {direction.owners.map((owner, ownerIndex) => <div className="grid sm:grid-cols-2 gap-3 items-end" key={ownerIndex}>
+            <label className="fastui-field">{t('routing.ownerName')}<TextField value={owner.name} onChange={event => changeOwner(directionIndex, ownerIndex, { name: event.target.value })} placeholder={t('routing.ownerNamePlaceholder')} required /></label>
+            <label className="fastui-field">{t('routing.feishuOpenId')}<TextField value={owner.feishu_open_id ?? ''} onChange={event => changeOwner(directionIndex, ownerIndex, { feishu_open_id: event.target.value })} placeholder={t('routing.feishuPlaceholder')} /></label>
+            <Button variant="secondary" aria-label={t('routing.removeOwner')} onClick={() => changeDirection(directionIndex, { owners: direction.owners.filter((_, index) => index !== ownerIndex) })}><X size={15} />{t('routing.removeOwner')}</Button>
+          </div>)}
+        </div>
+      </Section>)}
+      <Section>
+        <PanelHeader><ShieldCheck size={16} /><h3>{t('routing.defaultOwner')}</h3></PanelHeader>
+        <div className="fastui-modal-body"><p>{t('routing.defaultOwnerHint')}</p><div className="grid sm:grid-cols-2 gap-4">
+          <label className="fastui-field">{t('routing.ownerName')}<TextField value={roster.default_owner?.name ?? ''} onChange={event => changeDefaultOwner({ name: event.target.value })} placeholder={t('routing.ownerNamePlaceholder')} /></label>
+          <label className="fastui-field">{t('routing.feishuOpenId')}<TextField value={roster.default_owner?.feishu_open_id ?? ''} onChange={event => changeDefaultOwner({ feishu_open_id: event.target.value })} placeholder={t('routing.feishuPlaceholder')} /></label>
+        </div></div>
+      </Section>
+    </>}
+  </form>
 }

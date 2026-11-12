@@ -1,5 +1,5 @@
 import { AppActivityPanel } from './AppActivityPanel'
-import { Button } from '@fastrd/ui-react'
+import { Alert, Badge, Button, Divider, PanelHeader, Section, Toolbar } from '@fastrd/ui-react'
 import { ArrowUpRight,CalendarCheck,Check,FlaskConical,Inbox,LogIn,LogOut,Menu,Moon,Settings2,ShieldCheck,Sunrise,UsersRound } from 'lucide-react'
 import { useCallback,useEffect,useMemo,useRef,useState } from 'react'
 import { apiUrl,request } from '../../shared/api/client'
@@ -8,7 +8,6 @@ import { text as t } from '../../shared/copy'
 import { products } from '../../shared/products'
 import type { Entry,EntryId,FastTaskToday,InsightItem,MemberSession,TeamWorkflow,Workflow,WorkflowModule,WorkspaceApp,WorkspaceView } from '../../shared/types'
 import { Dialog } from '../../shared/ui/Dialog'
-import '../../styles/workspace.css'
 import { AdminDialog } from '../admin/AdminDialog'
 import { FastInsightRosterEditor } from '../admin/FastInsightRosterEditor'
 import { FastCASDialog } from '../auth/FastCASDialog'
@@ -41,6 +40,7 @@ function WorkspacePage() {
   const [readIds, setReadIds] = useState<Set<string>>(() => new Set())
   const [toast, setToast] = useState('')
   const { member, setMember, session, setSession, casEnabled, casLoginEnabled, legacyKeyEnabled } = useIdentity(setToast)
+  const [teamLoading, setTeamLoading] = useState(false)
   const [teamWorkflows, setTeamWorkflows] = useState<TeamWorkflow[]>([])
   const [fastTaskToday, setFastTaskToday] = useState<FastTaskToday | null>(null)
   const [selectedModule, setSelectedModule] = useState<WorkflowModule>(() => {
@@ -128,9 +128,11 @@ function WorkspacePage() {
       setSelectedInsight(null)
       setReadIds(new Set())
       setTeamWorkflows([])
+      setTeamLoading(false)
       setFastTaskToday(null)
       return
     }
+    setTeamLoading(true)
     setReadIds(readKey(member.keyId))
     let cancelled = false
     const load = async () => {
@@ -143,6 +145,7 @@ function WorkspacePage() {
         if (cancelled) return
         setInsightItems(data.insightItems ?? [])
         setTeamWorkflows(team.members ?? [])
+        setTeamLoading(false)
         setFastTaskToday(today.today ?? null)
       } catch (err) {
         if (cancelled) return
@@ -168,6 +171,10 @@ function WorkspacePage() {
     if (view === 'workflow') url.searchParams.set('tool', tool)
     else url.searchParams.set('view', view)
     window.history.pushState({}, '', url.pathname + url.search)
+    if (sidebarOpen) requestAnimationFrame(() => {
+      document.getElementById('workspace-content')?.focus({ preventScroll: true })
+      window.scrollTo(0, 0)
+    })
   }
 
   const logout = async () => {
@@ -282,6 +289,7 @@ function WorkspacePage() {
       ])
       setFastTaskToday(today.today ?? null)
       setTeamWorkflows(team.members ?? [])
+        setTeamLoading(false)
     } catch (err) {
       setToast(err instanceof Error ? err.message : t('error.request'))
     }
@@ -315,59 +323,66 @@ function WorkspacePage() {
   ] as const
 
   return (
-    <div className="tech-app research-app workspace-shell">
-      <a className="workspace-skip" href="#workspace-content">跳到主要内容</a>
-      <header className="ws-header">
-        <button type="button" id="workspace-menu" className="ws-icon ws-menu" aria-label="工具导航" aria-expanded={sidebarOpen} aria-controls="workspace-sidebar" onClick={() => setSidebarOpen(!sidebarOpen)}><Menu size={19} /></button>
-        <a className="ws-brand" href="/workspace"><span className="ws-brand-icon"><FlaskConical size={17} /></span><span><b>Fast</b>Research</span><small>工作台</small></a>
-        <nav className="ws-header-actions" aria-label="账号与设置">
-          <a className="ws-about" href="/">了解 FastResearch <ArrowUpRight size={14} aria-hidden="true" /></a>
-          {member ? <><span className="header-identity ws-identity" title={member.person}><span className="ws-avatar" aria-hidden="true">{Array.from(member.person)[0]}</span><span>{member.person}</span></span><button type="button" className="ws-header-button ws-logout" onClick={() => void logout()} disabled={loggingOut} aria-label="退出登录"><LogOut size={16} /><span>{loggingOut ? '退出中…' : '退出'}</span></button></> : <button type="button" className="ws-header-button" onClick={() => setKeyOpen(true)}><LogIn size={16} />登录</button>}
-          <button type="button" className="ws-header-button ws-cas" aria-label="CAS认证" onClick={() => { if (!casEnabled) setToast('当前部署尚未启用 CAS 认证'); else if (member) setCasOpen(true); else setKeyOpen(true) }} title={casEnabled ? '查看 FastCAS 账号' : '当前部署尚未启用 CAS 认证'}><ShieldCheck size={16} /><span>CAS认证</span></button>
-          <Button variant="icon" className="ws-icon ws-theme" onClick={toggleColorMode} aria-label={dark ? '切换浅色模式' : '切换深色模式'} title={dark ? '切换浅色模式' : '切换深色模式'}>{dark ? <Sunrise size={19} strokeWidth={1.7} /> : <Moon size={19} strokeWidth={1.7} />}</Button>
-        </nav>
+    <div className="min-h-screen bg-[var(--fastui-page)] text-[var(--fastui-text)] font-[var(--fastui-font)] text-[length:var(--fastui-font-size)]">
+      <a className="fastui-link sr-only focus:not-sr-only" href="#workspace-content">跳到主要内容</a>
+      <header className="sticky top-0 z-20 bg-[var(--fastui-surface)]">
+        <Toolbar label="工作台顶栏" className="min-h-14">
+          <Button id="workspace-menu" variant="icon" className="md:hidden" aria-label="工具导航" aria-expanded={sidebarOpen} aria-controls="workspace-sidebar" onClick={() => setSidebarOpen(!sidebarOpen)}><Menu size={18} /></Button>
+          <a className="fastui-link inline-flex items-center gap-2" href="/workspace"><FlaskConical size={18} />FastResearch</a>
+          <nav className="flex flex-1 flex-wrap items-center justify-end gap-2 min-w-0" aria-label="账号与设置">
+            <a className="fastui-button fastui-button--quiet" href="/">了解 FastResearch<ArrowUpRight size={14} /></a>
+            {member ? <><span className="max-w-32 truncate" title={member.person}>{member.person}</span><Button variant="quiet" onClick={() => void logout()} loading={loggingOut} aria-label="退出登录"><LogOut size={15} />退出</Button></> : <Button variant="quiet" onClick={() => setKeyOpen(true)}><LogIn size={15} />登录</Button>}
+            <Button variant="quiet" aria-label="CAS认证" onClick={() => { if (!casEnabled) setToast('当前部署尚未启用 CAS 认证'); else if (member) setCasOpen(true); else setKeyOpen(true) }} title={casEnabled ? '查看 FastCAS 账号' : '当前部署尚未启用 CAS 认证'}><ShieldCheck size={15} />CAS认证</Button>
+            <Button variant="icon" onClick={toggleColorMode} aria-label={dark ? '切换浅色模式' : '切换深色模式'}>{dark ? <Sunrise size={18} /> : <Moon size={18} />}</Button>
+          </nav>
+        </Toolbar>
       </header>
-      <div className="ws-layout">
-        {sidebarOpen && <button type="button" className="ws-sidebar-backdrop" aria-label="关闭工具导航" onClick={() => setSidebarOpen(false)} />}
-        <aside className={`ws-sidebar ${sidebarOpen ? 'is-open' : ''}`} id="workspace-sidebar" aria-label="工作台导航">
-          <div className="ws-sidebar-caption">科研工具<span>{MODULE_HUB_ORDER.length}</span></div>
-          <nav className="ws-tool-nav" aria-label="科研工具">
-            {MODULE_HUB_ORDER.map(id => { const entry = entries[id]; const Icon = entry.Icon; return <button type="button" key={id} className={`ws-nav-item ${workspaceView === 'workflow' && selectedModule === id ? 'is-selected' : ''}`} aria-current={workspaceView === 'workflow' && selectedModule === id ? 'page' : undefined} onClick={() => navigateWorkspace('workflow', id)}><Icon size={18} strokeWidth={1.7} /><span>{entry.name}</span><span className="ws-nav-dot" /></button> })}
-          </nav>
-          <div className="ws-sidebar-caption ws-section-label">个人与团队</div>
-          <nav className="ws-utility-nav" aria-label="个人与团队">
-            {auxiliaryViews.map(({ view, label, Icon }) => <button type="button" key={view} className={`ws-nav-item ${workspaceView === view ? 'is-selected' : ''}`} aria-current={workspaceView === view ? 'page' : undefined} onClick={() => navigateWorkspace(view)}><Icon size={18} strokeWidth={1.7} /><span>{label}</span>{view === 'insight' && member && insightItems.some(item => !readIds.has(item.id)) && <small>{insightItems.filter(item => !readIds.has(item.id)).length}</small>}</button>)}
-          </nav>
-          <div className="ws-sidebar-bottom">
-            {session && <button type="button" className="ws-nav-item" onClick={() => setRoutingOpen(true)}><Settings2 size={17} /><span>论文分发设置</span></button>}
-            <button type="button" className="ws-nav-item" onClick={() => {
-              setAdminOpen(true)
-              if (member) void request<{ username: string; expiresAt: number }>('/api/admin/me').then(value => setSession({ token: '', username: value.username, expiresAt: value.expiresAt })).catch(() => setSession(null))
-            }} aria-label="管理员登录"><ShieldCheck size={17} /><span>{session ? '管理账号' : '管理'}</span></button>
-            <div className="ws-sidebar-note"><span />专注每一步研究</div>
-          </div>
-        </aside>
-        <main className="research-workspace ws-main" id="workspace-content" tabIndex={-1}>
-          <div className="ws-breadcrumb"><span>工作台</span><span>/</span><strong>{workspaceView === 'workflow' ? selectedEntry.name : auxiliaryViews.find(item => item.view === workspaceView)?.label}</strong></div>
-          {workspaceView === 'workflow' ? <article className="ws-tool-panel" key={selectedModule}>
-            <div className="ws-tool-heading"><span className="ws-tool-icon"><ToolIcon size={29} strokeWidth={1.5} /></span><span className="ws-category">{product.category}</span></div>
-            <h1>{product.name}</h1>
-            <p className="ws-tool-promise">{product.promise}</p>
-            <p className="ws-tool-description">{product.description}</p>
-            <div className="ws-feature-list">{product.points.map(point => <span key={point}><Check size={14} aria-hidden="true" />{point}</span>)}</div>
-            <div className="ws-tool-actions">
-              <Button className="ws-launch" onClick={() => openEntry(selectedEntry)} disabled={!app?.configured}>{appCatalog === null && !catalogError ? '正在读取入口…' : app?.auth === 'cas' ? '使用 CAS 进入' : `打开 ${product.name}`}<ArrowUpRight size={17} aria-hidden="true" /></Button>
-              <a className="ws-detail-link" href={`/intro/${product.id}`}>了解 {product.name}<ArrowUpRight size={15} aria-hidden="true" /></a>
+      <div className="md:flex items-start">
+        <aside className={`${sidebarOpen ? 'block' : 'hidden'} md:block w-full md:w-60 shrink-0 md:sticky md:top-14 md:max-h-[calc(100dvh-3.5rem)] overflow-y-auto`} id="workspace-sidebar" aria-label="工作台导航">
+          <Section>
+            <PanelHeader>科研工具<Badge>{MODULE_HUB_ORDER.length}</Badge></PanelHeader>
+            <nav className="grid p-2 gap-1" aria-label="科研工具">
+              {MODULE_HUB_ORDER.map(id => { const entry = entries[id]; const Icon = entry.Icon; const active = workspaceView === 'workflow' && selectedModule === id; return <Button variant="navigation" key={id} aria-pressed={active} aria-current={active ? 'page' : undefined} onClick={() => navigateWorkspace('workflow', id)} className="justify-start"><Icon size={16} />{entry.name}</Button> })}
+            </nav>
+            <PanelHeader>个人与团队</PanelHeader>
+            <nav className="grid p-2 gap-1" aria-label="个人与团队">
+              {auxiliaryViews.map(({ view, label, Icon }) => <Button variant="navigation" key={view} aria-pressed={workspaceView === view} aria-current={workspaceView === view ? 'page' : undefined} onClick={() => navigateWorkspace(view)} className="justify-start"><Icon size={16} />{label}{view === 'insight' && member && insightItems.some(item => !readIds.has(item.id)) && <Badge>{insightItems.filter(item => !readIds.has(item.id)).length}</Badge>}</Button>)}
+            </nav>
+            <Divider />
+            <div className="grid p-2 gap-1">
+              {session && <Button variant="navigation" onClick={() => setRoutingOpen(true)} className="justify-start"><Settings2 size={16} />论文分发设置</Button>}
+              <Button variant="navigation" className="justify-start" onClick={() => {
+                setAdminOpen(true)
+                if (member) void request<{ username: string; expiresAt: number }>('/api/admin/me').then(value => setSession({ token: '', username: value.username, expiresAt: value.expiresAt })).catch(() => setSession(null))
+              }} aria-label="管理员登录"><ShieldCheck size={16} />{session ? '管理账号' : '管理'}</Button>
             </div>
-            <p className="ws-auth-note">{catalogError ? '暂时无法读取应用入口，请刷新重试。' : appCatalog === null ? '正在读取应用入口。' : !app?.configured ? '当前部署尚未配置该工具入口。' : app.auth === 'cas' ? '通过 CAS 登录子应用，已有 CAS 会话将自动完成认证。' : selectedModule === 'fast-lab' ? '打开实验工作台；CAS 身份关联请在应用设置中完成。' : '打开本地演示工作台，使用应用自身的登录方式。'}</p>
-            <AppActivityPanel appId={selectedModule} name={product.name} member={member} onLogin={() => setKeyOpen(true)} />
-            <div className="ws-tool-divider" />
-            <div className="ws-tool-context"><span>从这里开始</span><p>{product.steps.join(' → ')}</p></div>
-          </article> : <div className="ws-secondary-panel">
-            {workspaceView === 'today' && <FastTaskTodayPanel member={member} today={fastTaskToday} onUnlock={() => setKeyOpen(true)} onRefresh={() => { void refreshFastTaskToday() }} onOpenFastTask={openFastTaskInNewTab} t={t} />}
-            {workspaceView === 'insight' && <InsightMailbox member={member} items={insightItems} selectedId={selectedInsight} readIds={readIds} onSelect={markRead} onUnlock={() => setKeyOpen(true)} onOpenFastRead={() => openEntry(entries['fast-read'])} t={t} />}
-            {workspaceView === 'team' && <TeamProgressPanel members={teamWorkflows} currentKeyId={member?.keyId ?? null} loading={Boolean(member) && teamWorkflows.length === 0} onClose={() => navigateWorkspace('workflow')} t={t} />}
-          </div>}
+          </Section>
+        </aside>
+        <main className="flex-1 min-w-0 p-4 md:p-6" id="workspace-content" tabIndex={-1}>
+          <div className="mx-auto max-w-6xl grid gap-4">
+            <h1 className="fastui-heading text-xl">{workspaceView === 'workflow' ? selectedEntry.name : auxiliaryViews.find(item => item.view === workspaceView)?.label}</h1>
+            {workspaceView === 'workflow' ? <Section key={selectedModule}>
+              <PanelHeader><ToolIcon size={18} />{product.category}</PanelHeader>
+              <div className="fastui-modal-body">
+                <h2 className="fastui-heading text-lg">{product.promise}</h2>
+                <p>{product.description}</p>
+                <ul className="grid gap-2">{product.points.map(point => <li className="flex items-start gap-2" key={point}><Check size={16} className="shrink-0" aria-hidden="true" />{point}</li>)}</ul>
+                <Toolbar label={`${product.name} 入口`}>
+                  <Button variant="primary" onClick={() => openEntry(selectedEntry)} disabled={!app?.configured}>{appCatalog === null && !catalogError ? '正在读取入口…' : app?.auth === 'cas' ? '使用 CAS 进入' : `打开 ${product.name}`}<ArrowUpRight size={16} /></Button>
+                  <a className="fastui-button fastui-button--quiet" href={`/intro/${product.id}`}>了解 {product.name}<ArrowUpRight size={15} /></a>
+                </Toolbar>
+                <Alert tone={catalogError ? 'danger' : 'info'}>{catalogError ? '暂时无法读取应用入口，请刷新重试。' : appCatalog === null ? '正在读取应用入口。' : !app?.configured ? '当前部署尚未配置该工具入口。' : app.auth === 'cas' ? '通过 CAS 登录子应用，已有 CAS 会话将自动完成认证。' : selectedModule === 'fast-lab' ? '打开实验工作台；CAS 身份关联请在应用设置中完成。' : '打开本地演示工作台，使用应用自身的登录方式。'}</Alert>
+                <AppActivityPanel appId={selectedModule} name={product.name} member={member} onLogin={() => setKeyOpen(true)} />
+                <Divider />
+                <h3 className="fastui-heading">从这里开始</h3>
+                <ol className="list-decimal pl-5 grid gap-2">{product.steps.map(step => <li key={step}>{step}</li>)}</ol>
+              </div>
+            </Section> : <>
+              {workspaceView === 'today' && <FastTaskTodayPanel member={member} today={fastTaskToday} onUnlock={() => setKeyOpen(true)} onRefresh={() => { void refreshFastTaskToday() }} onOpenFastTask={openFastTaskInNewTab} t={t} />}
+              {workspaceView === 'insight' && <InsightMailbox member={member} items={insightItems} selectedId={selectedInsight} readIds={readIds} onSelect={markRead} onUnlock={() => setKeyOpen(true)} onOpenFastRead={() => openEntry(entries['fast-read'])} t={t} />}
+              {workspaceView === 'team' && <TeamProgressPanel members={teamWorkflows} currentKeyId={member?.keyId ?? null} loading={teamLoading} onClose={() => navigateWorkspace('workflow')} t={t} />}
+            </>}
+          </div>
         </main>
       </div>
 
@@ -377,7 +392,7 @@ function WorkspacePage() {
         <AdminDialog
           session={session}
           onLogout={() => {
-          setSession(null)
+            setSession(null)
             setMember(null)
           }}
           onClose={() => setAdminOpen(false)}
@@ -385,7 +400,7 @@ function WorkspacePage() {
         />
       )}
       {routingOpen && session && (
-        <Dialog title={t('workspace.routing')} onClose={() => setRoutingOpen(false)} className="routing-dialog" t={t}>
+        <Dialog title={t('workspace.routing')} onClose={() => setRoutingOpen(false)} t={t}>
           <FastInsightRosterEditor
             session={session}
             onAdminOpen={() => setAdminOpen(true)}
@@ -395,7 +410,7 @@ function WorkspacePage() {
           />
         </Dialog>
       )}
-      {toast && <div className="tech-toast"><Check size={15} /> {toast}</div>}
+      {toast && <div className="fixed bottom-4 right-4 left-4 md:left-auto z-30"><Alert>{toast}</Alert></div>}
     </div>
   )
 }

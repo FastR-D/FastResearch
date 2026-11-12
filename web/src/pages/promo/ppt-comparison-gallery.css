@@ -35,7 +35,7 @@
 .ppt-gallery-slide img { display: block; width: 100%; height: auto; aspect-ratio: 4 / 3; max-height: 42svh; object-fit: contain; background: #fff; }
 .ppt-gallery-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 14px; }
 .ppt-gallery-footer p { display: flex; align-items: center; gap: 16px; color: var(--story-muted); font-size: 12px; line-height: 1.6; }
-.ppt-gallery-footer p > span { flex: none; color: var(--story-blue); font: 11px var(--color-mono); }
+.ppt-gallery-footer p > span { flex: none; color: var(--story-blue); font: 11px var(--fastui-font-mono); }
 .ppt-gallery-arrows { display: flex; gap: 6px; flex: none; }
 .ppt-gallery-arrows button { display: grid; place-items: center; min-width: 36px; min-height: 36px; border: 1px solid var(--story-border); border-radius: 6px; background: var(--story-surface); color: var(--story-blue); cursor: pointer; }
 @media (max-width: 640px) {

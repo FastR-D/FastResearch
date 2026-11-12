@@ -1,7 +1,7 @@
-import { defineConfig } from 'unocss'
+import { defineConfig, presetUno } from 'unocss'
 import { fastUIContent, presetFastUI } from '@fastrd/ui-foundation/uno'
 
 export default defineConfig({
   content: fastUIContent,
-  presets: [presetFastUI()],
+  presets: [presetUno(), presetFastUI()],
 })

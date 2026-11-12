@@ -18,6 +18,7 @@
     "test:promo": "node scripts/promo-visual-check.mjs",
     "test:journey": "node scripts/journey-browser.mjs",
     "start": "./bin/fastresearch",
+    "test:workspace": "node scripts/workspace-visual-check.mjs",
     "test:activity": "node scripts/activity-browser.mjs"
   },
   "engines": {

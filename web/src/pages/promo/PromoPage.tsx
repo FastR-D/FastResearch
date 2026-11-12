@@ -1,3 +1,4 @@
+import '../../styles/promo.css'
 import { Button } from '@fastrd/ui-react'
 import { ArrowDown,ArrowRight,ArrowUpRight,Check,FlaskConical,Menu,Mouse,ScanLine,X } from 'lucide-react'
 import { useEffect,useMemo,useRef,useState,type CSSProperties } from 'react'
