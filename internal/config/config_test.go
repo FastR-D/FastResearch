@@ -20,3 +20,22 @@ func TestKeyLoginDefaultAndExplicitDisable(t *testing.T) {
 		t.Fatal("explicit disable ignored")
 	}
 }
+
+func TestOfflineAccessRequiresExplicitOptIn(t *testing.T) {
+	t.Setenv("FASTRESEARCH_FASTCAS_OFFLINE_ACCESS", "")
+	c, e := Load()
+	if e != nil {
+		t.Fatal(e)
+	}
+	if c.OfflineAccess {
+		t.Fatal("unregistered offline access requested by default")
+	}
+	t.Setenv("FASTRESEARCH_FASTCAS_OFFLINE_ACCESS", "true")
+	c, e = Load()
+	if e != nil {
+		t.Fatal(e)
+	}
+	if !c.OfflineAccess {
+		t.Fatal("explicit offline access opt in ignored")
+	}
+}

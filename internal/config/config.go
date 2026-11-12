@@ -12,7 +12,7 @@ import (
 
 type Config struct {
 	Address, DataDir, Database, StaticDir, PublicURL, CookieName, CookieDomain, Issuer, ClientID, ClientSecret, RedirectURI string
-	AllowLoopbackHTTP, LegacyKeys                                                                                           bool
+	AllowLoopbackHTTP, LegacyKeys, OfflineAccess                                                                            bool
 	Origins                                                                                                                 map[string]bool
 }
 
@@ -26,7 +26,7 @@ func Load() (Config, error) {
 	for _, file := range []string{".env.production", ".env", ".env.local"} {
 		_ = godotenv.Load(file)
 	}
-	c := Config{Address: Env("HOST", "127.0.0.1") + ":" + Env("PORT", "8787"), DataDir: Env("FASTRESEARCH_DATA_DIR", "data"), StaticDir: Env("FASTRESEARCH_STATIC_DIR", "dist"), PublicURL: strings.TrimRight(Env("FASTRESEARCH_PUBLIC_URL", "http://127.0.0.1:"+Env("PORT", "8787")), "/"), CookieName: Env("FASTRESEARCH_COOKIE_NAME", "fr_session"), CookieDomain: os.Getenv("FASTRESEARCH_COOKIE_DOMAIN"), Issuer: strings.TrimRight(os.Getenv("FASTRESEARCH_FASTCAS_ISSUER"), "/"), ClientID: os.Getenv("FASTRESEARCH_FASTCAS_CLIENT_ID"), ClientSecret: os.Getenv("FASTRESEARCH_FASTCAS_CLIENT_SECRET"), RedirectURI: os.Getenv("FASTRESEARCH_FASTCAS_REDIRECT_URI"), AllowLoopbackHTTP: os.Getenv("FASTRESEARCH_FASTCAS_ALLOW_LOOPBACK_HTTP") == "true", LegacyKeys: os.Getenv("FASTRESEARCH_ALLOW_LEGACY_KEY_LOGIN") != "false", Origins: map[string]bool{}}
+	c := Config{Address: Env("HOST", "127.0.0.1") + ":" + Env("PORT", "8787"), DataDir: Env("FASTRESEARCH_DATA_DIR", "data"), StaticDir: Env("FASTRESEARCH_STATIC_DIR", "dist"), PublicURL: strings.TrimRight(Env("FASTRESEARCH_PUBLIC_URL", "http://127.0.0.1:"+Env("PORT", "8787")), "/"), CookieName: Env("FASTRESEARCH_COOKIE_NAME", "fr_session"), CookieDomain: os.Getenv("FASTRESEARCH_COOKIE_DOMAIN"), Issuer: strings.TrimRight(os.Getenv("FASTRESEARCH_FASTCAS_ISSUER"), "/"), ClientID: os.Getenv("FASTRESEARCH_FASTCAS_CLIENT_ID"), ClientSecret: os.Getenv("FASTRESEARCH_FASTCAS_CLIENT_SECRET"), RedirectURI: os.Getenv("FASTRESEARCH_FASTCAS_REDIRECT_URI"), AllowLoopbackHTTP: os.Getenv("FASTRESEARCH_FASTCAS_ALLOW_LOOPBACK_HTTP") == "true", LegacyKeys: os.Getenv("FASTRESEARCH_ALLOW_LEGACY_KEY_LOGIN") != "false", OfflineAccess: os.Getenv("FASTRESEARCH_FASTCAS_OFFLINE_ACCESS") == "true", Origins: map[string]bool{}}
 	c.Database = Env("FASTRESEARCH_ACCOUNT_DATABASE", filepath.Join(c.DataDir, "accounts.sqlite"))
 	if os.Getenv("FASTRESEARCH_FASTCAS_ENABLED") == "false" {
 		c.Issuer = ""

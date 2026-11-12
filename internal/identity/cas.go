@@ -103,7 +103,11 @@ func (a *CAS) Begin(ctx context.Context) (string, string, error) {
 		return "", "", errors.New("FastCAS is not configured")
 	}
 	binding := fastcas.RandomBinding()
-	location, e := a.Client.BeginLogin(ctx, fastcas.BeginOptions{BrowserBinding: binding, ReturnTo: "/workspace", Scopes: []string{"openid", "profile", "email", "offline_access"}})
+	scopes := []string{"openid", "profile", "email"}
+	if a.Config.OfflineAccess {
+		scopes = append(scopes, "offline_access")
+	}
+	location, e := a.Client.BeginLogin(ctx, fastcas.BeginOptions{BrowserBinding: binding, ReturnTo: "/workspace", Scopes: scopes})
 	return location, binding, e
 }
 func (a *CAS) Provider(ctx context.Context) (*oidc.Provider, error) {
@@ -217,7 +221,13 @@ func (a *CAS) Finish(ctx context.Context, callback, binding string) (string, err
 		return "", errors.New("account disabled")
 	}
 	raw := store.Random()
-	s := &store.Session{AccountID: account.ID, Source: "fastcas", Issuer: a.Config.Issuer, Subject: result.Identity.Subject, SID: result.Identity.SessionID, Role: role, ExpiresAt: time.Now().Add(48 * time.Hour).UnixMilli(), CheckedAt: time.Now().UnixMilli(), ProviderToken: a.seal(token, result.Identity.Subject)}
+	expires := time.Now().Add(48 * time.Hour)
+	// Without an approved refresh grant, the local session must not outlive
+	// its central credential. Existing Key sessions are independent.
+	if token.RefreshToken == "" && !token.Expiry.IsZero() && token.Expiry.Before(expires) {
+		expires = token.Expiry
+	}
+	s := &store.Session{AccountID: account.ID, Source: "fastcas", Issuer: a.Config.Issuer, Subject: result.Identity.Subject, SID: result.Identity.SessionID, Role: role, ExpiresAt: expires.UnixMilli(), CheckedAt: time.Now().UnixMilli(), ProviderToken: a.seal(token, result.Identity.Subject)}
 	if e = a.Store.PutSession(raw, s); e != nil {
 		return "", e
 	}

@@ -18,7 +18,7 @@
 
 普通会话中心验证缓存一分钟；管理操作每次重新读取 UserInfo，包含令牌刷新。签名状态通知和标准 backchannel logout 仅撤销匹配 issuer、subject / sid 的 FastCAS 会话，去重与撤销同事务。撤销中的会话不能被正在进行的刷新重建。
 
-FastCAS 必须部署 `docs/integrations/fastcas-role-claim.patch` 对应变更，并允许 Research 客户端使用 profile 与 offline_access。中心不返回 role 时不会授予管理权限。
+FastCAS 必须部署 `docs/integrations/fastcas-role-claim.patch` 对应变更，并允许 Research 客户端使用 profile。offline_access 必须在中心登记后再通过 `FASTRESEARCH_FASTCAS_OFFLINE_ACCESS=true` 显式启用。中心不返回 role 时不会授予管理权限。
 
 ## 部署
 

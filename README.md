@@ -53,11 +53,13 @@ npm run server
 
 服务默认监听 `127.0.0.1:8787`，同时提供 `dist/` 与 `/api/*`。前端开发另开终端执行 `npm run dev`，访问 `http://127.0.0.1:5173`，API 代理到 `8787`。
 
-在 FastCAS 登记保密客户端，允许 `authorization_code` 和 `refresh_token`，开放 `openid profile email offline_access`，精确回调地址为：
+在 FastCAS 登记保密客户端，允许 `authorization_code`，开放 `openid profile email`，精确回调地址为：
 
 ```text
 http://127.0.0.1:8787/api/auth/fastcas/callback
 ```
+
+默认不申请 `offline_access`，兼容仅开放标准登录权限的现有客户端。只有中心客户端同时允许 `offline_access` 与 `refresh_token` 后，才设置 `FASTRESEARCH_FASTCAS_OFFLINE_ACCESS=true` 启用长期刷新。未取得刷新令牌时，本站 CAS 会话有效期不超过中心访问令牌；到期后重新走 CAS 登录。
 
 本地 HTTP 开发需显式配置 `FASTRESEARCH_FASTCAS_ALLOW_LOOPBACK_HTTP=true`；生产使用 HTTPS。`.env` 按 `.env.production`、`.env`、`.env.local` 顺序补充未设置变量，进程环境优先。
 

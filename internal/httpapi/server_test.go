@@ -27,6 +27,7 @@ import (
 type providerFixture struct {
 	key           *rsa.PrivateKey
 	expireInitial bool
+	allowOffline  bool
 	URL           string
 	signer        jose.Signer
 	mu            sync.Mutex
@@ -79,6 +80,15 @@ func newProvider(t *testing.T) *providerFixture {
 		if r.URL.Query().Get("code_challenge_method") != "S256" {
 			t.Error("PKCE S256 required")
 		}
+		if strings.Contains(r.URL.Query().Get("scope"), "offline_access") && !f.allowOffline {
+			u, _ := url.Parse(r.URL.Query().Get("redirect_uri"))
+			q := u.Query()
+			q.Set("error", "invalid_scope")
+			q.Set("state", r.URL.Query().Get("state"))
+			u.RawQuery = q.Encode()
+			http.Redirect(w, r, u.String(), 302)
+			return
+		}
 		code := store.Random()
 		f.codes[code] = r.URL.Query().Get("nonce")
 		u, _ := url.Parse(r.URL.Query().Get("redirect_uri"))
@@ -108,7 +118,11 @@ func newProvider(t *testing.T) *providerFixture {
 		if f.expireInitial && r.Form.Get("grant_type") == "authorization_code" {
 			lifetime = 1
 		}
-		write(w, 200, store.Object{"access_token": "provider-access-secret", "refresh_token": "provider-refresh-secret", "token_type": "Bearer", "expires_in": lifetime, "id_token": token})
+		response := store.Object{"access_token": "provider-access-secret", "token_type": "Bearer", "expires_in": lifetime, "id_token": token}
+		if f.allowOffline {
+			response["refresh_token"] = "provider-refresh-secret"
+		}
+		write(w, 200, response)
 	})
 	mux.HandleFunc("GET /userinfo", func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
@@ -396,6 +410,9 @@ func TestSignedLogoutAndDisableNotifications(t *testing.T) {
 func TestProviderTokenRefreshAndMissingRole(t *testing.T) {
 	a, server, provider := setup(t)
 	provider.expireInitial = true
+	provider.allowOffline = true
+	a.CAS.Config.OfflineAccess = true
+	a.Config.OfflineAccess = true
 	provider.role = ""
 	client := login(t, server)
 	if status, _ := request(t, client, "GET", server.URL+"/api/admin/keys", ""); status != 403 {
@@ -536,5 +553,24 @@ func TestFastWriteHealthAndCompileWithoutBody(t *testing.T) {
 	status, data = request(t, client, "POST", server.URL+"/api/fastwrite/projects/project-1/compile", "")
 	if status != 200 || data["compiled"] != true {
 		t.Fatal("bodyless compile rejected", status, data)
+	}
+}
+
+func TestLoginScopesRespectClientRegistration(t *testing.T) {
+	a, server, provider := setup(t)
+	// Mirrors the production research client: standard OIDC login scopes only.
+	client := login(t, server)
+	if status, me := request(t, client, "GET", server.URL+"/api/content/me", ""); status != 200 {
+		t.Fatal("restricted client login failed", status)
+	} else if store.Number(me["expiresAt"]) > float64(time.Now().Add(61*time.Minute).UnixMilli()) {
+		t.Fatal("non-refreshable session exceeds provider credential", me["expiresAt"])
+	}
+	a.CAS.Config.OfflineAccess = true
+	a.Config.OfflineAccess = true
+	// The optional scope must be explicitly permitted by the provider as well.
+	provider.allowOffline = true
+	client = login(t, server)
+	if status, _ := request(t, client, "GET", server.URL+"/api/content/me", ""); status != 200 {
+		t.Fatal("registered offline access login failed", status)
 	}
 }
