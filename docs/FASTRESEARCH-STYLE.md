@@ -1,41 +1,48 @@
-# FastResearch 科研协同工作台视觉规范
+# FastResearch 页面与视觉规范
 
-## 产品定位与气质
+## 页面体系
 
-FastResearch 是面向学者的研究协同工作台：温和、严谨、秩序分明、信息密度适中。
-整体视觉采用 Neumorphism（新拟物）Soft UI：通过浅灰蓝底色、同色表面和固定左上高光/右下阴影，呈现温和、严谨、可触摸的科研工作台。
-1. **柔和立体质感**：使用 `#e0e5ec` 与 `#f0f0f3` 作为表面，避免纯白大卡片和硬边框。
-2. **克制强调色**：以蓝色强调色 `#3b82f6` 表示交互和当前阶段，保证长时间阅读文献与撰写论文时的视觉舒适度。
-3. **低干扰、高敏捷**：无人工延迟启动界面，即开即用；文字、排版、状态流、文献卡片清晰直观。
+- `/`：FastResearch 总产品页。即使已有成员会话，也默认展示产品内容。
+- `/intro/news`、`/intro/read`、`/intro/write`、`/intro/ppt`、`/intro/lab`、`/intro/task`、`/intro/insight`、`/intro/figure`、`/intro/cas`、`/intro/ui`：各应用介绍。路径使用不带 fast 的短名称。
+- `/workspace`：左侧工具导航，右侧展示所选工具的简介、能力要点、进入按钮与介绍页链接。今日任务、信箱、团队进度与管理功能放入侧栏，移除 footer。
+- `/intro` 兼容跳回 `/`，旧 `/fastppt` 页面跳转至 `/intro/ppt`；旧图片资产仍可访问。
+- 根路径的 FastCAS 回调、FastTask 登录参数与既有工作台锚点继续进入 `/workspace`。不迁移到 console。
 
-## 色彩规范
+## 中文内容
 
-- **全局浅灰底色**：`#e0e5ec`，辅助表面 `#f0f0f3`。
-- **凸起阴影**：`8px 8px 16px #b8bcc2, -8px -8px 16px #ffffff`。
-- **凹陷阴影**：`inset 8px 8px 16px #b8bcc2, inset -8px -8px 16px #ffffff`。
-- **主交互色**：`#3b82f6`，用于按钮、状态和当前工序。
-- **边框规范**：默认无可见边框，必要时使用透明边框保持尺寸稳定。
-- **文本颜色**：`#333333`（主文字），`#6b7280`（次要说明）。
-- **模块工序色调**：
-  - FastWrite、FastRead、FastNews：统一使用蓝色强调及同色灰阶，保持不同工序的视觉一致性。
+页面只使用中文，不提供语言切换，也不读取旧语言偏好。`web/src/shared/copy.ts` 是工作台中文文案与变量替换，不包含语言、翻译或持久化机制。应用介绍内容集中在 `web/src/shared/products.ts`，总产品路线在 `web/src/pages/promo/PromoPage.tsx` 中组织。
 
-## 排版系统
+## 视觉与交互
 
-- **界面字体**：`-apple-system`, `BlinkMacSystemFont`, `Segoe UI`, `Noto Sans SC`, `PingFang SC`, sans-serif。
-- **状态、编号、DOI、时间戳**：`JetBrains Mono`, `SF Mono`, Consolas, monospace。
-- **标题**：22px–44px，字重 600–700，字距微收（-0.02em ~ -0.03em）。
-- **正文**：13px–14px，行高 1.65–1.75，保障学术段落阅读体验。
+设计沿用 [UI UX Pro Max](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill) 的可访问性、React 与滚动建议，并以用户指定的蓝色节点路线为核心。底层使用 FastUI 0.3.0 的颜色、主题和控件。
 
-## 布局与组件
+- 一条蓝色缓弯曲线贯穿整个屏幕，每屏仅保留一段主路线。屏间连线放在视口外，避免重复线条。光点沿连续路线与切屏同步移动，节点对应当前章节。
+- 右侧章节导航沿纵向节点推进；章节名称与位置不只依赖颜色表达。
+- 产品总页六屏：起点、发现、研读、表达、推进、开始。各应用四屏：概览、能力、路径、开始。
+- 滚轮、触控滑动和 PageUp / PageDown 每次推进或后退一屏。专用控制器拦截惯性尾段，不累计跳屏；一屏为 Sticky 顶栏下方的完整可视区域。普通切屏约 620ms，使用平缓的正弦缓动。Home / End 和章节链接可直达。
+- 产品页和工作台使用通栏 Sticky 顶栏，高约 54–56px，无外圆角、外阴影或悬浮间距；内部内容居中排列。
+- Workspace 顶栏仅放了解 FastResearch、登录或头像姓名与退出、CAS 认证和主题图标；移动端侧栏由菜单展开。工具选择使用 `?tool=fast-read` 等参数，辅助页面使用 `?view=today|insight|team`，支持刷新与浏览器返回。工作台使用普通滚动。
+- 产品目录、应用菜单与工作台“了解应用”入口形成互相可达的页面体系。产品 CTA 进入对应工具或工作台，外部工具是否可用由部署配置决定。
+- 文字区域下方使用带柔和渐隐的模糊遮挡，降低线路干扰；不使用文字发光，尤其主按钮保持清晰。图片使用真实脱敏界面或案例；没有截图的应用使用连续路线与步骤图示，不冒充运行数据。
 
-1. **顶部导航 (64px)**：
-   - 品牌：烧瓶微标 + `FastResearch` + `科研工作台` 标识。
-   - 状态：`科研工作流协同中` 实时脉冲灯。
-   - 凭证入口：个人科研 Key 认证按钮、主题切换、后台凭证管理。
-2. **主面板 (双栏工序流水线)**：
-   - 左侧工序导航：01–03 阶段列表，标明当前工序与完成勾选。
-   - 右侧工作区：展示当前阶段任务说明、进入外部工作区按钮与流转下一步按钮。
-3. **FastInsight 学术信箱**：
-   - 飞书自动推送卡片分拣列表，右侧采用规范的学术预印本布局（作者、收录期刊、论文核心摘要、趋势分析与查看原文）。
-4. **科研凭证弹窗**：
-   - 采用同色浅灰表面、双光源阴影和半透明遮罩，交互利落。
+## 可访问性
+
+单个 H1、连续标题、可见键盘焦点、原生链接、产品菜单 Escape 关闭并恢复焦点。滚动区域可聚焦，支持方向键、空格、PageUp / PageDown、Home / End；未展示的章节设为 inert。系统减少动效偏好将切屏与路线推进设为即时完成；Ctrl + 滚轮继续用于浏览器缩放。图片失败时显示文字提示，入口仍可操作。
+
+## Workspace 应用认证
+
+`GET /api/workspace/apps` 返回应用入口状态；`GET /api/workspace/apps/{id}/launch` 仅跳转到服务端登记的目标，不接受用户传入跳转地址，不生成或转发 Research 票据。FastNews、FastRead、FastWrite 使用各自 `/api/auth/fastcas/login`，FastTask 使用 `/api/v1/auth/fastcas/login`，由子应用与 CAS 完成认证并签发自己的会话。已有 CAS 会话时可复用认证；子应用仍须配置 CAS，并按自身规则关联账号。
+
+浏览器地址优先读取 `*_PUBLIC_URL`，随后使用对应 `VITE_*` 地址和服务地址；具体配置见 `.env.example`。FastPPT 本地工作台和 FastLab 设备关联保留直接入口。未来部署支持浏览器 CAS 登录时，可配置精确 `*_CAS_LOGIN_URL`；非法配置禁用进入按钮。未配置应用入口时显示说明。
+
+顶栏退出会调用 `/api/content/logout` 撤销当前 FastResearch 会话。CAS 账号认证继续要求原 Key 证明，保留独立的登录开关、关联开关和解绑流程。
+
+## 验证
+
+`npm run build`、`npm run lint`、`npm test`。
+
+`npm run test:fastui -- /path/to/chromium /path/to/evidence` 覆盖工作台深浅色、三视口、个人 Key、管理员长列表、原生 dialog 焦点与分发名册实际保存。
+
+`EDGE_PATH=/path/to/chromium PROMO_CHECK_URL=http://127.0.0.1:8787/ npm run test:promo` 覆盖总产品页五视口、十个应用各桌面和移动端、一屏切换与章节推进、菜单、直达路由、中文固定、旧地址兼容、减少动效、图片回退与工作台无 footer。
+
+`EDGE_PATH=/path/to/chromium PROMO_CHECK_URL=http://127.0.0.1:8787/ npm run test:journey` 单独验证真实动效、大幅滚动、持续惯性尾段、反向、首尾边界、键盘与触控，确认一次手势只移动一屏。

@@ -1,0 +1,63 @@
+/* This full-screen gallery belongs only to the FastPPT product story. */
+.story-screen--gallery .story-grid {
+  height: 100%;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 24px;
+  padding-top: 32px;
+  padding-bottom: 76px;
+  align-content: center;
+}
+.story-screen--gallery .story-eyebrow { margin-bottom: 12px; }
+.story-screen--gallery .story-copy h2 { font-size: clamp(25px, 3vw, 36px); line-height: 1.4; }
+.story-screen--gallery .story-copy h2 br { display: none; }
+.story-screen--gallery .story-description { margin-top: 10px !important; font-size: 13px; }
+.story-screen--gallery .story-visual { max-width: none; width: 100%; margin: 0; min-width: 0; }
+.ppt-gallery { min-width: 0; }
+.ppt-gallery-choices { display: flex; gap: 8px; margin-bottom: 16px; }
+.ppt-gallery-choices button {
+  padding: 9px 16px;
+  border: 1px solid var(--story-border);
+  border-radius: 6px;
+  background: var(--story-surface);
+  color: var(--story-muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.ppt-gallery-choices button[aria-pressed=true] { color: var(--story-blue); border-color: var(--story-blue); background: var(--story-tint); }
+.ppt-gallery-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.ppt-gallery-slide { min-width: 0; overflow: hidden; border: 1px solid var(--story-border); border-radius: 9px; background: var(--story-surface); }
+.ppt-gallery-slide--after { border-color: color-mix(in srgb, var(--story-blue) 40%, var(--story-border)); }
+.ppt-gallery-slide figcaption { display: flex; align-items: center; justify-content: space-between; padding: 11px 14px; border-bottom: 1px solid var(--story-border); font-size: 12px; }
+.ppt-gallery-slide--after figcaption > span { color: var(--story-blue); }
+.ppt-gallery-slide figcaption a { display: inline-flex; align-items: center; gap: 5px; color: var(--story-muted); font-size: 10px; }
+.ppt-gallery-slide img { display: block; width: 100%; height: auto; aspect-ratio: 4 / 3; max-height: 42svh; object-fit: contain; background: #fff; }
+.ppt-gallery-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 14px; }
+.ppt-gallery-footer p { display: flex; align-items: center; gap: 16px; color: var(--story-muted); font-size: 12px; line-height: 1.6; }
+.ppt-gallery-footer p > span { flex: none; color: var(--story-blue); font: 11px var(--color-mono); }
+.ppt-gallery-arrows { display: flex; gap: 6px; flex: none; }
+.ppt-gallery-arrows button { display: grid; place-items: center; min-width: 36px; min-height: 36px; border: 1px solid var(--story-border); border-radius: 6px; background: var(--story-surface); color: var(--story-blue); cursor: pointer; }
+@media (max-width: 640px) {
+  .story-screen--gallery .story-grid { gap: 14px; padding-top: 20px; padding-bottom: 64px; }
+  .story-screen--gallery .story-copy h2 { font-size: 24px; }
+  .story-screen--gallery .story-eyebrow { margin-bottom: 8px; font-size: 8px; }
+  .story-screen--gallery .story-description { font-size: 11px; line-height: 1.7; }
+  .ppt-gallery-choices { gap: 5px; margin-bottom: 10px; }
+  .ppt-gallery-choices button { flex: 1; padding: 9px 3px; font-size: 10px; white-space: nowrap; }
+  .ppt-gallery-pair { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .ppt-gallery-slide { border-radius: 6px; }
+  .ppt-gallery-slide figcaption { padding: 6px 10px; font-size: 10px; }
+  .ppt-gallery-slide figcaption a { font-size: 9px; }
+  .ppt-gallery-slide img { aspect-ratio: 16 / 9; max-height: 19svh; }
+  .ppt-gallery-footer { gap: 8px; margin-top: 10px; }
+  .ppt-gallery-footer p { align-items: flex-start; flex-direction: column; gap: 3px; font-size: 10px; }
+  .ppt-gallery-footer p > span { font-size: 9px; }
+}
+@media (max-width: 640px) and (max-height: 740px) {
+  .story-screen--gallery .story-grid { gap: 10px; padding-top: 14px; padding-bottom: 56px; }
+  .story-screen--gallery .story-copy h2 { font-size: 21px; }
+  .story-screen--gallery .story-description { margin-top: 6px !important; font-size: 10px; }
+  .ppt-gallery-slide img { max-height: 17svh; }
+  .ppt-gallery-pair { gap: 8px; }
+}

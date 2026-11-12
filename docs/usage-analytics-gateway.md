@@ -1,3 +1,5 @@
+> 历史文档：Node 时代的实现和验收记录。当前结构、认证政策与启动方式以 [README](../README.md) 和 [Go 迁移说明](go-migration.md) 为准。
+
 # FastWrite / FastRead / FastTask 使用时长统计方案（网关侧、非侵入式）
 
 > 状态：方案设计  

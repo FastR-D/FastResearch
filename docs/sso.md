@@ -1,3 +1,5 @@
+> 历史文档：Node 时代的实现和验收记录。当前结构、认证政策与启动方式以 [README](../README.md) 和 [Go 迁移说明](go-migration.md) 为准。
+
 # FastResearch SSO 接口
 
 给新模块的交接步骤（密钥分发、/api/sso/launch、服务端兑换、FastNews / FastRead 两种会话）见 [module-handoff.md](module-handoff.md)。全量 Key 登录接口和示例见 [key-login.md](key-login.md)。本文只写 SSO 票据协议和 FastRead 落地要求。

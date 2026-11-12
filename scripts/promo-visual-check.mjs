@@ -1,173 +1,160 @@
-// Acceptance checks for the /intro promo page (docs/FASTRESEARCH-PROMO-PAGE.md).
-//
-// Usage: start the app (vite dev or preview), then:
-//   PROMO_CHECK_URL=http://127.0.0.1:5173/intro node scripts/promo-visual-check.mjs
-//
-// Covers: responsive widths without horizontal scroll, anchors, workspace CTAs,
-// mobile menu, language switch + persistence, reduced motion, image fallback,
-// a single H1, and no console errors.
-
+// Chinese full-screen product stories and application route acceptance.
+// EDGE_PATH=/path/to/chromium PROMO_CHECK_URL=http://127.0.0.1:8787/ npm run test:promo
+import assert from 'node:assert/strict'
 import { chromium } from 'playwright-core'
-import { existsSync, mkdirSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
-const executablePath = [
-  process.env.EDGE_PATH,
+const executablePath = [process.env.EDGE_PATH, '/usr/bin/google-chrome',
   'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
   'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
-].find((candidate) => candidate && existsSync(candidate))
-if (!executablePath) throw new Error('Edge is required for the promo visual check')
-
-const baseUrl = process.env.PROMO_CHECK_URL ?? 'http://127.0.0.1:5173/intro'
-const rootUrl = new URL(baseUrl)
-rootUrl.pathname = rootUrl.pathname.replace(/intro\/?$/, '')
-const workspaceUrl = new URL('workspace', rootUrl)
-const outputDir = path.resolve(process.env.PROMO_CHECK_OUTPUT ?? 'test-results/promo')
-mkdirSync(outputDir, { recursive: true })
-
+].find(candidate => candidate && existsSync(candidate))
+if (!executablePath) throw new Error('Set EDGE_PATH to an installed Chromium browser')
+const origin = new URL(process.env.PROMO_CHECK_URL ?? 'http://127.0.0.1:5173/')
+origin.pathname = origin.pathname.replace(/intro\/?$/, '')
+const workspaceUrl = new URL('workspace', origin)
+const output = path.resolve(process.env.PROMO_CHECK_OUTPUT ?? 'test-results/promo')
+mkdirSync(output, { recursive: true })
 const browser = await chromium.launch({ executablePath, headless: true })
-let failures = 0
-
-const check = (label, condition, detail = '') => {
-  if (condition) {
-    console.log(`ok   ${label}`)
-  } else {
-    failures += 1
-    console.log(`FAIL ${label}${detail ? ` — ${detail}` : ''}`)
-  }
+const apps = ['news', 'read', 'write', 'ppt', 'lab', 'task', 'insight', 'figure', 'cas', 'ui']
+const results = []
+const errors = []
+const noOverflow = async page => assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth && document.querySelector('.story-scroll').scrollWidth <= innerWidth), true)
+async function chapter(page, index) {
+  await page.locator('.story-pager a').nth(index).click()
+  await page.waitForFunction(index => document.querySelector(`.story-pager a:nth-child(${index + 1})`)?.getAttribute('aria-current') === 'step' && document.querySelector('.story-page').dataset.moving === 'false', index)
 }
 
 try {
-  for (const viewport of [
-    { name: 'w320', width: 320, height: 700 },
-    { name: 'w390', width: 390, height: 844 },
-    { name: 'w768', width: 768, height: 900 },
-    { name: 'w1024', width: 1024, height: 900 },
-    { name: 'w1440', width: 1440, height: 900 },
-  ]) {
-    const context = await browser.newContext({ viewport: { width: viewport.width, height: viewport.height }, colorScheme: 'light' })
+  // Old saved English preferences must have no effect on this Chinese-only UI.
+  for (const width of [320, 390, 768, 1024, 1440]) {
+    const context = await browser.newContext({ viewport: { width, height: 900 }, reducedMotion: 'reduce' })
+    await context.addInitScript(() => localStorage.setItem('fastresearch-locale', 'en-US'))
     const page = await context.newPage()
-    const consoleErrors = []
-    page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()) })
-    page.on('pageerror', (error) => consoleErrors.push(error.message))
-
-    await page.goto(baseUrl, { waitUntil: 'networkidle' })
-    await page.waitForTimeout(400)
-
-    const layout = await page.evaluate((workspacePath) => ({
-      client: document.documentElement.clientWidth,
-      scroll: document.documentElement.scrollWidth,
-      h1: document.querySelectorAll('h1').length,
-      lang: document.documentElement.lang,
-      sections: ['workflow', 'modules', 'insight', 'team', 'access'].filter((id) => document.getElementById(id)).length,
-      heroVisible: (() => {
-        const hero = document.querySelector('.promo-hero')
-        return hero ? hero.getBoundingClientRect().bottom : -1
-      })(),
-      nextSectionPeek: (() => {
-        const next = document.getElementById('workflow')
-        return next ? Math.round(next.getBoundingClientRect().top) : -1
-      })(),
-      ctaLinks: [...document.querySelectorAll('a[href]')].filter((link) => new URL(link.href).pathname === workspacePath).length,
-    }), workspaceUrl.pathname)
-
-    check(`${viewport.name}: no horizontal scroll`, layout.scroll <= layout.client + 1, `scroll ${layout.scroll} > client ${layout.client}`)
-    check(`${viewport.name}: exactly one h1`, layout.h1 === 1, `found ${layout.h1}`)
-    check(`${viewport.name}: all sections present`, layout.sections === 5, `found ${layout.sections}`)
-    check(`${viewport.name}: html lang set`, layout.lang === 'zh-CN' || layout.lang === 'en-US', layout.lang)
-    check(`${viewport.name}: hero is a band with next section visible`, layout.nextSectionPeek <= viewport.height, `next section top ${layout.nextSectionPeek} >= viewport ${viewport.height}`)
-    check(`${viewport.name}: workspace CTAs present`, layout.ctaLinks >= 2, `found ${layout.ctaLinks}`)
-
-    // Anchors all resolve to real sections.
-    for (const id of ['workflow', 'modules', 'insight', 'team']) {
-      const link = page.locator(`.promo-nav-links a[href="#${id}"], .promo-menu a[href="#${id}"]`).first()
-      check(`${viewport.name}: anchor #${id} exists`, await link.count() > 0)
+    page.on('pageerror', error => errors.push(error.message))
+    page.on('console', message => {
+      // The existing workspace uses a 401 response to detect a signed-out visitor.
+      const guestSessionProbe = message.location().url === new URL('api/content/me', origin).href
+        && message.text() === 'Failed to load resource: the server responded with a status of 401 (Unauthorized)'
+      if (message.type() === 'error' && !guestSessionProbe) errors.push(message.text())
+    })
+    await page.goto(origin.href, { waitUntil: 'networkidle' })
+    assert.equal(new URL(page.url()).pathname, origin.pathname)
+    assert.equal(await page.locator('html').getAttribute('lang'), 'zh-CN')
+    assert.equal(await page.locator('h1').count(), 1)
+    assert.equal(await page.locator('.story-screen').count(), 6)
+    assert.equal(await page.locator('.promo-lang').count(), 0)
+    assert.match(await page.locator('h1').innerText(), /连成下一次突破/)
+    await noOverflow(page)
+    const geometry = await page.locator('.story-nav').evaluate(el => ({ width: el.clientWidth, viewport: innerWidth }))
+    assert.equal(geometry.width, width)
+    assert.ok(await page.locator('.story-nav').evaluate(el => el.clientHeight <= 56 && getComputedStyle(el).borderRadius === '0px' && getComputedStyle(el).boxShadow === 'none'))
+    for (let index = 0; index < 6; index++) {
+      await chapter(page, index)
+      await noOverflow(page)
+      if (width >= 1024) assert.equal(await page.locator(`#chapter-${index}`).evaluate(el => Math.abs(el.clientHeight - document.querySelector('.story-scroll').clientHeight) <= 1), true, `Desktop chapter ${index} is a viewport`)
+      const image = page.locator(`#chapter-${index} img`)
+      if (await image.count()) await image.evaluate(img => img.decode())
     }
-
-    if (viewport.name === 'w390') {
-      await page.getByRole('button', { name: '打开导航菜单' }).click()
-      const menuVisible = await page.locator('#promo-menu').isVisible()
-      check('w390: mobile menu opens', menuVisible)
-      await page.keyboard.press('Escape')
-      await page.waitForTimeout(150)
-      check('w390: Escape closes mobile menu', !(await page.locator('#promo-menu').isVisible()))
-
-      const desktopLinksVisible = await page.locator('.promo-nav-links').isVisible()
-      check('w390: desktop nav links hidden', !desktopLinksVisible)
-
-      await page.screenshot({ path: path.join(outputDir, 'promo-mobile.png'), fullPage: false })
+    assert.equal(await page.locator('.story-directory a').count(), 10)
+    for (const id of apps) assert.equal(await page.locator(`.story-directory a[href="${new URL(`intro/${id}`, origin).pathname}"]`).count(), 1)
+    const menu = page.getByRole('button', { name: '打开产品菜单' })
+    await menu.click()
+    await page.locator('#story-menu').waitFor({ state: 'visible' })
+    await page.keyboard.press('Escape')
+    assert.equal(await page.locator('#story-menu').isVisible(), false)
+    assert.equal(await menu.evaluate(el => document.activeElement === el), true)
+    await chapter(page, 0)
+    // A real wheel movement advances one complete screen, regardless of delta.
+    await page.locator('.story-scroll').hover({ position: { x: width / 2, y: 500 } })
+    await page.mouse.wheel(0, 900)
+    await page.waitForFunction(() => document.querySelector('.story-page').dataset.activeScreen === '1' && document.querySelector('.story-page').dataset.moving === 'false')
+    assert.equal(await page.locator('.story-scroll').evaluate(el => el.scrollTop), await page.locator('.story-scroll').evaluate(el => el.clientHeight))
+    await chapter(page, 0)
+    if ([390, 1440].includes(width)) {
+      await page.screenshot({ path: path.join(output, `home-${width}.png`) })
+      await chapter(page, 2)
+      await page.screenshot({ path: path.join(output, `read-chapter-${width}.png`) })
+      await chapter(page, 5)
+      await page.screenshot({ path: path.join(output, `directory-${width}.png`) })
     }
-
-    if (viewport.name === 'w1440') {
-      await page.screenshot({ path: path.join(outputDir, 'promo-desktop.png'), fullPage: false })
-      // Language switch updates copy and persists for the workspace.
-      await page.locator('.promo-lang').click()
-      await page.waitForTimeout(250)
-      const enHeading = await page.locator('h1').textContent()
-      check('w1440: language switch updates copy', /Every step of research/.test(enHeading ?? ''), enHeading ?? '')
-      const stored = await page.evaluate(() => localStorage.getItem('fastresearch-locale'))
-      check('w1440: locale persisted for workspace', stored === 'en-US', String(stored))
-      await page.reload({ waitUntil: 'networkidle' })
-      await page.waitForTimeout(300)
-      check('w1440: locale kept after reload', /Every step of research/.test((await page.locator('h1').textContent()) ?? ''))
-      await page.locator('.promo-lang').click()
-      await page.waitForTimeout(200)
-      await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
-      await page.waitForTimeout(600)
-      await page.screenshot({ path: path.join(outputDir, 'promo-footer.png'), fullPage: false })
-    }
-
-    check(`${viewport.name}: no console errors`, consoleErrors.length === 0, consoleErrors.join('; '))
+    // An unrelated stale cookie must not redirect the public product homepage.
+    await context.addCookies([{ name: 'fr_session', value: 'non-sensitive-fixture', url: origin.origin }])
+    await page.goto(origin.href, { waitUntil: 'networkidle' })
+    assert.equal(await page.locator('.story-page').isVisible(), true)
+    await context.clearCookies()
+    await page.goto(new URL('workspace', origin).href, { waitUntil: 'networkidle' })
+    assert.equal(await page.locator('.research-workspace').isVisible(), true)
+    assert.equal(await page.locator('footer').count(), 0)
+    assert.equal(await page.getByRole('button', { name: '切换语言' }).count(), 0)
+    assert.equal(await page.locator('html').getAttribute('lang'), 'zh-CN')
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true)
+    results.push({ page: 'home/workspace', width, language: 'Chinese', chapters: 6, overflow: false, menu: 'Escape/focus', wheel: 'one gesture / one screen', footer: 'removed' })
     await context.close()
+    console.log(`ok home + workspace / ${width}px`)
   }
 
-  const routePage = await browser.newPage()
-  await routePage.goto(rootUrl.toString(), { waitUntil: 'networkidle' })
-  check('root: defaults to /intro', routePage.url() === baseUrl && await routePage.locator('.promo-hero').isVisible(), routePage.url())
-  await routePage.locator('.promo-hero-actions .promo-btn--primary').click()
-  await routePage.locator('.research-workspace').waitFor()
-  check('CTA: opens /workspace', new URL(routePage.url()).pathname === workspaceUrl.pathname, routePage.url())
-  await routePage.reload({ waitUntil: 'networkidle' })
-  check('workspace: direct refresh keeps the workspace', await routePage.locator('.research-workspace').isVisible())
-  await routePage.goto(new URL('?fastcas=1', rootUrl).toString(), { waitUntil: 'networkidle' })
-  check('legacy FastCAS callback: opens workspace', new URL(routePage.url()).pathname === workspaceUrl.pathname, routePage.url())
-  await routePage.close()
+  for (const width of [390, 1440]) for (const id of apps) {
+    const context = await browser.newContext({ viewport: { width, height: 900 }, reducedMotion: 'reduce' })
+    const page = await context.newPage()
+    page.on('pageerror', error => errors.push(error.message))
+    await page.goto(new URL(`intro/${id}`, origin).href, { waitUntil: 'networkidle' })
+    const chapterCount = id === 'ppt' ? 5 : 4
+    assert.equal(await page.locator('.story-screen').count(), chapterCount)
+    assert.equal(await page.locator('h1').count(), 1)
+    assert.equal(await page.locator('html').getAttribute('lang'), 'zh-CN')
+    for (let index = 0; index < chapterCount; index++) { await chapter(page, index); await noOverflow(page) }
+    if (['read', 'ppt'].includes(id)) {
+      await chapter(page, 0)
+      await page.screenshot({ path: path.join(output, `${id}-${width}.png`) })
+    }
+    await page.reload({ waitUntil: 'networkidle' })
+    assert.equal(await page.locator('.story-page').isVisible(), true)
+    results.push({ page: `/intro/${id}`, width, chapters: chapterCount, overflow: false })
+    await context.close()
+    console.log(`ok /intro/${id} / ${width}px`)
+  }
 
-  // Reduced motion: all revealed content must be visible without scrolling animation.
-  const reduced = await browser.newContext({ viewport: { width: 1024, height: 900 }, reducedMotion: 'reduce' })
+  const page = await browser.newPage()
+  await page.goto(new URL('intro', origin).href, { waitUntil: 'networkidle' })
+  assert.equal(new URL(page.url()).pathname, origin.pathname)
+  await page.goto(new URL('fastppt/', origin).href, { waitUntil: 'networkidle' })
+  assert.equal(new URL(page.url()).pathname, new URL('intro/ppt', origin).pathname)
+  await page.goto(new URL('?fastcas=failed', origin).href, { waitUntil: 'networkidle' })
+  assert.equal(new URL(page.url()).pathname, workspaceUrl.pathname)
+  for (const tool of ['fast-read', 'fast-write', 'fast-ppt', 'fast-lab']) {
+    await page.goto(`${workspaceUrl}?tool=${tool}`, { waitUntil: 'networkidle' })
+    assert.equal(await page.locator('.ws-tool-nav .ws-nav-item.is-selected').innerText().then(text => text.includes({ 'fast-read': 'FastRead', 'fast-write': 'FastWrite', 'fast-ppt': 'FastPPT', 'fast-lab': 'FastLab' }[tool])), true)
+  }
+  await page.goto(`${workspaceUrl}?view=insight`, { waitUntil: 'networkidle' })
+  assert.equal(await page.locator('.insight-mailbox').isVisible(), true)
+  await page.goto(new URL('intro/unknown', origin).href, { waitUntil: 'networkidle' })
+  assert.equal(await page.locator('.route-not-found').isVisible(), true)
+  await page.close()
+
+  const reduced = await browser.newContext({ reducedMotion: 'reduce', colorScheme: 'dark' })
   const reducedPage = await reduced.newPage()
-  await reducedPage.goto(baseUrl, { waitUntil: 'networkidle' })
-  await reducedPage.waitForTimeout(300)
-  const hiddenBlocks = await reducedPage.evaluate(() => [...document.querySelectorAll('.promo-reveal')].filter((el) => getComputedStyle(el).opacity !== '1').length)
-  check('reduced motion: no hidden reveal blocks', hiddenBlocks === 0, `${hiddenBlocks} blocks still transparent`)
+  await reducedPage.goto(origin.href, { waitUntil: 'networkidle' })
+  assert.equal(await reducedPage.locator('.story-page').getAttribute('data-fastui-theme'), 'light')
+  assert.notEqual(await reducedPage.evaluate(() => localStorage.getItem('fastresearch-theme')), 'light')
+  await reducedPage.locator('.story-pager a').nth(1).click()
+  assert.equal(await reducedPage.locator('.story-page').getAttribute('data-moving'), 'false')
+  await chapter(reducedPage, 3)
   await reduced.close()
 
-  // Image failure fallback keeps text and navigation usable.
-  const offline = await browser.newContext({ viewport: { width: 1024, height: 900 } })
+  const offline = await browser.newContext()
   const offlinePage = await offline.newPage()
-  await offlinePage.route((url) => url.pathname.endsWith('.webp') && url.pathname.includes('/promo/'), (route) => route.abort())
-  await offlinePage.goto(baseUrl, { waitUntil: 'domcontentloaded' })
-  // Scroll through so lazy-loaded figures below the fold are requested too.
-  for (let step = 0; step < 12; step += 1) {
-    await offlinePage.mouse.wheel(0, 900)
-    await offlinePage.waitForTimeout(120)
-  }
-  await offlinePage.waitForTimeout(800)
-  const fallback = await offlinePage.evaluate(() => ({
-    figures: document.querySelectorAll('.promo-figure.is-error').length,
-    fallbackText: document.body.textContent?.includes('图片暂时无法加载') ?? false,
-    h1: document.querySelector('h1')?.textContent ?? '',
-  }))
-  check('image fallback: broken images show a text state', fallback.figures >= 6 && fallback.fallbackText, JSON.stringify(fallback))
-  check('image fallback: headline still rendered', fallback.h1.includes('FastResearch'))
-  await offlinePage.screenshot({ path: path.join(outputDir, 'promo-image-fallback.png') })
+  await offlinePage.route('**/promo/*.webp*', route => route.abort())
+  await offlinePage.goto(new URL('intro/read', origin).href, { waitUntil: 'networkidle' })
+  await chapter(offlinePage, 1)
+  await offlinePage.locator('.story-media.is-error').waitFor()
+  assert.match(await offlinePage.locator('.story-image-fallback').innerText(), /图片暂时无法加载/)
+  assert.equal(await offlinePage.locator('#chapter-1 .story-button').isVisible(), true)
   await offline.close()
+  assert.deepEqual(errors, [])
+  console.log('ok routes, legacy links, tool deep links, Chinese-only UI, reduced motion, scoped theme, image fallback')
 } finally {
   await browser.close()
+  writeFileSync(path.join(output, 'results.json'), JSON.stringify({ results, errors }, null, 2))
 }
-
-if (failures) {
-  console.error(`\n${failures} check(s) failed`)
-  process.exit(1)
-}
-console.log('\nall promo checks passed')
+console.log(`Passed ${results.length} page/viewport combinations. Evidence: ${output}`)

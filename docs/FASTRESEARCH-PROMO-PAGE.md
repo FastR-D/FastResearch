@@ -1,3 +1,5 @@
+> 历史文档：Node 时代的实现和验收记录。当前结构、认证政策与启动方式以 [README](../README.md) 和 [Go 迁移说明](go-migration.md) 为准。
+
 # FastResearch 宣传页设计与实施约束
 
 ## 目标与边界

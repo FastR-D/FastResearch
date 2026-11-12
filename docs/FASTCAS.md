@@ -1,3 +1,5 @@
+> 历史文档：Node 时代的实现和验收记录。当前结构、认证政策与启动方式以 [README](../README.md) 和 [Go 迁移说明](go-migration.md) 为准。
+
 # 可选 FastCAS 接入（联调阶段）
 
 原 Key 登录、管理员开户及 Research SSO 保留。登录页增加 FastCAS 登录，成员账号设置增加认证、待完成关系重试与解绑。绑定/解绑要求有效当前项目会话及原 Key；不按姓名或邮箱关联账号。CAS 登录仅进入已有有效绑定，沿用稳定 accountId 和个人内容。

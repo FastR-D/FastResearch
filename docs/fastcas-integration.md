@@ -1,3 +1,5 @@
+> 历史文档：Node 时代的实现和验收记录。当前结构、认证政策与启动方式以 [README](../README.md) 和 [Go 迁移说明](go-migration.md) 为准。
+
 # FastResearch 与 FastCAS
 
 FastResearch 继续接受个人 Key，首次启动会为每条 Key 创建稳定 `accountId`，旧 Key ID 保存在 `legacy_key_id` 语义中。Key 轮换只替换凭证，不改变账号或内容。

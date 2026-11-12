@@ -10,3 +10,7 @@ data
 __pycache__/
 .staging-integration/
 .promo-tmp/
+
+bin/
+web/node_modules/
+*.tsbuildinfo

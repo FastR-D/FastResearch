@@ -1,3 +1,5 @@
+> 历史文档：Node 时代的实现和验收记录。当前结构、认证政策与启动方式以 [README](../README.md) 和 [Go 迁移说明](go-migration.md) 为准。
+
 # FastTask 集成使用示例
 
 本文档展示 FastTask 如何向 FastResearch 发布任务流水线，以及如何接收和处理工序完成事件。

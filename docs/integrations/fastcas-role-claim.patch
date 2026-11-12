@@ -1,0 +1,58 @@
+diff --git a/internal/core/tokens.go b/internal/core/tokens.go
+index c28bd23..7fa9bf3 100644
+--- a/internal/core/tokens.go
++++ b/internal/core/tokens.go
+@@ -330,7 +330,7 @@ func (s *Store) userInfo(ctx context.Context, info *oidc.UserInfo, subject strin
+ 	}
+ 	info.Subject = u.ID
+ 	if slices.Contains(scopes, oidc.ScopeProfile) {
+-		info.Name = u.Name
++		setProfileClaims(info, u)
+ 	}
+ 	if slices.Contains(scopes, oidc.ScopeEmail) {
+ 		info.Email = u.Email
+@@ -338,6 +338,14 @@ func (s *Store) userInfo(ctx context.Context, info *oidc.UserInfo, subject strin
+ 	}
+ 	return nil
+ }
++
++// Role comes from the current active identity on each UserInfo request. Relying
++// parties can mirror central administrators without trusting browser input.
++func setProfileClaims(info *oidc.UserInfo, identity *Identity) {
++	info.Name = identity.Name
++	info.AppendClaims("role", identity.Role)
++}
++
+ func (s *Store) SetUserinfoFromRequest(ctx context.Context, info *oidc.UserInfo, r op.IDTokenRequest, scopes []string) error {
+ 	if err := s.userInfo(ctx, info, r.GetSubject(), scopes); err != nil {
+ 		return err
+diff --git a/internal/core/profile_claims_test.go b/internal/core/profile_claims_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/core/profile_claims_test.go
+@@ -0,0 +1,25 @@
++package core
++
++import (
++	"encoding/json"
++	"github.com/zitadel/oidc/v3/pkg/oidc"
++	"testing"
++)
++
++func TestProfileClaimsReflectCentralRole(t *testing.T) {
++	for _, role := range []string{"admin", "member"} {
++		info := &oidc.UserInfo{}
++		setProfileClaims(info, &Identity{Name: "Research user", Role: role})
++		raw, err := json.Marshal(info)
++		if err != nil {
++			t.Fatal(err)
++		}
++		var claims map[string]any
++		if err = json.Unmarshal(raw, &claims); err != nil {
++			t.Fatal(err)
++		}
++		if claims["role"] != role || claims["name"] != "Research user" {
++			t.Fatalf("profile claims: %s", raw)
++		}
++	}
++}

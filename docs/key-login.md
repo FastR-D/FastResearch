@@ -1,3 +1,5 @@
+> 历史文档：Node 时代的实现和验收记录。当前结构、认证政策与启动方式以 [README](../README.md) 和 [Go 迁移说明](go-migration.md) 为准。
+
 # FastResearch 个人 Key 登录接口
 
 本文给 **FastRead / FastNews / FastWrite / FastInsight** 等下游模块对接用。Panel（FastResearch）是唯一收集个人 Key 的地方；其他模块通过一次性 SSO 票据获得同一身份。

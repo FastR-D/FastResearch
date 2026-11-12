@@ -1,3 +1,5 @@
+> 历史文档：Node 时代的实现和验收记录。当前结构、认证政策与启动方式以 [README](../README.md) 和 [Go 迁移说明](go-migration.md) 为准。
+
 ﻿# Fast 产品线 HTTP 接口总览
 
 本文汇总当前**已挂载、可调用**的 HTTP 接口，覆盖 FastResearch、FastNews、FastRead、FastInsight。  

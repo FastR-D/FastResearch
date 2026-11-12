@@ -1,3 +1,5 @@
+> 历史文档：Node 时代的实现和验收记录。当前结构、认证政策与启动方式以 [README](../README.md) 和 [Go 迁移说明](go-migration.md) 为准。
+
 # FastResearch 服务器部署
 
 `.github/workflows/tag-ci.yml` 在 main、PR 和版本标签上验证并构建；只有推送 `v*` 标签会通过 FastDeploy 部署到 `fastrd`。普通提交的 commit message 包含 `v` 不会触发部署。手动运行验证 workflow 也不会直接部署。

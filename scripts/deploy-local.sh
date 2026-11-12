@@ -45,6 +45,7 @@ else
 fi
 npm run build
 test -f dist/index.html
+test -x bin/fastresearch
 
 systemctl --user daemon-reload || true
 systemctl --user restart "$UNIT"

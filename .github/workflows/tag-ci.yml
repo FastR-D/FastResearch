@@ -36,21 +36,25 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
       - run: npm ci
       - run: npm test
+      - run: npm run lint
       - run: npm run build
       - run: test -f dist/index.html
-      - name: Package the tested application and production dependencies
+      - name: Package the tested Go binary and frontend
         env:
           RELEASE_DIR: ${{ runner.temp }}/fastresearch-release
         run: |
-          npm prune --omit=dev --ignore-scripts --no-audit --no-fund
           mkdir -p "$RELEASE_DIR"
           tar --dereference --hard-dereference \
             --exclude='.env' --exclude='.env.*' --exclude='.git' \
             --exclude='*.test.mjs' \
             -czf "$RELEASE_DIR/release.tar.gz" \
-            server dist node_modules package.json package-lock.json
+            bin dist
           python3 - <<'PY'
           import hashlib, json, os
           from pathlib import Path
@@ -73,25 +77,25 @@ jobs:
   deploy:
     needs: validate
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    # FastDeploy v2: pin the reviewed implementation, including its server scripts.
-    uses: FastR-D/FastDeploy/.github/workflows/deploy.yml@9a2c51dcd63f47a0e6c8f6bb07bd22ea589abbd2
-    with:
-      app: fastresearch
-      artifact-name: release-${{ github.sha }}
-      runtime-env: |
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: production
+    concurrency:
+      group: fastdeploy-fastresearch-production
+      cancel-in-progress: false
+    env:
+      DEPLOY_APP: fastresearch
+      RUNTIME_ENV: |
         HOST=127.0.0.1
         PORT=8787
-        NODE_ENV=production
         FASTRESEARCH_PUBLIC_URL=https://fastrd.io
         FASTRESEARCH_COOKIE_DOMAIN=
-        FASTRESEARCH_COOKIE_SAMESITE=Lax
         FASTRESEARCH_CORS_ORIGINS=http://47.110.133.67,https://47.110.133.67,https://47.110.133.67:3015,https://fastrd.io
         FASTRESEARCH_DATA_DIR=/home/dev/FastResearch/data
         FASTINSIGHT_ROSTER=/home/dev/fastinsight/assets/colleagues.yaml
         VITE_API_URL=
         VITE_READ_URL=https://read.fastrd.io/
         FASTREAD_URL=https://read.fastrd.io/
-        FASTREAD_PROXY_URL=https://47.110.133.67:3015
         VITE_WRITE_URL=https://write.fastrd.io
         FASTWRITE_URL=http://127.0.0.1:3003
         FASTWRITE_PUBLIC_URL=https://write.fastrd.io
@@ -106,8 +110,8 @@ jobs:
         FASTRESEARCH_FASTCAS_REDIRECT_URI=https://fastrd.io/api/auth/fastcas/callback
         FASTRESEARCH_FASTCAS_AUDIENCE=research-api
         FASTRESEARCH_FASTCAS_ALLOW_LOOPBACK_HTTP=false
-        FASTRESEARCH_FASTCAS_INGEST_ISSUER=https://cas.fastrd.io
         FASTRESEARCH_FASTCAS_INGEST_CLIENT_ID=fastinsight
+        FASTRESEARCH_ALLOW_LEGACY_KEY_LOGIN=true
         FASTRESEARCH_ALLOW_LEGACY_FASTWRITE_KEY=false
         FASTRESEARCH_ALLOW_LEGACY_FASTTASK_KEYS=false
         FASTRESEARCH_ALLOW_LEGACY_FASTINSIGHT_KEY=false
@@ -119,22 +123,50 @@ jobs:
         FASTTASK_FASTCAS_SERVICE_ISSUER=https://cas.fastrd.io
         FASTTASK_FASTCAS_SERVICE_CLIENT_ID=fastresearch
         FASTTASK_FASTCAS_SERVICE_ALLOW_LOOPBACK_HTTP=false
-    secrets:
-      SSH_HOST: ${{ secrets.FASTRD_SSH_HOST }}
-      SSH_PORT: ${{ secrets.FASTRD_SSH_PORT }}
-      SSH_USER: ${{ secrets.FASTRD_SSH_USER }}
-      SSH_PRIVATE_KEY: ${{ secrets.FASTRD_SSH_PRIVATE_KEY }}
-      SSH_KNOWN_HOSTS: ${{ secrets.FASTRD_SSH_KNOWN_HOSTS }}
-      # The three legacy shared keys are empty on production and intentionally
-      # omitted: FASTINSIGHT_INGEST_KEY, FASTTASK_API_KEY, FASTWRITE_API_KEY.
-      runtime-secrets: |
+      RUNTIME_SECRETS: |
         {
-          "FASTRESEARCH_JWT_SECRET": ${{ toJSON(secrets.FASTRESEARCH_JWT_SECRET) }},
-          "ADMIN_USERNAME": ${{ toJSON(secrets.ADMIN_USERNAME) }},
-          "ADMIN_PASSWORD": ${{ toJSON(secrets.ADMIN_PASSWORD) }},
-          "FASTRESEARCH_FASTTASK_SSO_SECRET": ${{ toJSON(secrets.FASTRESEARCH_FASTTASK_SSO_SECRET) }},
           "FASTRESEARCH_FASTCAS_CLIENT_SECRET": ${{ toJSON(secrets.FASTRESEARCH_FASTCAS_CLIENT_SECRET) }},
           "FASTRESEARCH_FASTCAS_INGEST_ALLOWED_ACCOUNT_IDS": ${{ toJSON(secrets.FASTRESEARCH_FASTCAS_INGEST_ALLOWED_ACCOUNT_IDS) }},
           "FASTWRITE_FASTCAS_SERVICE_CLIENT_SECRET": ${{ toJSON(secrets.FASTWRITE_FASTCAS_SERVICE_CLIENT_SECRET) }},
           "FASTTASK_FASTCAS_SERVICE_CLIENT_SECRET": ${{ toJSON(secrets.FASTTASK_FASTCAS_SERVICE_CLIENT_SECRET) }}
         }
+      ARTIFACT_DIR: ${{ runner.temp }}/fastdeploy-artifact
+      BUNDLE_DIR: ${{ runner.temp }}/fastdeploy-bundle
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout reviewed FastDeploy implementation
+        uses: actions/checkout@v4
+        with:
+          repository: FastR-D/FastDeploy
+          ref: 9a2c51dcd63f47a0e6c8f6bb07bd22ea589abbd2
+          path: .fastdeploy-tools
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-${{ github.sha }}
+          path: ${{ runner.temp }}/fastdeploy-artifact
+      - name: Select Go deployment profile
+        run: |
+          python3 - <<'PYTHON'
+          import json
+          from pathlib import Path
+          config = Path('.fastdeploy-tools/config/apps.json')
+          profiles = json.loads(config.read_text())
+          profiles['fastresearch'] = json.loads(Path('deployments/fastdeploy-profile.json').read_text())
+          config.write_text(json.dumps(profiles))
+          PYTHON
+      - name: Validate and prepare release
+        working-directory: .fastdeploy-tools
+        run: python3 scripts/prepare.py
+      - name: Upload and activate
+        working-directory: .fastdeploy-tools
+        env:
+          SSH_HOST: ${{ secrets.FASTRD_SSH_HOST }}
+          SSH_PORT: ${{ secrets.FASTRD_SSH_PORT }}
+          SSH_USER: ${{ secrets.FASTRD_SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.FASTRD_SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.FASTRD_SSH_KNOWN_HOSTS }}
+        run: python3 scripts/transport.py
+      - name: Remove private temporary files
+        if: always()
+        run: rm -rf -- "$BUNDLE_DIR" "$ARTIFACT_DIR"

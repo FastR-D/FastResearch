@@ -1,0 +1,21 @@
+import type { BookOpenText } from 'lucide-react';
+export type EntryId = 'fast-write' | 'fast-read' | 'fast-news' | 'fast-ppt' | 'fast-lab'
+export type WorkflowModule = EntryId
+export type Entry = { id: EntryId; name: string; label: string; description: string; Icon: typeof BookOpenText; url?: string; tone: string }
+export type BearerSession = { token: string }
+export type AdminSession = BearerSession & { username: string; expiresAt: number }
+export type MemberSession = BearerSession & { person: string; keyId: string; expiresAt: number; source?: string; role?: 'member' | 'admin'; accountId?: string }
+export type PersonalKey = { id: string; person: string; keyPreview: string; active: boolean; createdAt?: string; expiresAt?: string | null }
+export type InsightItem = { id: string; title: string; summary?: string; url?: string; source?: string; direction?: string; authors?: string; venue?: string; receivedAt?: string }
+export type TaskStatus = 'pending' | 'active' | 'done'
+export type WorkspaceView = 'today' | 'workflow' | 'insight' | 'team'
+export type WorkflowTask = { id: string; module: WorkflowModule; title: string; description: string; status: TaskStatus; completedAt?: string | null }
+export type Workflow = { id: string; title: string; source?: string; receivedAt?: string; currentIndex: number; doneCount: number; total: number; completed: boolean; currentTask?: WorkflowTask | null; tasks: WorkflowTask[] }
+export type FastTaskTodayItem = { id: string; taskId?: string | null; kind?: string; title: string; commitment?: string; minimumAction?: string; status: string; completionType?: string; completionSummary?: string; targetMinutes?: number; position?: number; workspace?: { system: string; label: string; url?: string } | null }
+export type FastTaskTodayProgress = { total: number; completed: number; inProgress: number; planned: number; skipped: number }
+export type FastTaskToday = { configured?: boolean; received: boolean; date?: string; timezone?: string; planStatus?: string; planRevision?: number; updatedAt?: string; items: FastTaskTodayItem[]; progress: FastTaskTodayProgress; error?: string }
+export type TeamWorkflow = { keyId: string; person: string; workflow: Workflow | null; today?: FastTaskToday | null }
+export type WorkspaceApp = { id: string; configured: boolean; auth: 'cas' | 'direct'; launchPath: string | null }
+export type RosterOwner = { name: string; feishu_open_id?: string; [key: string]: unknown }
+export type RosterDirection = { name: string; priority?: number; keywords: string[]; owners: RosterOwner[]; [key: string]: unknown }
+export type FastInsightRoster = { directions: RosterDirection[]; default_owner?: RosterOwner; [key: string]: unknown }

@@ -1,48 +1,32 @@
 {
   "name": "fastresearch-console",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "server": "node server/index.mjs",
-    "build": "tsc -b && vite build",
-    "lint": "eslint .",
-    "preview": "vite preview",
-    "test": "node --test server/*.test.mjs",
-    "test:fasttask": "node --test server/fasttask-integration.test.mjs",
-    "test:integration": "node --test server/integration.test.mjs",
+    "dev": "npm run dev --workspace @fastrd/fastresearch-web",
+    "server": "go run ./cmd/fastresearch",
+    "build": "npm run build:web && npm run build:server",
+    "build:web": "npm run build --workspace @fastrd/fastresearch-web",
+    "build:server": "go build -trimpath -o bin/fastresearch ./cmd/fastresearch",
+    "lint": "npm run lint --workspace @fastrd/fastresearch-web && go vet ./cmd/... ./internal/...",
+    "preview": "npm run preview --workspace @fastrd/fastresearch-web",
+    "test": "go test ./cmd/... ./internal/...",
+    "test:integration": "go test ./internal/httpapi ./internal/identity ./internal/workflow",
     "test:visual": "node scripts/visual-check.mjs",
     "test:fastui": "node scripts/fastui-browser.mjs",
-    "start": "node --env-file=.env.production server/index.mjs"
-  },
-  "dependencies": {
-    "@fastrd/ui-foundation": "0.1.2",
-    "@fastrd/ui-react": "0.1.2",
-    "@fastrd/fastcas": "0.1.2",
-    "lucide-react": "^0.468.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "yaml": "^2.8.1"
-  },
-  "devDependencies": {
-    "@eslint/js": "^9.17.0",
-    "@types/react": "^19.0.3",
-    "@types/react-dom": "^19.0.2",
-    "@vitejs/plugin-react": "^4.3.4",
-    "autoprefixer": "^10.4.20",
-    "eslint": "^9.17.0",
-    "eslint-plugin-react-hooks": "^5.1.0",
-    "eslint-plugin-react-refresh": "^0.4.16",
-    "globals": "^15.14.0",
-    "playwright-core": "^1.62.1",
-    "postcss": "^8.4.49",
-    "tailwindcss": "^3.4.17",
-    "typescript": "~5.7.2",
-    "typescript-eslint": "^8.18.2",
-    "vite": "^6.0.5"
+    "test:promo": "node scripts/promo-visual-check.mjs",
+    "test:journey": "node scripts/journey-browser.mjs",
+    "start": "./bin/fastresearch",
+    "test:activity": "node scripts/activity-browser.mjs"
   },
   "engines": {
     "node": ">=22.13"
-  }
+  },
+  "devDependencies": {
+    "playwright-core": "^1.62.1"
+  },
+  "workspaces": [
+    "web"
+  ]
 }

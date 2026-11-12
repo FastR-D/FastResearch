@@ -1,3 +1,5 @@
+> 历史文档：Node 时代的实现和验收记录。当前结构、认证政策与启动方式以 [README](../README.md) 和 [Go 迁移说明](go-migration.md) 为准。
+
 # 独立账号、SQLite 迁移与回滚
 
 服务现在使用 `accounts.sqlite`，默认位于 `FASTRESEARCH_DATA_DIR`；可用 `FASTRESEARCH_ACCOUNT_DATABASE` 指定已有数据库。Node 最低版本 22.13，本地验证版本 22.22.2。Docker 基础镜像已调整到 Node 22，容器构建尚未验证。

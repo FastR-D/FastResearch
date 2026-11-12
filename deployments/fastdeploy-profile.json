@@ -1,0 +1,51 @@
+{
+  "repository": "FastR-D/FastResearch",
+  "legacy_app": "research",
+  "unit": "fastresearch.service",
+  "command": [
+    "{release}/bin/fastresearch"
+  ],
+  "health_url": "http://127.0.0.1:8787/api/health",
+  "required_files": [
+    "bin/fastresearch",
+    "dist/index.html"
+  ],
+  "required_env": [
+    "HOST",
+    "PORT",
+    "FASTRESEARCH_PUBLIC_URL",
+    "FASTRESEARCH_DATA_DIR",
+    "FASTRESEARCH_FASTCAS_ISSUER",
+    "FASTRESEARCH_FASTCAS_CLIENT_ID",
+    "FASTRESEARCH_FASTCAS_CLIENT_SECRET",
+    "FASTRESEARCH_FASTCAS_REDIRECT_URI"
+  ],
+  "fixed_env": {
+    "HOST": "127.0.0.1",
+    "PORT": "8787",
+    "FASTRESEARCH_DATA_DIR": "/home/dev/FastResearch/data"
+  },
+  "shared_paths": [
+    "/home/dev/FastResearch/data"
+  ],
+  "artifact_roots": [
+    "bin",
+    "dist"
+  ],
+  "release_env": {
+    "FASTRESEARCH_STATIC_DIR": "{release}/dist"
+  },
+  "services": [
+    {
+      "unit": "fastresearch.service",
+      "command": [
+        "{release}/bin/fastresearch"
+      ]
+    }
+  ],
+  "runtime_check": [
+    "/usr/bin/python3",
+    "-c",
+    "import sys; assert sys.version_info >= (3,12)"
+  ]
+}

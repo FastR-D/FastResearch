@@ -7,8 +7,9 @@ services:
         VITE_READ_URL: ${VITE_READ_URL:-}
         VITE_WRITE_URL: ${VITE_WRITE_URL:-}
         VITE_FASTTASK_URL: ${VITE_FASTTASK_URL:-}
-        VITE_FASTNEWS_URL: ${VITE_FASTNEWS_URL:-http://47.110.133.67/news/}
+        VITE_FASTNEWS_URL: ${VITE_FASTNEWS_URL:-}
         VITE_FASTPPT_URL: ${VITE_FASTPPT_URL:-}
+        VITE_FASTLAB_URL: ${VITE_FASTLAB_URL:-}
     restart: unless-stopped
     ports:
       - "8787:8787"

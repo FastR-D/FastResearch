@@ -1,3 +1,5 @@
+> 历史文档：Node 时代的实现和验收记录。当前结构、认证政策与启动方式以 [README](../README.md) 和 [Go 迁移说明](go-migration.md) 为准。
+
 ## FastTask 集成完成 ✅
 
 根据 `docs/fasttask-integration.md` 设计方案，已成功完成 FastTask 与 FastResearch 的连接，实现第一、二阶段的完整功能。
