@@ -33,7 +33,7 @@ deployments/           systemd 与 FastDeploy Go 部署配置
 - 本项目不提供自行注册、独立管理员密码或浏览器提交角色的入口。所有本地注册接口返回 `403`；普通用户不能创建账号。
 - 已验证的 FastCAS 身份首次登录时建立本地科研资料，身份主键为 `issuer + client_id + subject`。这不会创建 FastCAS 账号，也不会按姓名或邮箱合并旧资料。
 - FastCAS `role=admin` 对应本站管理员。每次管理 API 请求都读取中心 UserInfo，角色降级立即失去管理权限；中心不可用时管理操作拒绝执行。普通会话最多缓存一分钟的中心验证结果。
-- 会话由 HttpOnly、SameSite=Lax Cookie 引用。浏览器不持久保存会话令牌；中心访问令牌和刷新令牌加密存储，密钥位于数据目录的 `session-vault.key`。
+- 生产会话使用 `__Host-fr_session`：HTTPS、仅当前主机、Path=/，避免旧 `.fastrd.io` 同名 Cookie 遮蔽新会话。会话由 HttpOnly、SameSite=Lax Cookie 引用。浏览器不持久保存会话令牌；中心访问令牌和刷新令牌加密存储，密钥位于数据目录的 `session-vault.key`。
 - 已有显式绑定与旧账号内容会迁移，迁移后需要重新登录。无绑定旧账号不会被同名新身份自动接管。
 - 原成员 Key 登录默认保留，可用 `FASTRESEARCH_ALLOW_LEGACY_KEY_LOGIN=false` 显式关闭；Key 永远不能授予管理员权限。旧 SSO 票据停用，应用入口使用子应用自己的 FastCAS 登录。
 

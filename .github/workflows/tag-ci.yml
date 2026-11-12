@@ -89,6 +89,7 @@ jobs:
         HOST=127.0.0.1
         PORT=8787
         FASTRESEARCH_PUBLIC_URL=https://fastrd.io
+        FASTRESEARCH_COOKIE_NAME=__Host-fr_session
         FASTRESEARCH_COOKIE_DOMAIN=
         FASTRESEARCH_CORS_ORIGINS=http://47.110.133.67,https://47.110.133.67,https://47.110.133.67:3015,https://fastrd.io
         FASTRESEARCH_DATA_DIR=/home/dev/FastResearch/data
