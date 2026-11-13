@@ -88,3 +88,32 @@ func TestKeyLoginRemainsMemberAndUnmappedKeyDoesNotGuessCASIdentity(t *testing.T
 		t.Fatal("rotated key session accepted", status)
 	}
 }
+
+func TestGenericTaskSummaryReplacesSpecialTaskRoutes(t *testing.T) {
+	a, server, _ := setup(t)
+	t.Setenv("FASTTASK_PUBLIC_URL", "https://task.example.test")
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var input map[string]string
+		json.NewDecoder(r.Body).Decode(&input)
+		if r.URL.Path != "/api/integrations/fastresearch/workspace" || r.Method != "POST" || len(input) != 1 || input["subject"] != "central-user" {
+			t.Errorf("untrusted task identity or protocol: %s %#v", r.URL, input)
+		}
+		write(w, 200, store.Object{"schemaVersion": integrations.ActivitySchema, "appId": "fast-task", "accountState": "active", "metrics": []any{}, "items": []any{}, "tasks": store.Object{"received": true, "date": "2026-11-13", "items": []any{store.Object{"id": "task-1", "title": "Read evidence", "status": "planned"}}, "progress": store.Object{"total": 1, "completed": 0, "inProgress": 0, "planned": 1, "skipped": 0}}})
+	}))
+	defer upstream.Close()
+	a.ActivityClients = map[string]*integrations.Client{"fast-task": {Base: upstream.URL, Key: "fixture"}}
+	client := login(t, server)
+	status, result := request(t, client, "GET", server.URL+"/api/workspace/apps/fast-task/activity?subject=victim&receiver_ref=victim", "")
+	if status != 200 || result["accountState"] != "active" || len(array(object(result["tasks"])["items"])) != 1 {
+		t.Fatalf("generic task summary: %d %#v", status, result)
+	}
+	status, team := request(t, client, "GET", server.URL+"/api/workflow/team", "")
+	if status != 200 || !strings.Contains(store.JSON(team), "Read evidence") || strings.Contains(store.JSON(team), "central-user") {
+		t.Fatalf("team task summary: %d %#v", status, team)
+	}
+	for _, path := range []string{"/api/fasttask/today", "/api/fasttask/tasks", "/api/fasttask/login", "/api/sso/launch?audience=fast-task", "/api/sso/ticket", "/api/sso/consume"} {
+		if status, _ := request(t, client, "GET", server.URL+path, ""); status != 404 {
+			t.Fatalf("retired special route still exists: %s %d", path, status)
+		}
+	}
+}

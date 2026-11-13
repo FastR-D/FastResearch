@@ -1,12 +1,13 @@
 import { AppActivityPanel } from './AppActivityPanel'
 import { Alert, Badge, Button, Divider, Section, Toolbar } from '@fastrd/ui-react'
 import { ArrowUpRight,CalendarCheck,Check,Inbox,LogIn,LogOut,Menu,Moon,Settings2,ShieldCheck,Sunrise,UsersRound } from 'lucide-react'
-import { Fragment,useCallback,useEffect,useMemo,useRef,useState } from 'react'
-import { apiUrl,request } from '../../shared/api/client'
+import { Fragment,useCallback,useEffect,useMemo,useState } from 'react'
+import { APIError,apiUrl,request } from '../../shared/api/client'
+import { renewCASIfNeeded, renewCASLogin } from '../../shared/auth/cas-renewal'
 import { useColorMode } from '../../shared/auth/color-mode'
 import { text as t } from '../../shared/copy'
 import { products } from '../../shared/products'
-import type { Entry,EntryId,FastTaskToday,InsightItem,MemberSession,TeamWorkflow,Workflow,WorkflowModule,WorkspaceApp,WorkspaceView } from '../../shared/types'
+import type { Entry,EntryId,InsightItem,MemberSession,TeamWorkflow,Workflow,WorkflowModule,WorkspaceApp,WorkspaceView } from '../../shared/types'
 import { BrandLink } from '../../shared/ui/BrandLink'
 import { Dialog } from '../../shared/ui/Dialog'
 import { PanelBody, PanelHeading } from '../../shared/ui/WorkspaceLayout'
@@ -17,7 +18,7 @@ import { KeyDialog } from '../auth/KeyDialog'
 import { useIdentity } from '../auth/use-identity'
 import { InsightMailbox } from '../insight/InsightMailbox'
 import { TeamProgressPanel } from '../team/TeamProgressPanel'
-import { FastTaskTodayPanel } from '../today/FastTaskTodayPanel'
+import { AppTasksPanel } from '../today/AppTasksPanel'
 import { MODULE_HUB_ORDER,createEntries } from './entries'
 const personalKeyStorage = 'fastresearch-personal-key'
 function readKey(memberKeyId: string) {
@@ -44,7 +45,6 @@ function WorkspacePage() {
   const { member, setMember, session, setSession, casEnabled, casLoginEnabled, legacyKeyEnabled } = useIdentity(setToast)
   const [teamLoading, setTeamLoading] = useState(false)
   const [teamWorkflows, setTeamWorkflows] = useState<TeamWorkflow[]>([])
-  const [fastTaskToday, setFastTaskToday] = useState<FastTaskToday | null>(null)
   const [selectedModule, setSelectedModule] = useState<WorkflowModule>(() => {
     const tool = new URLSearchParams(window.location.search).get('tool') as EntryId | null
     return tool && MODULE_HUB_ORDER.includes(tool) ? tool : 'fast-news'
@@ -58,7 +58,6 @@ function WorkspacePage() {
   const [catalogError, setCatalogError] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
   const [routingOpen, setRoutingOpen] = useState(false)
-  const pendingFastTaskLaunch = useRef<string | null>(null)
   useEffect(() => {
     document.documentElement.lang = 'zh-CN'
     document.title = `FastResearch · ${t('header.workspace')}`
@@ -109,7 +108,7 @@ function WorkspacePage() {
     let cancelled = false
     void request('/api/admin/keys', {}, session).catch((err) => {
       if (cancelled) return
-      setSession(null)
+      if (err instanceof APIError && (err.status === 401 || err.status === 403)) setSession(null)
       setToast(err instanceof Error ? err.message : t('error.adminExpired'))
     })
     return () => { cancelled = true }
@@ -132,27 +131,28 @@ function WorkspacePage() {
       setReadIds(new Set())
       setTeamWorkflows([])
       setTeamLoading(false)
-      setFastTaskToday(null)
       return
     }
     setTeamLoading(true)
     setReadIds(readKey(member.keyId))
     let cancelled = false
     const load = async () => {
+      if (document.visibilityState !== 'visible' || (casEnabled && renewCASIfNeeded(member))) return
       try {
-        const [data, team, today] = await Promise.all([
+        const [data, team] = await Promise.all([
           request<{ insightItems?: InsightItem[]; workflow?: Workflow | null }>('/api/content/me', {}, member),
           request<{ members: TeamWorkflow[] }>('/api/workflow/team', {}, member),
-          request<{ today: FastTaskToday }>('/api/fasttask/today', {}, member),
         ])
         if (cancelled) return
         setInsightItems(data.insightItems ?? [])
         setTeamWorkflows(team.members ?? [])
         setTeamLoading(false)
-        setFastTaskToday(today.today ?? null)
       } catch (err) {
         if (cancelled) return
-        setMember(null)
+        if (err instanceof APIError && err.status === 401) {
+          if (member.source === 'fastcas' && casEnabled && renewCASLogin()) return
+          setMember(null)
+        }
         setToast(err instanceof Error ? err.message : t('error.memberExpired'))
       }
     }
@@ -162,7 +162,7 @@ function WorkspacePage() {
       cancelled = true
       window.clearInterval(timer)
     }
-  }, [member, setMember])
+  }, [member, setMember, casEnabled])
 
   const navigateWorkspace = (view: WorkspaceView, tool = selectedModule) => {
     setWorkspaceView(view)
@@ -211,60 +211,7 @@ function WorkspacePage() {
     if (!app?.configured || !app.launchPath) { setToast('该应用入口尚未配置'); return }
     openInNewTab(apiUrl(app.launchPath))
   }
-  const openFastTaskInNewTab = () => openApp('fast-task')
   const openEntry = (entry: Entry) => openApp(entry.id)
-
-  const launchFastTaskSso = useCallback(async (memberSession: MemberSession, next: string) => {
-    try {
-      await request('/api/content/me', {}, memberSession)
-      const launch = new URL(apiUrl('/api/sso/launch'), window.location.origin)
-      launch.searchParams.set('audience', 'fast-task')
-      launch.searchParams.set('next', next)
-      window.location.assign(launch.toString())
-    } catch (err) {
-      setMember(null)
-      pendingFastTaskLaunch.current = next
-      setKeyOpen(true)
-      setToast(err instanceof Error ? err.message : t('error.ssoFailed', { name: 'FastTask' }))
-    }
-  }, [setMember])
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    if (params.get('launch') !== 'fast-task') return
-    const rawNext = params.get('next') ?? ''
-    const page = new URL(window.location.href)
-    page.searchParams.delete('launch')
-    page.searchParams.delete('next')
-    window.history.replaceState({}, '', page.pathname + page.search + page.hash)
-    let next = ''
-    try {
-      const callback = new URL(rawNext)
-      const state = callback.searchParams.get('state') ?? ''
-      if (!['http:', 'https:'].includes(callback.protocol) ||
-          callback.pathname !== '/api/v1/auth/fastresearch/callback' ||
-          callback.username || callback.password ||
-          !/^[A-Za-z0-9_-]{32,128}$/.test(state)) throw new Error('invalid callback')
-      next = callback.toString()
-    } catch {
-      setToast(t('error.ssoFailed', { name: 'FastTask' }))
-      return
-    }
-    pendingFastTaskLaunch.current = next
-    if (member) {
-      pendingFastTaskLaunch.current = null
-      void launchFastTaskSso(member, next)
-    } else setKeyOpen(true)
-  }, [launchFastTaskSso, member])
-
-  useEffect(() => {
-    if (!member) return
-    const next = pendingFastTaskLaunch.current
-    if (!next) return
-    pendingFastTaskLaunch.current = null
-    setKeyOpen(false)
-    void launchFastTaskSso(member, next)
-  }, [launchFastTaskSso, member])
 
   const unlock = async (key: string) => {
     const result = await request<{ session: string; person: string; keyId: string; expiresAt: number; insightItems?: InsightItem[]; workflow?: Workflow | null }>('/api/content/unlock', { method: 'POST', body: JSON.stringify({ key: key.trim() }) })
@@ -274,29 +221,6 @@ function WorkspacePage() {
     setInsightItems(result.insightItems ?? [])
     setKeyOpen(false)
     setToast(t('toast.unlocked', { person: result.person }))
-    const fastTaskNext = pendingFastTaskLaunch.current
-    if (fastTaskNext) {
-      pendingFastTaskLaunch.current = null
-      await launchFastTaskSso(value, fastTaskNext)
-    }
-  }
-
-  const refreshFastTaskToday = async () => {
-    if (!member) {
-      setKeyOpen(true)
-      return
-    }
-    try {
-      const [today, team] = await Promise.all([
-        request<{ today: FastTaskToday }>('/api/fasttask/today', {}, member),
-        request<{ members: TeamWorkflow[] }>('/api/workflow/team', {}, member),
-      ])
-      setFastTaskToday(today.today ?? null)
-      setTeamWorkflows(team.members ?? [])
-        setTeamLoading(false)
-    } catch (err) {
-      setToast(err instanceof Error ? err.message : t('error.request'))
-    }
   }
 
   const markRead = (id: string) => {
@@ -312,7 +236,6 @@ function WorkspacePage() {
   }
 
   const closeKeyDialog = () => {
-    pendingFastTaskLaunch.current = null
     setKeyOpen(false)
   }
 
@@ -320,6 +243,9 @@ function WorkspacePage() {
   const product = products.find(item => item.tool === selectedModule)!
   const app = appCatalog?.find(item => item.id === selectedModule)
   const showOverview = !member || !app?.configured
+  const requestedApp = new URLSearchParams(window.location.search).get('app')
+  const taskApp = appCatalog?.find(item => item.id === requestedApp && item.capabilities?.includes('tasks')) ?? appCatalog?.find(item => item.capabilities?.includes('tasks'))
+  const launchApp = workspaceView === 'today' ? taskApp : app
   const ToolIcon = selectedEntry.Icon
   const ToolContainer = showOverview ? Section : 'div'
   const ToolBody = showOverview ? PanelBody : Fragment
@@ -377,7 +303,10 @@ function WorkspacePage() {
         </aside>
         <main className="flex-1 min-h-0 min-w-0 overflow-y-auto overscroll-contain p-5 md:p-8 lg:p-10" id="workspace-content" tabIndex={-1}>
           <div className="mx-auto max-w-6xl grid gap-6 md:gap-8">
-            <h1 className="fastui-heading text-2xl">{workspaceView === 'workflow' ? selectedEntry.name : auxiliaryViews.find(item => item.view === workspaceView)?.label}</h1>
+            <div className="flex items-center justify-between gap-3">
+              <h1 className="fastui-heading min-w-0 text-2xl">{workspaceView === 'workflow' ? selectedEntry.name : auxiliaryViews.find(item => item.view === workspaceView)?.label}</h1>
+              {(workspaceView === 'workflow' || workspaceView === 'today') && <div className="shrink-0" data-fastui-density="touch"><Button variant="primary" onClick={() => { if (launchApp) openApp(launchApp.id) }} disabled={!launchApp?.configured}>{appCatalog === null && !catalogError ? '正在读取…' : workspaceView === 'today' ? `打开 ${taskApp?.name ?? '任务应用'}` : app?.auth === 'cas' ? '使用 CAS 进入' : `打开 ${product.name}`}<ArrowUpRight size={16} /></Button></div>}
+            </div>
             {workspaceView === 'workflow' ? <ToolContainer key={selectedModule} className={showOverview ? undefined : 'grid gap-6 md:gap-8'}>
               {showOverview && <PanelHeading><ToolIcon size={20} />{product.category}</PanelHeading>}
               <ToolBody>
@@ -386,12 +315,9 @@ function WorkspacePage() {
                 <p>{product.description}</p>
                 <ul className="grid gap-3">{product.points.map(point => <li className="flex items-start gap-2" key={point}><Check size={16} className="shrink-0" aria-hidden="true" />{point}</li>)}</ul>
                 </>}
-                <Toolbar label={`${product.name} 入口`} data-fastui-density="touch">
-                  <Button variant="primary" onClick={() => openEntry(selectedEntry)} disabled={!app?.configured}>{appCatalog === null && !catalogError ? '正在读取入口…' : app?.auth === 'cas' ? '使用 CAS 进入' : `打开 ${product.name}`}<ArrowUpRight size={16} /></Button>
-                  {showOverview && <a className="fastui-button fastui-button--quiet" href={`/intro/${product.id}`}>了解 {product.name}<ArrowUpRight size={15} /></a>}
-                </Toolbar>
+                {showOverview && <div><a className="fastui-button fastui-button--quiet" href={`/intro/${product.id}`}>了解 {product.name}<ArrowUpRight size={15} /></a></div>}
                 {showOverview && <Alert tone={catalogError ? 'danger' : 'info'}>{catalogError ? '暂时无法读取应用入口，请刷新重试。' : appCatalog === null ? '正在读取应用入口。' : !app?.configured ? '当前部署尚未配置该工具入口。' : app.auth === 'cas' ? '通过 CAS 登录子应用，已有 CAS 会话将自动完成认证。' : selectedModule === 'fast-lab' ? '打开实验工作台；CAS 身份关联请在应用设置中完成。' : '打开本地演示工作台，使用应用自身的登录方式。'}</Alert>}
-                <AppActivityPanel appId={selectedModule} name={product.name} member={member} onLogin={() => setKeyOpen(true)} />
+                {app?.capabilities?.includes('activity') && <AppActivityPanel appId={selectedModule} name={product.name} member={member} onLogin={() => setKeyOpen(true)} />}
                 {showOverview && <>
                 <Divider />
                 <h3 className="fastui-heading">从这里开始</h3>
@@ -399,9 +325,9 @@ function WorkspacePage() {
                 </>}
               </ToolBody>
             </ToolContainer> : <>
-              {workspaceView === 'today' && <FastTaskTodayPanel member={member} today={fastTaskToday} onUnlock={() => setKeyOpen(true)} onRefresh={() => { void refreshFastTaskToday() }} onOpenFastTask={openFastTaskInNewTab} t={t} />}
+              {workspaceView === 'today' && <AppTasksPanel app={taskApp} catalogLoading={appCatalog === null && !catalogError} member={member} onUnlock={() => setKeyOpen(true)} t={t} />}
               {workspaceView === 'insight' && <InsightMailbox member={member} items={insightItems} selectedId={selectedInsight} readIds={readIds} onSelect={markRead} onUnlock={() => setKeyOpen(true)} onOpenFastRead={() => openEntry(entries['fast-read'])} t={t} />}
-              {workspaceView === 'team' && <TeamProgressPanel members={teamWorkflows} currentKeyId={member?.keyId ?? null} loading={teamLoading} onClose={() => navigateWorkspace('workflow')} t={t} />}
+              {workspaceView === 'team' && <TeamProgressPanel members={teamWorkflows} currentKeyId={member?.keyId ?? null} loading={teamLoading} onClose={() => navigateWorkspace('workflow')} app={taskApp} t={t} />}
             </>}
           </div>
         </main>

@@ -88,7 +88,7 @@ export const products: Product[] = [
     title: ['把长期目标，', '变成今天的一步。'],
     description: '把科研目标拆成具体行动，通过对话安排与调整每日任务。用实际成果和专注记录，保留一步步向前的过程。',
     promise: '每天推进一点，让目标逐渐清晰。',
-    points: ['目标任务树', '每日计划', '成果与专注'], steps: ['明确目标', '拆分行动', '安排今天', '记录成果'], href: '/api/fasttask/login',
+    points: ['目标任务树', '每日计划', '成果与专注'], steps: ['明确目标', '拆分行动', '安排今天', '记录成果'], href: '/api/workspace/apps/fast-task/launch',
     features: [
       { title: '从目标拆到行动', body: '用目标、里程碑和任务树表达长期计划与真实依赖。' },
       { title: '安排能完成的今天', body: '围绕主要目标形成每日计划，通过对话调整任务与排期。' },

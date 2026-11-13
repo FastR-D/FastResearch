@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { request } from '../../shared/api/client'
-import type { MemberSession } from '../../shared/types'
+import type { AppTaskSummary, MemberSession } from '../../shared/types'
 export type AppActivity = {
+  tasks?: AppTaskSummary
   schemaVersion: 'fastresearch.workspace.v1'
   appId: string
   accountState: 'active' | 'missing' | 'inactive' | 'requires_cas' | 'not_configured' | 'unavailable'
@@ -18,7 +19,7 @@ export function useAppActivity(appId: string, member: MemberSession | null) {
   const [revision, setRevision] = useState(0)
   const refresh = useCallback(() => setRevision(value => value + 1), [])
   useEffect(() => {
-    if (!identity || !['fast-read', 'fast-news', 'fast-write'].includes(appId)) return
+    if (!identity || !appId) return
     let cancelled = false
     let controller: AbortController | null = null
     const load = async () => {
@@ -28,7 +29,7 @@ export function useAppActivity(appId: string, member: MemberSession | null) {
         const value = await request<AppActivity>(`/api/workspace/apps/${appId}/activity`, { signal: controller.signal })
         if (!cancelled) setResult({ key, value, error: '' })
       } catch (error) {
-        if (!cancelled && !(error instanceof DOMException && error.name === 'AbortError')) setResult({ key, value: null, error: '暂时无法读取个人动态，请重试' })
+        if (!cancelled && !(error instanceof DOMException && error.name === 'AbortError')) setResult({ key, value: null, error: '暂时无法读取应用数据，请重试' })
       }
     }
     void load()

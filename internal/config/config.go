@@ -6,11 +6,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/joho/godotenv"
 )
 
 type Config struct {
+	CASSessionTTL                                                                                                           time.Duration
 	Address, DataDir, Database, StaticDir, PublicURL, CookieName, CookieDomain, Issuer, ClientID, ClientSecret, RedirectURI string
 	AllowLoopbackHTTP, LegacyKeys, OfflineAccess                                                                            bool
 	Origins                                                                                                                 map[string]bool
@@ -27,6 +29,11 @@ func Load() (Config, error) {
 		_ = godotenv.Load(file)
 	}
 	c := Config{Address: Env("HOST", "127.0.0.1") + ":" + Env("PORT", "8787"), DataDir: Env("FASTRESEARCH_DATA_DIR", "data"), StaticDir: Env("FASTRESEARCH_STATIC_DIR", "dist"), PublicURL: strings.TrimRight(Env("FASTRESEARCH_PUBLIC_URL", "http://127.0.0.1:"+Env("PORT", "8787")), "/"), CookieName: Env("FASTRESEARCH_COOKIE_NAME", "fr_session"), CookieDomain: os.Getenv("FASTRESEARCH_COOKIE_DOMAIN"), Issuer: strings.TrimRight(os.Getenv("FASTRESEARCH_FASTCAS_ISSUER"), "/"), ClientID: os.Getenv("FASTRESEARCH_FASTCAS_CLIENT_ID"), ClientSecret: os.Getenv("FASTRESEARCH_FASTCAS_CLIENT_SECRET"), RedirectURI: os.Getenv("FASTRESEARCH_FASTCAS_REDIRECT_URI"), AllowLoopbackHTTP: os.Getenv("FASTRESEARCH_FASTCAS_ALLOW_LOOPBACK_HTTP") == "true", LegacyKeys: os.Getenv("FASTRESEARCH_ALLOW_LEGACY_KEY_LOGIN") != "false", OfflineAccess: os.Getenv("FASTRESEARCH_FASTCAS_OFFLINE_ACCESS") == "true", Origins: map[string]bool{}}
+	var err error
+	c.CASSessionTTL, err = time.ParseDuration(Env("FASTRESEARCH_CAS_SESSION_TTL", "336h"))
+	if err != nil || c.CASSessionTTL <= 0 {
+		return c, fmt.Errorf("FASTRESEARCH_CAS_SESSION_TTL must be a positive duration")
+	}
 	c.Database = Env("FASTRESEARCH_ACCOUNT_DATABASE", filepath.Join(c.DataDir, "accounts.sqlite"))
 	if os.Getenv("FASTRESEARCH_FASTCAS_ENABLED") == "false" {
 		c.Issuer = ""
@@ -57,4 +64,13 @@ func Load() (Config, error) {
 		c.Origins[strings.TrimSpace(v)] = true
 	}
 	return c, nil
+}
+
+// SessionLifetime is the local upper bound; non-refreshable provider credentials
+// still cap the effective session lifetime.
+func (c Config) SessionLifetime() time.Duration {
+	if c.CASSessionTTL > 0 {
+		return c.CASSessionTTL
+	}
+	return 14 * 24 * time.Hour
 }

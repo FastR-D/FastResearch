@@ -30,7 +30,7 @@ func (a *Server) authRoutes() {
 		if !a.Store.AllowAttempt("login:"+remoteIP(r), 60) {
 			return fail(429, "登录尝试过多")
 		}
-		location, binding, e := a.CAS.Begin(r.Context())
+		location, binding, e := a.CAS.Begin(r.Context(), r.URL.Query().Get("next"))
 		if e != nil {
 			return fail(502, "FastCAS 暂时不可用")
 		}
@@ -47,14 +47,23 @@ func (a *Server) authRoutes() {
 			return nil
 		}
 		// Never construct the callback authority from untrusted Host/forwarded headers.
-		raw, e := a.CAS.Finish(r.Context(), a.Config.RedirectURI+"?"+r.URL.RawQuery, binding.Value)
+		raw, returnTo, e := a.CAS.Finish(r.Context(), a.Config.RedirectURI+"?"+r.URL.RawQuery, binding.Value)
 		if e != nil {
 			http.Redirect(w, r, "/workspace?fastcas=failed", 302)
 			return nil
 		}
-		a.cookie(w, a.Config.CookieName, raw, 48*3600, "/")
+		session, e := a.Store.Session(raw)
+		if e != nil {
+			return e
+		}
+		maxAge := max(1, int(time.Until(time.UnixMilli(session.ExpiresAt)).Seconds()))
+		a.cookie(w, a.Config.CookieName, raw, maxAge, "/")
 		w.Header().Set("Cache-Control", "no-store")
-		http.Redirect(w, r, "/workspace?fastcas=complete", 302)
+		destination, _ := url.Parse(returnTo)
+		query := destination.Query()
+		query.Set("fastcas", "complete")
+		destination.RawQuery = query.Encode()
+		http.Redirect(w, r, destination.String(), 302)
 		return nil
 	})
 	a.endpoint("GET /api/auth/fastcas/status", func(w http.ResponseWriter, r *http.Request) error {

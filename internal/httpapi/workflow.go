@@ -141,21 +141,15 @@ func (a *Server) workflowRoutes() {
 		if e != nil {
 			return e
 		}
-		ids := []any{}
-		for _, v := range list {
-			if store.String(v.Content["accountDisabledAt"]) == "" {
-				ids = append(ids, v.ID)
-			}
-		}
-		by, configured, errText := a.today(r, ids)
+		summaries := a.teamTaskSummaries(r.Context(), list)
 		members := []any{}
-		for _, v := range list {
+		for i, v := range list {
 			if store.String(v.Content["accountDisabledAt"]) != "" {
 				continue
 			}
-			members = append(members, store.Object{"keyId": v.KeyID, "person": v.Content["person"], "workflow": workflowView(v.Content["workflow"]), "today": todayView(by[v.ID], configured)})
+			members = append(members, store.Object{"keyId": v.KeyID, "person": v.Content["person"], "workflow": workflowView(v.Content["workflow"]), "apps": summaries[i]})
 		}
-		write(w, 200, store.Object{"members": members, "currentKeyId": p.Account.KeyID, "fastTaskConfigured": configured, "fastTaskError": errText})
+		write(w, 200, store.Object{"members": members, "currentKeyId": p.Account.KeyID})
 		return nil
 	})
 	a.endpoint("POST /api/workflow/publish", func(w http.ResponseWriter, r *http.Request) error {

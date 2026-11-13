@@ -33,9 +33,8 @@ try {
         case '/api/admin/me': json = { username: '测试管理员', expiresAt: 9999999999999 }; break
         case '/api/admin/keys': json = { keys: Array.from({ length: 60 }, (_, i) => ({ id: `key-${i}`, person: `研究员 ${i} ${longText}` })) }; break
         case '/api/auth/fastcas/status': json = { role: 'admin' }; break
-        case '/api/workspace/apps': json = { apps: ['fast-news', 'fast-read', 'fast-write', 'fast-ppt', 'fast-lab'].map(id => ({ id, configured: id !== 'fast-lab', auth: 'cas', launchPath: `/api/workspace/apps/${id}/launch` })) }; break
-        case '/api/workflow/team': json = { members: emptyTeam ? [] : [{ keyId: 'key-1', person: '测试管理员', workflow: { doneCount: 1, total: 3, tasks: ['done', 'active', 'pending'].map((status, i) => ({ id: String(i), title: longText, status })) }, today }] }; break
-        case '/api/fasttask/today': json = { today }; break
+        case '/api/workspace/apps': json = { apps: ['fast-news', 'fast-read', 'fast-write', 'fast-ppt', 'fast-lab', 'planner'].map(id => ({ id, name: id === 'planner' ? '任务规划器' : id, configured: id !== 'fast-lab', auth: 'cas', capabilities: id === 'planner' ? ['activity','tasks'] : ['fast-news','fast-read','fast-write'].includes(id) ? ['activity'] : [], launchPath: `/api/workspace/apps/${id}/launch` })) }; break
+        case '/api/workflow/team': json = { members: emptyTeam ? [] : [{ keyId: 'key-1', person: '测试管理员', workflow: { doneCount: 1, total: 3, tasks: ['done', 'active', 'pending'].map((status, i) => ({ id: String(i), title: longText, status })) }, apps: { planner: { accountState: 'active', tasks: today } } }] }; break
         case '/api/admin/fastinsight/roster':
           if (route.request().method() === 'PUT') {
             saved = route.request().postDataJSON()
@@ -45,7 +44,7 @@ try {
           }
           json = { roster, revision, file: 'colleagues.yaml' }; break
         default:
-          if (url.pathname.endsWith('/activity')) json = { appId: url.pathname.split('/')[4], accountState: 'active', metrics: [{ id: 'updates', label: '未读动态', value: 3 }], items: [{ id: 'update', title: longText, description: longText, kind: 'comment', path: 'https://example.test/update' }] }
+          if (url.pathname.endsWith('/activity')) json = { tasks: url.pathname.includes('/planner/') ? today : undefined, appId: url.pathname.split('/')[4], accountState: 'active', metrics: [{ id: 'updates', label: '未读动态', value: 3 }], items: [{ id: 'update', title: longText, description: longText, kind: 'comment', path: 'https://example.test/update' }] }
           else throw new Error(`Unexpected fixture request: ${route.request().method()} ${url.pathname}`)
       }
       await route.fulfill({ json })
@@ -53,6 +52,12 @@ try {
     const assertLayout = async () => {
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `overflow at ${colorScheme}/${width}: ${page.url()}`)
       assert.equal(await page.locator('h1').count(), 1)
+      if (!new URL(page.url()).searchParams.has('view')) {
+        const heading = await page.locator('h1').boundingBox()
+        const action = await page.getByRole('button', { name: /使用 CAS 进入|打开 Fast|正在读取/ }).boundingBox()
+        assert.ok(action.x >= heading.x + heading.width - 1, 'launch action must sit beside the title')
+        assert.ok(Math.abs(action.y + action.height / 2 - heading.y - heading.height / 2) <= 1, 'title/action should align vertically')
+      }
       assert.equal(await page.locator('footer').count(), 0)
       const layout = await page.evaluate(() => {
         const sidebar = document.getElementById('workspace-sidebar')
@@ -78,6 +83,14 @@ try {
     await page.goto(origin + '/workspace?tool=fast-news', { waitUntil: 'networkidle' })
     await page.getByRole('region', { name: 'FastNews 个人动态', exact: true }).getByText(longText, { exact: true }).first().waitFor()
     await assertLayout()
+    const metric = page.getByRole('region', { name: 'FastNews 个人动态', exact: true }).locator('dl > div').first()
+    const metricStyle = await metric.evaluate(el => {
+      const label = el.querySelector('dt'), number = el.querySelector('dd')
+      return { label: label.getBoundingClientRect().toJSON(), number: number.getBoundingClientRect().toJSON(), fontSize: parseFloat(getComputedStyle(number).fontSize), weight: Number(getComputedStyle(number).fontWeight) }
+    })
+    assert.ok(metricStyle.number.x > metricStyle.label.x)
+    assert.ok(Math.abs(metricStyle.number.y + metricStyle.number.height/2 - metricStyle.label.y - metricStyle.label.height/2) < 1)
+    assert.ok(metricStyle.fontSize >= 30 && metricStyle.weight >= 700)
     assert.equal(await page.getByText('从这里开始', { exact: true }).count(), 0)
     assert.equal(await page.getByRole('link', { name: '了解 FastNews', exact: true }).count(), 0)
     assert.equal(await page.locator('#workspace-content ol').count(), 0)
@@ -93,6 +106,7 @@ try {
     assert.equal(await page.getByText('从这里开始', { exact: true }).count(), 1)
     assert.equal(await page.getByRole('link', { name: '了解 FastLab', exact: true }).count(), 1)
     await nav('今日任务')
+    await page.getByRole('button', { name: '打开 任务规划器', exact: true }).waitFor()
     await page.getByRole('progressbar').waitFor()
     assert.equal(await page.getByRole('progressbar').getAttribute('value'), '33')
     await assertLayout()

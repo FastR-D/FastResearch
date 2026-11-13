@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -42,21 +43,11 @@ func run() error {
 		return e
 	}
 	defer wf.DB.Close()
-	taskProvider, e := integrations.ServiceClient("FASTTASK_SERVICE")
+	writeProvider, e := integrations.ServiceClient("FASTWRITE_FASTCAS_SERVICE")
 	if e != nil {
 		return e
 	}
-	if taskProvider == nil {
-		taskProvider, e = integrations.ServiceClient("FASTTASK_FASTCAS_SERVICE")
-		if e != nil {
-			return e
-		}
-	}
-	task := &integrations.Client{Base: integrations.First("FASTTASK_URL", "VITE_FASTTASK_URL"), Provider: taskProvider, Scope: "integrations:fastresearch"}
-	if taskProvider == nil && os.Getenv("FASTRESEARCH_ALLOW_LEGACY_FASTTASK_KEYS") == "true" {
-		task.Key = integrations.First("FASTTASK_API_KEY", "FASTTASK_PROVISION_KEY")
-	}
-	writeProvider, e := integrations.ServiceClient("FASTWRITE_FASTCAS_SERVICE")
+	workspaceProvider, e := integrations.ServiceClient("FASTRESEARCH_WORKSPACE_SERVICE")
 	if e != nil {
 		return e
 	}
@@ -64,30 +55,31 @@ func run() error {
 	if writeProvider == nil && os.Getenv("FASTRESEARCH_ALLOW_LEGACY_FASTWRITE_KEY") == "true" {
 		write.Key = os.Getenv("FASTWRITE_API_KEY")
 	}
-	app := httpapi.New(c, s, cas, wf, task, write)
-	activityProvider, e := integrations.ServiceClient("FASTRESEARCH_WORKSPACE_SERVICE")
-	if e != nil {
-		return e
-	}
+	app := httpapi.New(c, s, cas, wf, write)
+	activityProvider := workspaceProvider
 	if activityProvider == nil {
 		activityProvider = writeProvider
 	}
-	if activityProvider == nil {
-		activityProvider = taskProvider
-	}
-	app.ActivityClients = map[string]*integrations.Client{}
-	for id, base := range map[string]string{"fast-news": integrations.First("FASTNEWS_URL", "VITE_FASTNEWS_URL"), "fast-read": integrations.First("FASTREAD_URL", "VITE_READ_URL"), "fast-write": integrations.First("FASTWRITE_URL", "VITE_WRITE_URL")} {
-		app.ActivityClients[id] = &integrations.Client{Base: base, Provider: activityProvider, Scope: "workspace:read"}
+	app.ActivityClients, e = integrations.WorkspaceClients(activityProvider)
+	if e != nil {
+		return e
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	workerDone := make(chan struct{})
-	go func() { defer close(workerDone); syncEvents(ctx, wf, task) }()
+	go func() { defer close(workerDone); syncEvents(ctx, wf, app.ActivityClients) }()
 	defer func() { stop(); <-workerDone }()
 	return httpapi.Run(ctx, c, app)
 }
-func syncEvents(ctx context.Context, wf *workflow.Store, task *integrations.Client) {
+func syncEvents(ctx context.Context, wf *workflow.Store, clients map[string]*integrations.Client) {
+	target := clients[os.Getenv("FASTRESEARCH_WORKFLOW_EVENT_APP")]
+	path := os.Getenv("FASTRESEARCH_WORKFLOW_EVENT_PATH")
+	if target == nil || path == "" || !strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") {
+		<-ctx.Done()
+		return
+	}
+	client := &integrations.Client{Base: target.Base, Provider: target.Provider, Scope: config.Env("FASTRESEARCH_WORKFLOW_EVENT_SCOPE", "workspace:write")}
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 	for {
@@ -95,7 +87,7 @@ func syncEvents(ctx context.Context, wf *workflow.Store, task *integrations.Clie
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if !task.Configured() {
+			if !client.Configured() {
 				continue
 			}
 			events, e := wf.Pending()
@@ -107,7 +99,7 @@ func syncEvents(ctx context.Context, wf *workflow.Store, task *integrations.Clie
 				payload := store.Decode(store.String(event["payload"]))
 				id := store.String(event["id"])
 				h := http.Header{"Idempotency-Key": []string{id}}
-				_, e = task.Request(ctx, "POST", "/api/v1/integrations/fastresearch/progress", store.Object{"schema_version": "1.0", "trace_id": "fastresearch-" + id, "source": store.Object{"external_id": id}, "kind": "progress_evidence", "title": "FastResearch 工序完成", "description": payload["description"], "artifacts": payload["artifacts"], "receiver_ref": event["account_id"], "metadata": payload}, h)
+				_, e = client.Request(ctx, "POST", path, store.Object{"schema_version": "1.0", "trace_id": "fastresearch-" + id, "source": store.Object{"external_id": id}, "kind": "progress_evidence", "title": "FastResearch 工序完成", "description": payload["description"], "artifacts": payload["artifacts"], "receiver_ref": event["account_id"], "metadata": payload}, h)
 				attempt, _ := event["attempts"].(int64)
 				if err := wf.Mark(id, e, int(attempt)); err != nil {
 					slog.Error("outbox update failed", "error", err)

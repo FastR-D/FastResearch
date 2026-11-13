@@ -1,21 +1,5 @@
-# Vendored Task-owned today fixture
+# 历史 Task 专用 today 合同
 
-Source: FastR-D/FastTask `contracts/fastresearch-today/v1/cases.json`.
-This local copy supports a clean single-repository test run. Upgrade it together
-with the receiver-owned contract; it is not a separately authored protocol.
-The shared fixture describes the real today endpoint only. Research's historical
-tasks/progress/account methods remain reserved against Task main 8e91d76.
+此处仅保留 Task 拥有的旧 `receiver_refs` 协议案例作为历史记录。Research 已删除 `/api/fasttask/*` 和旧票据接口，不再使用该合同或其旧脚本。
 
-`npm test` exercises the production today factory and installed registry SDK.
-`node scripts/fasttask-today-contract.mjs` requires an explicitly configured local
-test receiver and issuer, and asserts both service and legacy paths. The Task
-wire test can launch that probe with a disposable signed issuer and real Task
-HTTP server. The probe also starts Research's actual server with only service
-credentials, logs in a local Key member, and calls its workspace today route
-twice. It asserts received=true, the full nonempty three-item projection,
-completion/progress counts, plan metadata and workspace links against
-`research_today`. The direct client also checks the known and unknown receivers'
-entire wire responses. Task seeds actual account mappings and domain rows;
-`$today` is the current UTC date, not a product configuration option.
-Task checks that the production client reuses its token. It must never
-target production.
+当前使用 [通用应用摘要协议](../../workspace/v1/README.md)，以已验证 CAS subject 读取应用数据，不依赖 FastTask 的旧 Research accountId 映射。Task 接收端的旧 API 是否继续兼容由 Task 自行管理。

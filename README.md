@@ -20,7 +20,7 @@ web/
   src/shared/          HTTP 客户端、领域类型、文案、组件、工具
   src/styles/          基础 reset 和按需加载的宣传页样式
   public/              静态资源
-contracts/             跨项目接口契约
+contracts/             通用应用摘要协议
 scripts/               浏览器验收与本地部署
 deployments/           systemd 与 FastDeploy Go 部署配置
 ```
@@ -59,7 +59,7 @@ npm run server
 http://127.0.0.1:8787/api/auth/fastcas/callback
 ```
 
-默认不申请 `offline_access`，兼容仅开放标准登录权限的现有客户端。只有中心客户端同时允许 `offline_access` 与 `refresh_token` 后，才设置 `FASTRESEARCH_FASTCAS_OFFLINE_ACCESS=true` 启用长期刷新。未取得刷新令牌时，本站 CAS 会话有效期不超过中心访问令牌；到期后重新走 CAS 登录。
+默认不申请 `offline_access`，兼容仅开放标准登录权限的现有客户端。只有中心客户端同时允许 `offline_access` 与 `refresh_token` 后，才设置 `FASTRESEARCH_FASTCAS_OFFLINE_ACCESS=true` 启用长期刷新。CAS 本地会话上限默认 14 天（`FASTRESEARCH_CAS_SESSION_TTL=336h`），Cookie 与实际会话到期时间保持一致。未取得刷新令牌时仍以中心访问令牌到期时间为上限；工作台会在到期前通过已有 CAS 登录自动续签，并保留当前工具/视图。回到后台标签页或同一标签页重载时也会恢复续登录；失败后不会无限重定向，打开的弹窗关闭前不会主动跳转。临时网络错误不会清除成员状态。
 
 本地 HTTP 开发需显式配置 `FASTRESEARCH_FASTCAS_ALLOW_LOOPBACK_HTTP=true`；生产使用 HTTPS。`.env` 按 `.env.production`、`.env`、`.env.local` 顺序补充未设置变量，进程环境优先。
 
@@ -79,6 +79,7 @@ Go 测试使用本地签名 OIDC 提供方覆盖登录回调、浏览器绑定�
 ```bash
 FASTRESEARCH_CHECK_URL=http://127.0.0.1:8787 npm run test:fastui
 FASTRESEARCH_CHECK_URL=http://127.0.0.1:8787 npm run test:workspace
+FASTRESEARCH_CHECK_URL=http://127.0.0.1:8787 npm run test:session
 PROMO_CHECK_URL=http://127.0.0.1:8787/ npm run test:promo
 PROMO_CHECK_URL=http://127.0.0.1:8787/ npm run test:journey
 ```
@@ -105,9 +106,9 @@ CI 构建并打包 `bin/fastresearch` 和 `dist/`，使用 [Go FastDeploy 配置
 
 应用启动 URL 来自服务端配置，用户参数不能选择任意跳转源，也不会携带 Research 会话。已保留 FastNews、FastRead、FastWrite、FastTask、FastPPT 和 FastLab 的入口配置。
 
-FastTask 今日计划使用独立服务身份和 `integrations:fastresearch` scope。服务投递必须校验签名、受众、scope、中心 active 状态和明确收件账号白名单。工作流仍使用原 `workflows.sqlite`，完成工序与待回传事件同事务提交。
+所有应用的动态与任务统一通过 `GET /api/workspace/apps/{id}/activity` 读取，接收应用实现 `POST /api/integrations/fastresearch/workspace`，服务 scope 为 `workspace:read`。今日任务由目录中声明 `tasks` 能力的应用提供，以 CAS subject 关联账号；不再调用旧 FastTask 的 accountId 映射接口。FastTask 需同步部署此次通用摘要接口，中心服务身份的受众需包含 Task 自身 client ID 和其服务受众配置。旧 `/api/fasttask/*` 与 `/api/sso/*` 已删除。协议和部署配置见 [workspace-activity.md](docs/integrations/workspace-activity.md)。服务投递必须校验签名、受众、scope、中心 active 状态和明确收件账号白名单。工作流仍使用原 `workflows.sqlite`，完成工序与待回传事件同事务提交。
 
-FastTask 写入、进度回传和 FastWrite 项目 API 的可用性取决于目标项目实现及服务权限配置；目标服务未提供接口时返回错误，不假报成功。真实生产 FastCAS / FastTask / FastWrite 联调仍需在部署环境验收。若要让受保护的预览子域共用 Research 管理会话，需显式配置 `FASTRESEARCH_COOKIE_DOMAIN=.fastrd.io`；默认 Cookie 只属于主站。旧协议与历史联调记录位于 `docs/`，旧 Node 实现已删除，相关源码可在 Git 历史查阅。
+工作流事件回传通过 `FASTRESEARCH_WORKFLOW_EVENT_APP/PATH/SCOPE` 显式配置通用接收应用、路径与权限；未配置时保留待发送事件，不向不存在的 Task 专用路径反复请求。应用写入、进度回传和 FastWrite 项目 API 的可用性取决于目标项目实现及服务权限配置；目标服务未提供接口时返回错误，不假报成功。真实生产 FastCAS / FastTask / FastWrite 联调仍需在部署环境验收。若要让受保护的预览子域共用 Research 管理会话，需显式配置 `FASTRESEARCH_COOKIE_DOMAIN=.fastrd.io`；默认 Cookie 只属于主站。旧协议与历史联调记录位于 `docs/`，旧 Node 实现已删除，相关源码可在 Git 历史查阅。
 
 Read / News / Write 个人动态、服务权限与开通入口配置见 [workspace-activity.md](docs/integrations/workspace-activity.md)。原 Key 登录默认保留；没有已验证 CAS 绑定的 Key 不会按姓名或邮箱查找子应用账号。
 

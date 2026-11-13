@@ -13,7 +13,7 @@ const basePath = import.meta.env.BASE_URL.replace(/\/+$/, '')
 const path = window.location.pathname.replace(/\/+$/, '')
 const relativePath = path.slice(basePath.length) || '/'
 const params = new URLSearchParams(window.location.search)
-const callback = relativePath === '/' && (params.has('fastcas') || params.get('launch') === 'fast-task' || ['#home', '#modules'].includes(window.location.hash))
+const callback = relativePath === '/' && (params.has('fastcas') || ['#home', '#modules'].includes(window.location.hash))
 const product = products.find(app => relativePath === `/intro/${app.id}`)
 
 // The product homepage stays public even when a member session exists.

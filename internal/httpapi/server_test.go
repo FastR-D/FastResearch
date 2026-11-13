@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -180,7 +181,7 @@ func setup(t *testing.T) (*Server, *httptest.Server, *providerFixture) {
 		t.Fatal(e)
 	}
 	t.Cleanup(func() { wf.DB.Close() })
-	a := New(c, s, cas, wf, &integrations.Client{}, &integrations.Client{})
+	a := New(c, s, cas, wf, &integrations.Client{})
 	server.Config.Handler = a
 	server.Start()
 	t.Cleanup(server.Close)
@@ -479,52 +480,6 @@ func TestServicePublishingRequiresLiveScopedAccountGrant(t *testing.T) {
 		t.Fatal("failed service request changed content", e)
 	}
 }
-func TestTaskRequestsCannotChooseAnotherAccount(t *testing.T) {
-	a, server, _ := setup(t)
-	client := login(t, server)
-	_, me := request(t, client, "GET", server.URL+"/api/content/me", "")
-	id := store.String(me["accountId"])
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		b, e := body(r)
-		if e != nil {
-			t.Error(e)
-			write(w, 400, store.Object{})
-			return
-		}
-		if r.Header.Get("X-API-Key") != "fixture-key" {
-			t.Error("missing configured service credential")
-		}
-		switch r.URL.Path {
-		case "/api/v1/integrations/fastresearch/today":
-			refs := array(b["receiver_refs"])
-			if len(refs) != 1 || refs[0] != id {
-				t.Errorf("today receiver: %#v", refs)
-			}
-			write(w, 200, store.Object{"members": []any{store.Object{"receiver_ref": id, "found": true, "items": []any{store.Object{"id": "item", "title": "Read", "status": "planned"}}, "progress": store.Object{"total": 1, "planned": 1}}}})
-		case "/api/v1/integrations/fastresearch/tasks":
-			if b["receiver_ref"] != id {
-				t.Error("task request changed account")
-			}
-			write(w, 201, store.Object{"ok": true})
-		default:
-			write(w, 404, store.Object{})
-		}
-	}))
-	defer upstream.Close()
-	a.TaskClient = &integrations.Client{Base: upstream.URL, Key: "fixture-key"}
-	status, today := request(t, client, "GET", server.URL+"/api/fasttask/today", "")
-	if status != 200 || object(today["today"])["received"] != true {
-		t.Fatalf("today response: %d %#v", status, today)
-	}
-	status, _ = request(t, client, "POST", server.URL+"/api/fasttask/tasks", `{"receiver_ref":"another-account"}`)
-	if status != 403 {
-		t.Fatal("member chose task account")
-	}
-	status, _ = request(t, client, "POST", server.URL+"/api/fasttask/tasks", `{"title":"Read a paper"}`)
-	if status != 201 {
-		t.Fatal("task request failed", status)
-	}
-}
 func TestFastWriteHealthAndCompileWithoutBody(t *testing.T) {
 	a, server, _ := setup(t)
 	client := login(t, server)
@@ -572,5 +527,65 @@ func TestLoginScopesRespectClientRegistration(t *testing.T) {
 	client = login(t, server)
 	if status, _ := request(t, client, "GET", server.URL+"/api/content/me", ""); status != 200 {
 		t.Fatal("registered offline access login failed", status)
+	}
+}
+
+func TestCASLoginLifetimeAndWorkspaceReturn(t *testing.T) {
+	for _, refresh := range []bool{false, true} {
+		t.Run(fmt.Sprintf("refresh=%t", refresh), func(t *testing.T) {
+			a, server, provider := setup(t)
+			provider.allowOffline = refresh
+			a.CAS.Config.OfflineAccess = refresh
+			a.CAS.Config.CASSessionTTL = 14 * 24 * time.Hour
+			jar, _ := cookiejar.New(nil)
+			client := &http.Client{Jar: jar, Timeout: 5 * time.Second, CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				if req.URL.Path == "/workspace" {
+					return http.ErrUseLastResponse
+				}
+				return nil
+			}}
+			response, err := client.Get(server.URL + "/api/auth/fastcas/login?next=" + url.QueryEscape("/workspace?view=insight"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			response.Body.Close()
+			target, _ := url.Parse(response.Header.Get("Location"))
+			if target.Path != "/workspace" || target.Query().Get("view") != "insight" || target.Query().Get("fastcas") != "complete" {
+				t.Fatalf("return state lost: %s", target)
+			}
+			var sessionCookie *http.Cookie
+			for _, c := range response.Cookies() {
+				if c.Name == a.Config.CookieName {
+					sessionCookie = c
+				}
+			}
+			if sessionCookie == nil {
+				t.Fatal("session cookie missing")
+			}
+			session, err := a.Store.Session(sessionCookie.Value)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := time.Hour
+			if refresh {
+				want = 14 * 24 * time.Hour
+			}
+			remaining := time.Until(time.UnixMilli(session.ExpiresAt))
+			if remaining < want-time.Minute || remaining > want+time.Minute {
+				t.Fatalf("session lifetime %v, want %v", remaining, want)
+			}
+			if sessionCookie.MaxAge < int(want.Seconds())-60 || sessionCookie.MaxAge > int(want.Seconds()) {
+				t.Fatalf("cookie lifetime disagrees with session: %d", sessionCookie.MaxAge)
+			}
+			if status, _ := request(t, client, "GET", server.URL+"/api/admin/keys", ""); status != 200 {
+				t.Fatalf("admin validation failed: %d", status)
+			}
+			if status, _ := request(t, client, "POST", server.URL+"/api/content/logout", ""); status != 200 {
+				t.Fatalf("logout failed: %d", status)
+			}
+			if _, err := a.Store.Session(sessionCookie.Value); err == nil {
+				t.Fatal("long session survived explicit logout")
+			}
+		})
 	}
 }

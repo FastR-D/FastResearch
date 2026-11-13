@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -98,7 +99,7 @@ func (a *CAS) Take(ctx context.Context, state string) (*fastcas.Transaction, err
 	e = json.Unmarshal([]byte(raw), &t)
 	return &t, e
 }
-func (a *CAS) Begin(ctx context.Context) (string, string, error) {
+func (a *CAS) Begin(ctx context.Context, returnTo string) (string, string, error) {
 	if a.Client == nil {
 		return "", "", errors.New("FastCAS is not configured")
 	}
@@ -107,7 +108,7 @@ func (a *CAS) Begin(ctx context.Context) (string, string, error) {
 	if a.Config.OfflineAccess {
 		scopes = append(scopes, "offline_access")
 	}
-	location, e := a.Client.BeginLogin(ctx, fastcas.BeginOptions{BrowserBinding: binding, ReturnTo: "/workspace", Scopes: scopes})
+	location, e := a.Client.BeginLogin(ctx, fastcas.BeginOptions{BrowserBinding: binding, ReturnTo: WorkspaceReturnTo(returnTo), Scopes: scopes})
 	return location, binding, e
 }
 func (a *CAS) Provider(ctx context.Context) (*oidc.Provider, error) {
@@ -183,17 +184,17 @@ func (a *CAS) unseal(raw, subject string) (*oauth2.Token, error) {
 	e = json.Unmarshal(b, &t)
 	return &t, e
 }
-func (a *CAS) Finish(ctx context.Context, callback, binding string) (string, error) {
+func (a *CAS) Finish(ctx context.Context, callback, binding string) (string, string, error) {
 	result, e := a.Client.FinishLogin(ctx, callback, fastcas.FinishOptions{BrowserBinding: binding})
 	if e != nil {
-		return "", e
+		return "", "", e
 	}
 	if result.Transaction.Purpose != "login" {
-		return "", errors.New("self registration and linking are disabled")
+		return "", "", errors.New("self registration and linking are disabled")
 	}
 	role, token, e := a.profile(ctx, result.Token, result.Identity.Subject)
 	if e != nil {
-		return "", e
+		return "", "", e
 	}
 	// The central identity already exists and is active. This creates only the
 	// local content projection; no FastCAS account or registration intent is made.
@@ -210,18 +211,18 @@ func (a *CAS) Finish(ctx context.Context, callback, binding string) (string, err
 	if e == nil {
 		link, e := a.Client.ResolveLink(ctx, result.Identity.Subject)
 		if e != nil || link.ID != id || link.State != "active" {
-			return "", errors.New("legacy link is no longer active")
+			return "", "", errors.New("legacy link is no longer active")
 		}
 	}
 	account, e := a.Store.Provision(a.Config.Issuer, a.Config.ClientID, result.Identity.Subject, name)
 	if e != nil {
-		return "", e
+		return "", "", e
 	}
 	if store.String(account.Content["accountDisabledAt"]) != "" {
-		return "", errors.New("account disabled")
+		return "", "", errors.New("account disabled")
 	}
 	raw := store.Random()
-	expires := time.Now().Add(48 * time.Hour)
+	expires := time.Now().Add(a.Config.SessionLifetime())
 	// Without an approved refresh grant, the local session must not outlive
 	// its central credential. Existing Key sessions are independent.
 	if token.RefreshToken == "" && !token.Expiry.IsZero() && token.Expiry.Before(expires) {
@@ -229,9 +230,9 @@ func (a *CAS) Finish(ctx context.Context, callback, binding string) (string, err
 	}
 	s := &store.Session{AccountID: account.ID, Source: "fastcas", Issuer: a.Config.Issuer, Subject: result.Identity.Subject, SID: result.Identity.SessionID, Role: role, ExpiresAt: expires.UnixMilli(), CheckedAt: time.Now().UnixMilli(), ProviderToken: a.seal(token, result.Identity.Subject)}
 	if e = a.Store.PutSession(raw, s); e != nil {
-		return "", e
+		return "", "", e
 	}
-	return raw, nil
+	return raw, WorkspaceReturnTo(result.Transaction.ReturnTo), nil
 }
 func (a *CAS) Validate(ctx context.Context, raw string, s *store.Session, privileged bool) error {
 	if s.Source != "fastcas" {
@@ -301,4 +302,30 @@ func (a *CAS) Logout(ctx context.Context, id, subject, sid string, link *fastcas
 		return e
 	}
 	return tx.Commit()
+}
+
+// Only the workspace and its supported navigation state may be restored after
+// login. The return path is stored in the single-use, browser-bound transaction.
+func WorkspaceReturnTo(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.IsAbs() || u.Host != "" || u.Path != "/workspace" {
+		return "/workspace"
+	}
+	q := url.Values{}
+	switch view := u.Query().Get("view"); view {
+	case "today", "insight", "team":
+		q.Set("view", view)
+	default:
+		switch tool := u.Query().Get("tool"); tool {
+		case "fast-news", "fast-read", "fast-write", "fast-ppt", "fast-lab":
+			q.Set("tool", tool)
+		}
+	}
+	if app := u.Query().Get("app"); app != "" && len(app) <= 64 && strings.IndexFunc(app, func(r rune) bool { return !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-') }) == -1 {
+		q.Set("app", app)
+	}
+	if len(q) == 0 {
+		return "/workspace"
+	}
+	return "/workspace?" + q.Encode()
 }

@@ -22,14 +22,14 @@ import (
 )
 
 type Server struct {
-	Workflows               *workflow.Store
-	TaskClient, WriteClient *integrations.Client
-	ActivityClients         map[string]*integrations.Client
-	Config                  config.Config
-	Store                   *store.Store
-	CAS                     *identity.CAS
-	mux                     *http.ServeMux
-	HTTP                    *http.Client
+	Workflows       *workflow.Store
+	WriteClient     *integrations.Client
+	ActivityClients map[string]*integrations.Client
+	Config          config.Config
+	Store           *store.Store
+	CAS             *identity.CAS
+	mux             *http.ServeMux
+	HTTP            *http.Client
 }
 type principal struct {
 	Session *store.Session
@@ -43,10 +43,9 @@ type apiError struct {
 
 func (e *apiError) Error() string       { return e.Message }
 func fail(status int, msg string) error { return &apiError{status, msg} }
-func New(c config.Config, s *store.Store, cas *identity.CAS, workflows *workflow.Store, taskClient, writeClient *integrations.Client) *Server {
+func New(c config.Config, s *store.Store, cas *identity.CAS, workflows *workflow.Store, writeClient *integrations.Client) *Server {
 	a := &Server{Config: c, Store: s, CAS: cas, mux: http.NewServeMux(), HTTP: &http.Client{Timeout: 15 * time.Second}}
 	a.Workflows = workflows
-	a.TaskClient = taskClient
 	a.WriteClient = writeClient
 	a.routes()
 	return a

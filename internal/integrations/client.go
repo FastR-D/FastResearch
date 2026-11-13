@@ -41,13 +41,14 @@ func ServiceClient(prefix string) (*fastcas.Client, error) {
 }
 
 type Client struct {
-	Base     string
-	Provider *fastcas.Client
-	Key      string
-	Scope    string
-	HTTP     *http.Client
-	mu       sync.Mutex
-	token    *fastcas.TokenResponse
+	WorkspacePath string
+	Base          string
+	Provider      *fastcas.Client
+	Key           string
+	Scope         string
+	HTTP          *http.Client
+	mu            sync.Mutex
+	token         *fastcas.TokenResponse
 }
 
 func (c *Client) Configured() bool { return c.Base != "" && (c.Provider != nil || c.Key != "") }
@@ -111,4 +112,54 @@ func (c *Client) Request(ctx context.Context, method, path string, b any, extra 
 		return nil, e
 	}
 	return out, nil
+}
+
+// WorkspaceClients builds the same read-only protocol client for every app.
+// An app may supply its own service identity; missing credentials inherit the
+// shared identity, while an explicit disable is always respected.
+func WorkspaceClients(shared *fastcas.Client) (map[string]*Client, error) {
+	apps := Apps()
+	providers := map[string]*fastcas.Client{}
+	disabled := map[string]bool{}
+	for _, app := range apps {
+		if app.WorkspacePath == "" {
+			continue
+		}
+		prefix := strings.ToUpper(strings.ReplaceAll(app.ID, "-", ""))
+		disabled[app.ID] = First(prefix+"_SERVICE_ENABLED") == "false"
+		if disabled[app.ID] {
+			continue
+		}
+		provider, err := ServiceClient(prefix + "_SERVICE")
+		if err != nil {
+			return nil, err
+		}
+		if provider == nil {
+			provider, err = ServiceClient(prefix + "_FASTCAS_SERVICE")
+			if err != nil {
+				return nil, err
+			}
+		}
+		providers[app.ID] = provider
+		if shared == nil && provider != nil {
+			shared = provider
+		}
+	}
+	clients := map[string]*Client{}
+	for _, app := range apps {
+		if app.WorkspacePath == "" {
+			continue
+		}
+		prefix := strings.ToUpper(strings.ReplaceAll(app.ID, "-", ""))
+		base := First(prefix+"_URL", prefix+"_PUBLIC_URL")
+		if base == "" {
+			base = app.PublicURL
+		}
+		provider := providers[app.ID]
+		if provider == nil && !disabled[app.ID] {
+			provider = shared
+		}
+		clients[app.ID] = &Client{Base: base, Provider: provider, Scope: "workspace:read", WorkspacePath: app.WorkspacePath}
+	}
+	return clients, nil
 }

@@ -23,7 +23,31 @@ type ActivityItem struct {
 	Path        string `json:"path"`
 	OccurredAt  string `json:"occurredAt,omitempty"`
 }
+type TaskItem struct {
+	ID                string `json:"id"`
+	TaskID            string `json:"taskId,omitempty"`
+	Title             string `json:"title"`
+	MinimumAction     string `json:"minimumAction,omitempty"`
+	Status            string `json:"status"`
+	CompletionSummary string `json:"completionSummary,omitempty"`
+	TargetMinutes     int    `json:"targetMinutes,omitempty"`
+}
+type TaskProgress struct {
+	Total      int `json:"total"`
+	Completed  int `json:"completed"`
+	InProgress int `json:"inProgress"`
+	Planned    int `json:"planned"`
+	Skipped    int `json:"skipped"`
+}
+type TaskSummary struct {
+	Date     string       `json:"date,omitempty"`
+	Timezone string       `json:"timezone,omitempty"`
+	Received bool         `json:"received"`
+	Items    []TaskItem   `json:"items"`
+	Progress TaskProgress `json:"progress"`
+}
 type Activity struct {
+	Tasks            *TaskSummary   `json:"tasks,omitempty"`
 	SchemaVersion    string         `json:"schemaVersion"`
 	AppID            string         `json:"appId"`
 	AccountState     string         `json:"accountState"`
@@ -35,7 +59,11 @@ type Activity struct {
 }
 
 func (c *Client) Activity(ctx context.Context, app, subject string) (*Activity, error) {
-	raw, e := c.Request(ctx, "POST", "/api/integrations/fastresearch/workspace", map[string]string{"subject": subject}, nil)
+	path := c.WorkspacePath
+	if path == "" {
+		path = "/api/integrations/fastresearch/workspace"
+	}
+	raw, e := c.Request(ctx, "POST", path, map[string]string{"subject": subject}, nil)
 	if e != nil {
 		return nil, e
 	}
@@ -64,7 +92,22 @@ func (c *Client) Activity(ctx context.Context, app, subject string) (*Activity, 
 			return nil, errors.New("invalid activity item")
 		}
 	}
+	if v.Tasks != nil {
+		if len(v.Tasks.Items) > 50 {
+			return nil, errors.New("workspace task summary exceeds bounds")
+		}
+		for _, task := range v.Tasks.Items {
+			if len(task.Title) > 1000 || len(task.MinimumAction) > 4000 || len(task.CompletionSummary) > 4000 || task.TargetMinutes < 0 {
+				return nil, errors.New("invalid task summary")
+			}
+		}
+		p := v.Tasks.Progress
+		if p.Total < 0 || p.Completed < 0 || p.InProgress < 0 || p.Planned < 0 || p.Skipped < 0 || p.Total != len(v.Tasks.Items) || p.Completed+p.InProgress+p.Planned+p.Skipped != p.Total {
+			return nil, errors.New("invalid task progress")
+		}
+	}
 	if v.AccountState != "active" {
+		v.Tasks = nil
 		v.Metrics = []Metric{}
 		v.Items = []ActivityItem{}
 	}

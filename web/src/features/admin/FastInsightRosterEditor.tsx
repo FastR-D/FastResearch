@@ -1,3 +1,4 @@
+import { MetricBlock } from '../../shared/ui/MetricBlock'
 import { Alert, Badge, Button, EmptyState, Loading, Section, TextArea, TextField, Toolbar } from '@fastrd/ui-react'
 import { PanelHeading } from '../../shared/ui/WorkspaceLayout'
 import { Plus,Save,ShieldCheck,Trash2,UsersRound,X } from 'lucide-react'
@@ -155,7 +156,7 @@ export function FastInsightRosterEditor({ session, onAdminOpen, onSessionExpired
       <Button variant="secondary" onClick={addDirection} disabled={loading || !roster}><Plus size={15} />{t('routing.addDirection')}</Button>
       <Button variant="primary" type="submit" disabled={loading || !roster} loading={saving}><Save size={15} />{saving ? t('routing.saving') : t('routing.save')}</Button>
     </Toolbar>
-    <div className="flex flex-wrap gap-2"><Badge>{t('routing.directionCount')} {roster?.directions.length ?? 0}</Badge><Badge>{t('routing.ownerCount')} {ownerCount}</Badge><Badge>{t('routing.keywordCount')} {keywordCount}</Badge></div>
+    <dl className="grid sm:grid-cols-3 gap-4"><MetricBlock label={t('routing.directionCount')} value={roster?.directions.length ?? 0} /><MetricBlock label={t('routing.ownerCount')} value={ownerCount} /><MetricBlock label={t('routing.keywordCount')} value={keywordCount} /></dl>
     {error && <Alert tone="danger">{error}</Alert>}
     {loading ? <Loading label={t('routing.loading')} /> : roster && <>
       {!roster.directions.length && <EmptyState title={t('routing.empty')} />}

@@ -12,7 +12,7 @@ News 的语料收录数不是个人未读论文数；Read 的入库时间不是�
 
 ## 子应用接口
 
-三个正式后端均提供 `POST /api/integrations/fastresearch/workspace`，请求 JSON 仅接受 `{"subject":"CAS subject"}`。仅供服务端调用。需要 FastCAS 签名服务 access token，`sub=client_id=fastresearch`、`service=true`、scope `workspace:read`、aud 包含接收应用配置的 CAS client ID。还会进行中心 introspection、校验 issuer/client/subject 的本地绑定和中心绑定 ID、状态、版本；停用账号、撤销绑定不会返回个人动态。
+Read、News、Write、Task 后端均提供 `POST /api/integrations/fastresearch/workspace`，请求 JSON 仅接受 `{"subject":"CAS subject"}`。仅供服务端调用。需要 FastCAS 签名服务 access token，`sub=client_id=fastresearch`、`service=true`、scope `workspace:read`、aud 包含接收应用配置的 CAS client ID。还会进行中心 introspection、校验 issuer/client/subject 的本地绑定和中心绑定 ID、状态、版本；停用账号、撤销绑定不会返回个人动态。
 
 成功响应示例：
 
@@ -41,8 +41,26 @@ FASTRESEARCH_WORKSPACE_SERVICE_ALLOW_LOOPBACK_HTTP=false
 
 ## FastCAS 权限
 
-由中心管理员在“应用权限”中修改服务身份 `fastresearch` 的 capabilities，保留已有 scope 和 resources，新增 scope `workspace:read`，新增资源受众 **子应用实际配置的 CAS client ID**（当前示例 `fastread`、`news`、`fastwrite`）。不要写成 `*-api`：接收应用的 introspection 要求自身 client ID 在令牌 aud 中。服务身份仍只允许 `client_credentials`，不可增加交互登录权限。
+由中心管理员在“应用权限”中修改服务身份 `fastresearch` 的 capabilities，保留已有 scope 和 resources，新增 scope `workspace:read`，新增资源受众 **子应用实际配置的 CAS client ID**（当前示例 `fastread`、`news`、`fastwrite`、`fasttask`；Task 还需满足其 `FASTCAS_SERVICE_AUDIENCE` 配置）。不要写成 `*-api`：接收应用的 introspection 要求自身 client ID 在令牌 aud 中。服务身份仍只允许 `client_credentials`，不可增加交互登录权限。
 
 对应 API 为 `POST /api/v1/admin/applications/fastresearch/capabilities`，要求近期 MFA、同源与 CSRF。请求字段是 `grant_types`、`scopes`、`resources`，应提交原值与新增值的并集。不要重新登记或轮换现有客户端来覆盖权限。部署代码不会自动扩大中心授权，也不含中心数据库或管理员凭证。
 
-完成授权后，以服务身份请求 `/oauth/token` 的 `workspace:read` scope，逐个调用三个摘要端点：已有绑定返回 active，未绑定返回 missing，撤销服务令牌返回 401/403。再在实际工作台检查三张个人动态面板。缺少中心权限时，工作台会明确显示不可用，不伪造动态。
+完成授权后，以服务身份请求 `/oauth/token` 的 `workspace:read` scope，逐个调用各应用摘要端点：已有绑定返回 active，未绑定返回 missing，撤销服务令牌返回 401/403。再在实际工作台检查三张个人动态面板。缺少中心权限时，工作台会明确显示不可用，不伪造动态。
+
+## 通用任务能力
+
+`GET /api/workspace/apps` 的每项含 `capabilities`，动态应用声明 `activity`，提供今日计划的应用再声明 `tasks`。工作台按能力选择应用，不维护 FastTask 专用读取、创建或票据登录接口。任务详情也从同一个 `/api/workspace/apps/{id}/activity` 响应取得。
+
+统一摘要协议保持 `fastresearch.workspace.v1`，活动应用可附加通用 `tasks` 字段：
+
+```json
+{"schemaVersion":"fastresearch.workspace.v1","appId":"fast-task","accountState":"active","metrics":[{"id":"total","label":"今日任务","value":1}],"items":[],"tasks":{"received":true,"date":"2026-11-13","timezone":"Asia/Shanghai","items":[{"id":"task-1","title":"阅读证据","status":"planned","minimumAction":"打开摘要","targetMinutes":20}],"progress":{"total":1,"completed":0,"inProgress":0,"planned":1,"skipped":0}}}
+```
+
+摘要只接受当前登录会话的已验证 CAS subject；浏览器传入的 subject、user_id 或 receiver_ref 均不能选择他人账号。接收端必须通过服务 JWT、中心 introspection 与当前本地/中心 CAS 绑定版本验证。未关联返回 `missing`，失效返回 `inactive`，故障返回错误，不能伪装成空任务。非 active 响应中的指标、动态和任务会被 Research 清除。单次最多八个指标、八条动态、五十条任务，进度总数必须一致。
+
+FastTask 本次配套实现与其他应用相同的 `/api/integrations/fastresearch/workspace`，以 CAS 绑定读取真实今日计划，完全不依赖旧 `fastresearch_accounts` 映射。部署时需同步发布 FastTask，并在中心已授权服务身份上保留原权限、增加 `workspace:read` 和 Task 实际 client ID / 服务 audience；不自动扩大权限或回退共享 Key。旧 Task 接收端的历史 today 接口仅留给其旧调用方，Research 已不使用。
+
+服务身份按 `<应用前缀>_SERVICE_*` 配置（例如 `FASTTASK_SERVICE_*`），未单独设置时复用 `FASTRESEARCH_WORKSPACE_SERVICE_*`，其次已有 Write/其他应用服务身份；显式设置 `<应用前缀>_SERVICE_ENABLED=false` 则关闭该联动。请求被拒绝时不换身份重试。服务地址优先 `<前缀>_URL`，其次 `<前缀>_PUBLIC_URL` 和应用目录公开地址。少数应用可用 `<前缀>_WORKSPACE_PATH` 覆盖已登记的相对摘要路径，默认统一路径不变。
+
+团队 API 只复用任务摘要，不向其他成员公开文档或评论动态。请求最多处理 200 个成员，最多四个并发，总超时五秒。入口仍统一使用 `/api/workspace/apps/{id}/launch`，子应用自行完成 CAS 登录。
