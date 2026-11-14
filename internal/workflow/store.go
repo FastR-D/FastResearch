@@ -276,7 +276,7 @@ func (s *Store) Complete(id, stageID, account, operation string, b store.Object)
 	if current == nil {
 		return nil, fail(404, "工序不存在")
 	}
-	prior, e := query(tx, `SELECT * FROM stage_completions WHERE operation_id=?`, operation)
+	prior, e := query(tx, `SELECT * FROM stage_completions WHERE workflow_id=? AND operation_id=?`, id, operation)
 	if e != nil {
 		return nil, e
 	}
