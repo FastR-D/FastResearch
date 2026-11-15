@@ -14,10 +14,3 @@ updates:
     groups:
       npm-dependencies:
         patterns: ["*"]
-  - package-ecosystem: npm
-    directory: /web
-    schedule:
-      interval: weekly
-    groups:
-      npm-web-dependencies:
-        patterns: ["*"]
