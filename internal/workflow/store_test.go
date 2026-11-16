@@ -42,6 +42,9 @@ func TestDispatchOwnershipOrderingAndAtomicOutbox(t *testing.T) {
 	if e != nil || completed["duplicate"] != false {
 		t.Fatal(e)
 	}
+	if _, e = s.Complete(id, "read", "account-a", "op-repeat-completed", store.Object{}); e == nil {
+		t.Fatal("completed stage accepted a new operation")
+	}
 	duplicate, e = s.Complete(id, "read", "account-a", "op-1", store.Object{})
 	if e != nil || duplicate["duplicate"] != true {
 		t.Fatal("completion not idempotent", e)
@@ -59,6 +62,9 @@ func TestDispatchOwnershipOrderingAndAtomicOutbox(t *testing.T) {
 	final, e := s.Get(id, "account-a")
 	if e != nil || final["status"] != "completed" {
 		t.Fatal("workflow not completed", e)
+	}
+	if _, e = s.Complete(id, "write", "account-a", "op-after-finish", store.Object{}); e == nil {
+		t.Fatal("completed workflow accepted another completion")
 	}
 	if e = s.Mark(store.String(events[0]["id"]), nil, 0); e != nil {
 		t.Fatal(e)
