@@ -41,6 +41,8 @@ jobs:
           go-version-file: go.mod
           cache: true
       - run: npm ci
+      - name: Test deployment diagnostics
+        run: python3 -m unittest discover -s scripts/tests -p 'test_deploy_transport.py'
       - run: npm test
       - run: npm run lint
       - run: npm run build
@@ -170,7 +172,7 @@ jobs:
           SSH_USER: ${{ secrets.FASTRD_SSH_USER }}
           SSH_PRIVATE_KEY: ${{ secrets.FASTRD_SSH_PRIVATE_KEY }}
           SSH_KNOWN_HOSTS: ${{ secrets.FASTRD_SSH_KNOWN_HOSTS }}
-        run: python3 scripts/transport.py
+        run: python3 "$GITHUB_WORKSPACE/scripts/deploy-transport.py"
       - name: Remove private temporary files
         if: always()
         env:

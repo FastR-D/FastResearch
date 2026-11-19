@@ -100,6 +100,8 @@ npm start
 
 CI 构建并打包 `bin/fastresearch` 和 `dist/`，使用 [Go FastDeploy 配置](deployments/fastdeploy-profile.json) 替换旧 Node 启动配置。保留原有 tag 触发部署与回滚流程；推送版本 tag 将触发生产部署流水线。
 
+部署传输使用 `scripts/deploy-transport.py`，分别记录打包、SSH 连通性、上传、激活与清理阶段。上传和激活默认各限时 600 秒，每 15 秒输出耗时；失败时仅记录阶段、超时上限、退出码及固定错误分类，不输出原始 SSH / 应用输出、连接地址或凭据。清理失败单独提示，保留原始失败阶段。CI 自动运行部署诊断测试。
+
 升级前备份整个数据目录，包含 `accounts.sqlite`、`workflows.sqlite`、WAL 文件和 `session-vault.key`。迁移只在现有 SQLite 中新增 `fr_*` 表，不修改旧表或 `access.json`。参见 [Go 迁移说明](docs/go-migration.md)。
 
 ## FastRD 互通
