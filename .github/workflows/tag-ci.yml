@@ -42,7 +42,7 @@ jobs:
           cache: true
       - run: npm ci
       - name: Test deployment diagnostics
-        run: python3 -m unittest discover -s scripts/tests -p 'test_deploy_transport.py'
+        run: python3 -m unittest discover -s scripts/tests -p 'test_deploy_*.py'
       - run: npm test
       - run: npm run lint
       - run: npm run build
@@ -78,6 +78,9 @@ jobs:
 
   deploy:
     needs: validate
+    permissions:
+      contents: read
+      actions: read
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -172,6 +175,7 @@ jobs:
           SSH_USER: ${{ secrets.FASTRD_SSH_USER }}
           SSH_PRIVATE_KEY: ${{ secrets.FASTRD_SSH_PRIVATE_KEY }}
           SSH_KNOWN_HOSTS: ${{ secrets.FASTRD_SSH_KNOWN_HOSTS }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: python3 "$GITHUB_WORKSPACE/scripts/deploy-transport.py"
       - name: Remove private temporary files
         if: always()

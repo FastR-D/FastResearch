@@ -1,12 +1,15 @@
 import contextlib
 import importlib.util
 import io
+import json
 import os
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import tarfile
 import unittest
+import urllib.error
 from unittest.mock import patch
 
 
@@ -79,6 +82,61 @@ class TransportDiagnosticsTests(unittest.TestCase):
         with patch.dict(os.environ, {"FASTDEPLOY_UPLOAD_TIMEOUT": "secret-value"}):
             with self.assertRaisesRegex(transport.DeploymentFailure, "configuration: invalid_timeout"):
                 transport.timeout_setting("FASTDEPLOY_UPLOAD_TIMEOUT")
+
+    def test_https_url_uses_encrypted_stdin_and_separate_download_stage(self):
+        url = "https://example.blob.core.windows.net/artifact?sig=private-signature"
+        calls = []
+
+        def capture(stage, command, **kwargs):
+            calls.append((stage, command))
+            self.assertNotIn("private-signature", str(command))
+            if stage == "download_artifact":
+                self.assertEqual(json.load(kwargs["stdin"]), {"url": url})
+
+        with tempfile.TemporaryDirectory() as directory:
+            archive = Path(directory) / "archive"
+            archive.write_bytes(b"test")
+            with patch.object(transport, "run_stage", side_effect=capture):
+                transport.transfer(["ssh"], "safe-path", archive, upload_timeout=600, activate_timeout=600, artifact_url=url)
+        self.assertEqual([stage for stage, _ in calls], ["ssh_probe", "upload", "download_artifact", "activate", "cleanup"])
+
+    def test_github_token_is_not_forwarded_to_artifact_storage(self):
+        url = "https://example.blob.core.windows.net/artifact?sig=private-signature"
+        listing = io.BytesIO(json.dumps({"artifacts": [{"id": 123, "name": "release-" + "a" * 40, "expired": False}]}).encode())
+        redirect = urllib.error.HTTPError("https://api.github.com/artifact", 302, "redirect", {"Location": url}, None)
+        output = io.StringIO()
+        with patch.dict(os.environ, {"GITHUB_TOKEN": "private-token", "GITHUB_REPOSITORY": "example/repo", "GITHUB_RUN_ID": "123", "GITHUB_SHA": "a" * 40}):
+            with patch.object(transport.urllib.request, "build_opener") as builder, contextlib.redirect_stdout(output):
+                builder.return_value.open.side_effect = [listing, redirect]
+                self.assertEqual(transport.artifact_url(), url)
+                for call in builder.return_value.open.call_args_list:
+                    self.assertTrue(call.args[0].full_url.startswith("https://api.github.com/"))
+        self.assertIsNone(transport.NoRedirect().redirect_request(None, None, None, None, None, None))
+        self.assertNotIn("private-token", output.getvalue())
+        self.assertNotIn("private-signature", output.getvalue())
+
+    def test_https_bootstrap_omits_large_archive_and_contains_downloader(self):
+        url = "https://example.blob.core.windows.net/artifact?sig=private-signature"
+        output = io.StringIO()
+        with tempfile.TemporaryDirectory() as directory:
+            bundle = Path(directory)
+            (bundle / "release.tar.gz").write_bytes(b"large archive")
+            (bundle / "request.json").write_text("{}")
+            (bundle / "remote.py").write_text("# reviewed remote activation")
+
+            def inspect(_ssh, _remote, archive, **kwargs):
+                self.assertEqual(kwargs["artifact_url"], url)
+                with tarfile.open(archive, "r:gz") as contents:
+                    self.assertEqual(set(contents.getnames()), {"request.json", "remote.py", "download-artifact.py"})
+                    self.assertNotIn(b"private-signature", contents.extractfile("download-artifact.py").read())
+
+            settings = {"BUNDLE_DIR": str(bundle), "SSH_HOST": "private-host", "SSH_USER": "private_user", "SSH_PORT": "22", "SSH_PRIVATE_KEY": "private-key", "SSH_KNOWN_HOSTS": "private-host-key", "GITHUB_TOKEN": "private-token"}
+            with patch.dict(os.environ, settings), patch.object(transport, "artifact_url", return_value=url):
+                with patch.object(transport, "transfer", side_effect=inspect) as transfer, contextlib.redirect_stdout(output):
+                    transport.main()
+                    transfer.assert_called_once()
+        for private in ("private-host", "private-key", "private-token", "private-signature"):
+            self.assertNotIn(private, output.getvalue())
 
 
 if __name__ == "__main__":

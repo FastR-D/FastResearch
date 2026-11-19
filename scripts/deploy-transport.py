@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """FastDeploy transport with bounded, secret-free phase diagnostics."""
 import os
+import json
 from pathlib import Path
 import re
 import shlex
@@ -9,6 +10,9 @@ import tarfile
 import tempfile
 import time
 import uuid
+import urllib.error
+import urllib.request
+from urllib.parse import urlsplit
 
 
 class DeploymentFailure(RuntimeError):
@@ -40,6 +44,10 @@ def failure_kind(output):
         "same run id has different release content": "remote_release_identity_conflict",
         "workflow predates the last deployment": "remote_stale_run",
         "fastdeploy failed;": "remote_activation_failed",
+        "artifact_download: timeout": "artifact_download_timeout",
+        "artifact_download: checksum_mismatch": "artifact_checksum_mismatch",
+        "artifact_download: invalid_archive": "artifact_archive_invalid",
+        "artifact_download: network_failed": "artifact_download_failed",
     }
     lowered = output.lower()
     return next((kind for text, kind in patterns.items() if text in lowered), "command_failed")
@@ -78,12 +86,19 @@ def run_stage(stage, command, *, timeout, stdin=None):
         report(stage, "success", elapsed_seconds=elapsed)
 
 
-def transfer(ssh, remote, archive, *, upload_timeout, activate_timeout):
+def transfer(ssh, remote, archive, *, upload_timeout, activate_timeout, artifact_url=None):
     try:
         run_stage("ssh_probe", ssh + ["true"], timeout=30)
         with archive.open("rb") as stream:
             run_stage("upload", ssh + [f"umask 077; mkdir -p {remote} && tar -xzf - -C {remote}"],
                       stdin=stream, timeout=upload_timeout)
+        if artifact_url:
+            # The short-lived URL travels over encrypted stdin, never argv or CI output.
+            with tempfile.TemporaryFile() as payload:
+                payload.write(json.dumps({"url": artifact_url}).encode())
+                payload.seek(0)
+                run_stage("download_artifact", ssh + [f"python3 -u {remote}/download-artifact.py {remote}"],
+                          stdin=payload, timeout=upload_timeout)
         run_stage("activate", ssh + [f"python3 -u {remote}/remote.py {remote}"], timeout=activate_timeout)
     finally:
         try:
@@ -100,6 +115,48 @@ def timeout_setting(name):
     return int(value)
 
 
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *_args, **_kwargs):
+        return None
+
+
+def artifact_url():
+    """Exchange the job token for a temporary, read-only artifact download URL."""
+    repository = os.environ["GITHUB_REPOSITORY"]
+    run = os.environ["GITHUB_RUN_ID"]
+    sha = os.environ["GITHUB_SHA"]
+    if not re.fullmatch(r"[\w.-]+/[\w.-]+", repository) or not run.isdigit() or not re.fullmatch(r"[0-9a-f]{40}", sha):
+        raise DeploymentFailure("artifact_url: invalid_release_identity")
+    headers = {"Authorization": "Bearer " + os.environ["GITHUB_TOKEN"],
+               "Accept": "application/vnd.github+json", "User-Agent": "FastResearch-Deploy"}
+    opener = urllib.request.build_opener(NoRedirect())
+    base = f"https://api.github.com/repos/{repository}/actions"
+    report("artifact_url", "start")
+    try:
+        with opener.open(urllib.request.Request(f"{base}/runs/{run}/artifacts?per_page=100", headers=headers), timeout=30) as response:
+            artifacts = json.load(response)["artifacts"]
+        artifact = next((item for item in artifacts if item["name"] == f"release-{sha}" and not item["expired"]), None)
+        if not artifact:
+            raise DeploymentFailure("artifact_url: artifact_not_found")
+        try:
+            opener.open(urllib.request.Request(f"{base}/artifacts/{int(artifact['id'])}/zip", headers=headers), timeout=30)
+        except urllib.error.HTTPError as response:
+            if response.code != 302:
+                raise DeploymentFailure(f"artifact_url: api_status_{response.code}") from None
+            url = response.headers["Location"]
+        else:
+            raise DeploymentFailure("artifact_url: unexpected_response")
+        parsed = urlsplit(url)
+        if parsed.scheme != "https" or parsed.username or parsed.password or not (parsed.hostname or "").endswith((".blob.core.windows.net", ".actions.githubusercontent.com")):
+            raise DeploymentFailure("artifact_url: untrusted_download_origin")
+    except DeploymentFailure:
+        raise
+    except Exception as error:
+        raise DeploymentFailure("artifact_url: request_failed") from error
+    report("artifact_url", "success")
+    return url
+
+
 def main():
     os.umask(0o077)
     bundle = Path(os.environ["BUNDLE_DIR"])
@@ -114,6 +171,7 @@ def main():
         raise DeploymentFailure("configuration: ssh_credentials_missing")
     upload_timeout = timeout_setting("FASTDEPLOY_UPLOAD_TIMEOUT")
     activate_timeout = timeout_setting("FASTDEPLOY_ACTIVATE_TIMEOUT")
+    url = artifact_url() if os.environ.get("GITHUB_TOKEN") else None
     with tempfile.TemporaryDirectory(prefix="fastdeploy-ssh-") as directory:
         root = Path(directory)
         (root / "key").write_text(os.environ["SSH_PRIVATE_KEY"] + "\n")
@@ -136,9 +194,12 @@ def main():
             for path in sorted(bundle.iterdir()):
                 if not path.is_file() or path.is_symlink():
                     raise DeploymentFailure("package: invalid_bundle_entry")
-                tar.add(path, arcname=path.name)
-        report("package", "success", bytes=archive.stat().st_size)
-        transfer(ssh, remote, archive, upload_timeout=upload_timeout, activate_timeout=activate_timeout)
+                if not url or path.name != "release.tar.gz":
+                    tar.add(path, arcname=path.name)
+            if url:
+                tar.add(Path(__file__).with_name("deploy-artifact.py"), arcname="download-artifact.py")
+        report("package", "success", bytes=archive.stat().st_size, transport="https_artifact" if url else "ssh_bundle")
+        transfer(ssh, remote, archive, upload_timeout=upload_timeout, activate_timeout=activate_timeout, artifact_url=url)
         report("deploy", "success")
 
 
