@@ -1,3 +1,4 @@
+import { text as t } from '../shared/copy'
 import { lazy, StrictMode, Suspense } from 'react'
 import { createRoot } from 'react-dom/client'
 import 'virtual:uno.css'
@@ -32,8 +33,8 @@ if (callback) {
   document.documentElement.lang = 'zh-CN'
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
-      <Suspense fallback={<main role="status">正在加载…</main>}>
-      {isWorkspace ? <App /> : isProductPage ? <PromoPage product={product} /> : <main className="route-not-found"><h1>没有找到这个页面</h1><p>可以从产品总览继续探索，或回到科研工作台。</p><a href={import.meta.env.BASE_URL}>产品总览</a><a href={workspaceHref}>进入工作台</a></main>}
+      <Suspense fallback={<main role="status">{t('common.loading')}</main>}>
+      {isWorkspace ? <App /> : isProductPage ? <PromoPage product={product} /> : <main className="route-not-found"><h1>{t('site.notFound.title')}</h1><p>{t('site.notFound.description')}</p><a href={import.meta.env.BASE_URL}>{t('site.overview')}</a><a href={workspaceHref}>{t('site.workspace')}</a></main>}
       </Suspense>
     </StrictMode>,
   )

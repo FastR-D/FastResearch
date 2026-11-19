@@ -12,10 +12,10 @@ export function FastCASDialog({ member, onClose, t }: { member: MemberSession; o
     void request<{ role: string }>('/api/auth/fastcas/status').then(value => { if (!cancelled) setRole(value.role) }).catch(err => { if (!cancelled) setError(err.message) })
     return () => { cancelled = true }
   }, [])
-  return <Dialog title="FastCAS 账号" onClose={onClose} t={t}><div className="grid gap-4">
-    <p>{member.person} · {role === 'admin' ? '管理员' : role ? '成员' : '读取中…'}</p>
-    <p>登录和账号由 FastCAS 统一管理。需要新账号时，请联系管理员创建或邀请；本站不开放自行注册。</p>
+  return <Dialog title={t('auth.accountTitle')} onClose={onClose} t={t}><div className="grid gap-4">
+    <p>{member.person} · {role === 'admin' ? t('auth.role.admin') : role ? t('auth.role.member') : t('common.reading')}</p>
+    <p>{t('auth.accountPolicy')}</p>
     {error && <Alert tone="danger">{error}</Alert>}
-    <Button variant="secondary" onClick={onClose}>返回工作台</Button>
+    <Button variant="secondary" onClick={onClose}>{t('admin.back')}</Button>
   </div></Dialog>
 }

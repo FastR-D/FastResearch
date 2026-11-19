@@ -1,6 +1,7 @@
+import { text as t } from '../copy'
 import { FlaskConical, type LucideIcon } from 'lucide-react'
 
-export function BrandLink({ href, name = 'FastResearch', Icon = FlaskConical, tagline, className = '' }: {
+export function BrandLink({ href, name = t('site.name'), Icon = FlaskConical, tagline, className = '' }: {
   href: string
   name?: string
   Icon?: LucideIcon

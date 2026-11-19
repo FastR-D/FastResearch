@@ -22,20 +22,20 @@ export function AdminDialog({ session, onLogout, onClose, t }: {
     setError('')
     if (session) void request<{ keys: PersonalKey[] }>('/api/admin/keys').then(value => {
       if (!cancelled) setAccounts(value.keys)
-    }).catch(err => { if (!cancelled) setError(err instanceof Error ? err.message : '读取账号失败') }).finally(() => { if (!cancelled) setLoading(false) })
+    }).catch(err => { if (!cancelled) setError(err instanceof Error ? err.message : t('admin.accountsFailed')) }).finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [session])
-  return <Dialog title="FastResearch 管理" onClose={onClose} wide={Boolean(session)} t={t}>
+  }, [session, t])
+  return <Dialog title={t('admin.title')} onClose={onClose} wide={Boolean(session)} t={t}>
     {session ? <div className="grid gap-6">
-      <p className="flex items-center gap-2"><ShieldCheck size={18} /> {session.username} · FastCAS 管理员</p>
-      <p>账号创建、邀请、停用和角色调整统一在 FastCAS 完成。这里自动同步管理员权限。</p>
-      {loading ? <Loading label="正在读取账号…" /> : accounts.length ? <Section className="max-h-96 overflow-y-auto">{accounts.map(account => <PanelRow key={account.id}><div className="min-w-0 break-words"><strong>{account.person}</strong><p>{account.id}</p></div></PanelRow>)}</Section> : !error && <EmptyState title="暂无同步账号" />}
+      <p className="flex items-center gap-2"><ShieldCheck size={18} /> {t('admin.identity', { username: session.username })}</p>
+      <p>{t('admin.centralPolicy')}</p>
+      {loading ? <Loading label={t('admin.accountsLoading')} /> : accounts.length ? <Section className="max-h-96 overflow-y-auto">{accounts.map(account => <PanelRow key={account.id}><div className="min-w-0 break-words"><strong>{account.person}</strong><p>{account.id}</p></div></PanelRow>)}</Section> : !error && <EmptyState title={t('admin.accountsEmpty')} />}
       {error && <Alert tone="danger">{error}</Alert>}
-      <Button variant="secondary" onClick={onClose}>返回工作台</Button>
-      <Button variant="quiet" onClick={() => { void request('/api/auth/logout', { method: 'POST' }).then(onLogout).catch(err => setError(err.message)) }}>退出登录</Button>
+      <Button variant="secondary" onClick={onClose}>{t('admin.back')}</Button>
+      <Button variant="quiet" onClick={() => { void request('/api/auth/logout', { method: 'POST' }).then(onLogout).catch(err => setError(err.message)) }}>{t('auth.logout')}</Button>
     </div> : <div className="grid gap-6">
-      <p>请使用 FastCAS 管理员账号登录。本站不提供独立管理员密码或自行注册入口。</p>
-      <a className="fastui-button fastui-button--primary" href={apiUrl('/api/auth/fastcas/login')}>使用 FastCAS 登录</a>
+      <p>{t('admin.loginPolicy')}</p>
+      <a className="fastui-button fastui-button--primary" href={apiUrl('/api/auth/fastcas/login')}>{t('auth.loginCAS')}</a>
     </div>}
   </Dialog>
 }

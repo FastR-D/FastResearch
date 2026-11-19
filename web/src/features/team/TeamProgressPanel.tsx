@@ -17,16 +17,16 @@ export function TeamProgressPanel({ members, currentKeyId, loading, onClose, app
         {members.map(member => {
           const appSummary = app ? member.apps?.[app.id] : undefined
           const today = appSummary?.tasks
-          const syncError = appSummary && appSummary.accountState !== 'active' ? appSummary.message ?? '应用任务尚未同步' : ''
+          const syncError = appSummary && appSummary.accountState !== 'active' ? appSummary.message ?? t('team.tasksUnsynced') : ''
           const workflow = member.workflow
           const percentage = workflow?.total ? Math.round(100 * workflow.doneCount / workflow.total) : 0
           return <Section key={member.keyId}>
-            <PanelHeading><h3>{member.person}</h3>{member.keyId === currentKeyId && <Badge>{t('team.me')}</Badge>}<span>{workflow ? `${workflow.doneCount}/${workflow.total} · ${percentage}%` : t('team.unassigned')}</span></PanelHeading>
+            <PanelHeading><h3>{member.person}</h3>{member.keyId === currentKeyId && <Badge>{t('team.me')}</Badge>}<span>{workflow ? t('team.workflowProgress', { done: workflow.doneCount, total: workflow.total, percent: percentage }) : t('team.unassigned')}</span></PanelHeading>
             <PanelBody>
               <progress className="fastui-progress w-full" aria-label={t('team.progressAria', { person: member.person })} value={percentage} max={100} />
               {workflow ? <ul>{workflow.tasks.map(task => <li key={task.id}><PanelRow><span className="flex-1 min-w-0 break-words">{task.title}</span><Badge tone={task.status === 'done' ? 'success' : task.status === 'active' ? 'info' : 'warning'}>{task.status === 'done' ? t('team.done') : task.status === 'active' ? t('team.active') : t('team.pending')}</Badge></PanelRow></li>)}</ul> : <p>{t('team.noTasks')}</p>}
-              <PanelHeading><CalendarCheck size={14} />{app ? `${app.name ?? '任务应用'} 今日任务` : '应用任务'}<span>{syncError ? '同步未完成' : today?.received ? `${today.progress.completed}/${today.progress.total}` : '暂无今日任务'}</span></PanelHeading>
-              {syncError ? <Alert tone="warning">{syncError}</Alert> : today?.received ? <ul>{today.items.map(item => <li key={item.id}><PanelRow><span className="flex-1 min-w-0 break-words">{item.title}</span><Badge tone={item.status === 'satisfied' ? 'success' : 'info'}>{t(taskStatusKey(item.status))}</Badge></PanelRow></li>)}</ul> : <p>{'暂无今日任务'}</p>}
+              <PanelHeading><CalendarCheck size={14} />{app ? t('team.appToday', { name: app.name ?? t('tasks.appName') }) : t('team.appTasks')}<span>{syncError ? t('team.syncIncomplete') : today?.received ? t('team.taskProgress', { done: today.progress.completed, total: today.progress.total }) : t('team.noTodayTasks')}</span></PanelHeading>
+              {syncError ? <Alert tone="warning">{syncError}</Alert> : today?.received ? <ul>{today.items.map(item => <li key={item.id}><PanelRow><span className="flex-1 min-w-0 break-words">{item.title}</span><Badge tone={item.status === 'satisfied' ? 'success' : 'info'}>{t(taskStatusKey(item.status))}</Badge></PanelRow></li>)}</ul> : <p>{t('team.noTodayTasks')}</p>}
             </PanelBody>
           </Section>
         })}

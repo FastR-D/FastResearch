@@ -1,3 +1,4 @@
+import { text as t } from '../../shared/copy'
 import { useCallback, useEffect, useState } from 'react'
 import { request } from '../../shared/api/client'
 import type { AppTaskSummary, MemberSession } from '../../shared/types'
@@ -29,7 +30,7 @@ export function useAppActivity(appId: string, member: MemberSession | null) {
         const value = await request<AppActivity>(`/api/workspace/apps/${appId}/activity`, { signal: controller.signal })
         if (!cancelled) setResult({ key, value, error: '' })
       } catch (error) {
-        if (!cancelled && !(error instanceof DOMException && error.name === 'AbortError')) setResult({ key, value: null, error: '暂时无法读取应用数据，请重试' })
+        if (!cancelled && !(error instanceof DOMException && error.name === 'AbortError')) setResult({ key, value: null, error: t('activity.failed') })
       }
     }
     void load()

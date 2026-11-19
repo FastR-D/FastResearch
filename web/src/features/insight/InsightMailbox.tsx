@@ -17,12 +17,12 @@ export function InsightMailbox({ member, items, selectedId, readIds, onSelect, o
       <p>{member ? t('insight.personal', { person: member.person }) : t('insight.lockedDescription')}</p>
       {!member ? <EmptyState title={t('insight.lockedTitle')} action={<Button variant="secondary" onClick={onUnlock}>{t('insight.unlock')}<KeyRound size={14} /></Button>}><p>{t('insight.lockedHint')}</p></EmptyState>
         : !items.length ? <EmptyState title={t('insight.empty')}><p>{t('insight.emptyHint')}</p></EmptyState> : <div className="grid lg:grid-cols-3 gap-6 lg:gap-8 items-start">
-          <nav aria-label="信箱条目" className="grid gap-1 min-w-0 max-h-96 overflow-y-auto">
+          <nav aria-label={t('insight.itemsAria')} className="grid gap-1 min-w-0 max-h-96 overflow-y-auto">
             {items.map(item => <Button variant="navigation" key={item.id} aria-pressed={selected?.id === item.id} aria-controls="insight-detail" onClick={() => onSelect(item.id)} className="justify-start text-left whitespace-normal">
               <span className="grid gap-2 min-w-0 break-words p-3 text-sm leading-6"><strong>{item.title}</strong><small>{item.direction ? t('insight.reading', { direction: item.direction }) : t('insight.card')}</small><small>{formatTime(item.receivedAt)}{item.source ? ` · ${item.source}` : ''}</small>{!readIds.has(item.id) && <span>{t('insight.unread', { count: 1 })}</span>}</span>
             </Button>)}
           </nav>
-          <article id="insight-detail" aria-label="信箱详情" className="lg:col-span-2 min-w-0 break-words grid gap-6" aria-live="polite">
+          <article id="insight-detail" aria-label={t('insight.detailAria')} className="lg:col-span-2 min-w-0 break-words grid gap-6" aria-live="polite">
             {selected ? <>
               <Badge>{selected.direction ? t('insight.direction', { direction: selected.direction }) : t('insight.result')}</Badge>
               <h3 className="fastui-heading text-lg">{selected.title}</h3><time>{formatTime(selected.receivedAt)}</time>
@@ -34,7 +34,7 @@ export function InsightMailbox({ member, items, selectedId, readIds, onSelect, o
               {detail.abstract && <Section><PanelHeading><h3>{t('insight.abstract')}</h3></PanelHeading><p className="p-5 md:p-6 whitespace-pre-line text-sm leading-7">{detail.abstract}</p></Section>}
               {detail.trend && <Section><PanelHeading><h3>{t('insight.trend')}</h3></PanelHeading><p className="p-5 md:p-6 whitespace-pre-line text-sm leading-7">{detail.trend}</p></Section>}
               <small>{t('insight.archived')}</small>
-              <Toolbar label="论文操作" data-fastui-density="touch"><Button variant="primary" onClick={onOpenFastRead}><BookOpenText size={15} />{t('insight.fastRead')}</Button>{selected.url && <a className="fastui-button fastui-button--secondary" href={selected.url} target="_blank" rel="noreferrer">{t('insight.open')}<ExternalLink size={14} /></a>}</Toolbar>
+              <Toolbar label={t('insight.actionsAria')} data-fastui-density="touch"><Button variant="primary" onClick={onOpenFastRead}><BookOpenText size={15} />{t('insight.fastRead')}</Button>{selected.url && <a className="fastui-button fastui-button--secondary" href={selected.url} target="_blank" rel="noreferrer">{t('insight.open')}<ExternalLink size={14} /></a>}</Toolbar>
             </> : <EmptyState title={t('insight.select')} />}
           </article>
         </div>}

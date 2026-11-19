@@ -151,7 +151,7 @@ export function FastInsightRosterEditor({ session, onAdminOpen, onSessionExpired
   const keywordCount = roster?.directions.reduce((count, direction) => count + direction.keywords.filter(Boolean).length, 0) ?? 0
   return <form onSubmit={save} aria-label={t('routing.title')} className="grid gap-6">
     <p>{t('routing.description')} <code className="break-all">{fileName}</code></p>
-    <Toolbar label="分发名册操作">
+    <Toolbar label={t('routing.actionsAria')}>
       {dirty && <Badge tone="warning">{t('routing.unsaved')}</Badge>}
       <Button variant="secondary" onClick={addDirection} disabled={loading || !roster}><Plus size={15} />{t('routing.addDirection')}</Button>
       <Button variant="primary" type="submit" disabled={loading || !roster} loading={saving}><Save size={15} />{saving ? t('routing.saving') : t('routing.save')}</Button>
@@ -161,14 +161,14 @@ export function FastInsightRosterEditor({ session, onAdminOpen, onSessionExpired
     {loading ? <Loading label={t('routing.loading')} /> : roster && <>
       {!roster.directions.length && <EmptyState title={t('routing.empty')} />}
       {roster.directions.map((direction, directionIndex) => <Section key={directionIndex}>
-        <PanelHeading><h3>研究方向 {directionIndex + 1}</h3><Button variant="icon" aria-label={t('routing.removeDirection')} onClick={() => changeRoster(current => ({ ...current, directions: current.directions.filter((_, index) => index !== directionIndex) }))}><Trash2 size={15} /></Button></PanelHeading>
+        <PanelHeading><h3>{t('routing.directionTitle', { index: directionIndex + 1 })}</h3><Button variant="icon" aria-label={t('routing.removeDirection')} onClick={() => changeRoster(current => ({ ...current, directions: current.directions.filter((_, index) => index !== directionIndex) }))}><Trash2 size={15} /></Button></PanelHeading>
         <div className="fastui-modal-body">
           <div className="grid sm:grid-cols-2 gap-4">
             <label className="fastui-field">{t('routing.directionName')}<TextField value={direction.name} onChange={event => changeDirection(directionIndex, { name: event.target.value })} placeholder={t('routing.directionPlaceholder')} required /></label>
             <label className="fastui-field">{t('routing.priority')}<TextField type="number" value={direction.priority ?? ''} onChange={event => changeDirection(directionIndex, { priority: event.target.value === '' ? undefined : Number(event.target.value) })} min="0" /></label>
           </div>
           <label className="fastui-field">{t('routing.keywords')}<small>{t('routing.keywordsHint')}</small><TextArea value={direction.keywords.join('\n')} onChange={event => changeDirection(directionIndex, { keywords: event.target.value.split(/\r?\n/).map(keyword => keyword.trim()) })} placeholder={t('routing.keywordsPlaceholder')} rows={4} /></label>
-          <Toolbar label="研究方向负责人"><UsersRound size={15} />{t('routing.owners')}<Button variant="quiet" onClick={() => addOwner(directionIndex)}><Plus size={14} />{t('routing.addOwner')}</Button></Toolbar>
+          <Toolbar label={t('routing.ownersAria')}><UsersRound size={15} />{t('routing.owners')}<Button variant="quiet" onClick={() => addOwner(directionIndex)}><Plus size={14} />{t('routing.addOwner')}</Button></Toolbar>
           {direction.owners.map((owner, ownerIndex) => <div className="grid sm:grid-cols-2 gap-4 items-end" key={ownerIndex}>
             <label className="fastui-field">{t('routing.ownerName')}<TextField value={owner.name} onChange={event => changeOwner(directionIndex, ownerIndex, { name: event.target.value })} placeholder={t('routing.ownerNamePlaceholder')} required /></label>
             <label className="fastui-field">{t('routing.feishuOpenId')}<TextField value={owner.feishu_open_id ?? ''} onChange={event => changeOwner(directionIndex, ownerIndex, { feishu_open_id: event.target.value })} placeholder={t('routing.feishuPlaceholder')} /></label>

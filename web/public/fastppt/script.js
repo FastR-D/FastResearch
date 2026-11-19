@@ -7,18 +7,22 @@
   } catch (_) {}
   root.dataset.theme = storedTheme;
 
-  const initialize = () => {
+  const catalogURL = new URL("../i18n.json", document.currentScript?.src ?? window.location.href);
+  const catalog = fetch(catalogURL).then(response => response.json());
+  const initialize = async () => {
+    const messages = await catalog;
+    const t = (key, vars = {}) => (messages[key] ?? key).replace(/\{\{(\w+)\}\}/g, (_, name) => String(vars[name] ?? `{{${name}}}`));
     const themeToggle = document.getElementById("theme-toggle");
     const themeLabel = themeToggle.querySelector(".theme-label");
     const themeColor = document.querySelector('meta[name="theme-color"]');
     const applyTheme = (theme) => {
       root.dataset.theme = theme;
       const dark = theme === "dark";
-      const label = dark ? "切换到日间模式" : "切换到深色模式";
+      const label = dark ? t("legacy.ppt.theme.lightAria") : t("legacy.ppt.theme.darkAria");
       themeToggle.setAttribute("aria-pressed", String(dark));
       themeToggle.setAttribute("aria-label", label);
       themeToggle.title = label;
-      themeLabel.textContent = dark ? "日间模式" : "深色模式";
+      themeLabel.textContent = dark ? t("legacy.ppt.theme.light") : t("legacy.ppt.theme.dark");
       themeColor.content = dark ? "#0b1322" : "#f6f6f9";
     };
     applyTheme(storedTheme);
@@ -71,17 +75,17 @@
     const showSlide = (index) => {
       currentIndex = (index + currentSlides.length) % currentSlides.length;
       const card = currentSlides[currentIndex];
-      title.textContent = `${card.dataset.galleryTitle} · ${card.dataset.title}`;
-      counter.textContent = `预览 ${currentIndex + 1} / ${currentSlides.length} · 原稿第 ${card.dataset.page} 页`;
-      image.alt = `${card.dataset.galleryTitle}：${card.dataset.title}，原稿第 ${card.dataset.page} 页`;
-      status.textContent = "正在加载高清预览…";
+      title.textContent = t("legacy.ppt.preview.title", { gallery: card.dataset.galleryTitle, title: card.dataset.title });
+      counter.textContent = t("legacy.ppt.preview.counter", { index: currentIndex + 1, total: currentSlides.length, page: card.dataset.page });
+      image.alt = t("legacy.ppt.preview.imageAlt", { gallery: card.dataset.galleryTitle, title: card.dataset.title, page: card.dataset.page });
+      status.textContent = t("legacy.ppt.preview.loading");
       image.src = card.href;
       original.href = card.href;
       const request = ++imageRequest;
       image.decode().then(() => {
-        if (request === imageRequest) status.textContent = "支持键盘左右方向键切换";
+        if (request === imageRequest) status.textContent = t("legacy.ppt.preview.keyboardHint");
       }).catch(() => {
-        if (request === imageRequest) status.textContent = "图片暂未加载，请尝试打开原图";
+        if (request === imageRequest) status.textContent = t("legacy.ppt.preview.failed");
       });
       const adjacent = new Image();
       adjacent.src = currentSlides[(currentIndex + 1) % currentSlides.length].href;
@@ -117,7 +121,7 @@
     const updateComparison = (range, value) => {
       const position = Math.max(0, Math.min(100, Number(value)));
       range.value = String(position);
-      range.setAttribute("aria-valuetext", position === 0 ? "完整原版" : position === 100 ? "完整更新版" : `更新版显示 ${position}%，原版显示 ${100 - position}%`);
+      range.setAttribute("aria-valuetext", position === 0 ? t("legacy.ppt.comparison.before") : position === 100 ? t("legacy.ppt.comparison.after") : t("legacy.ppt.comparison.position", { after: position, before: 100 - position }));
       range.closest(".image-comparison").style.setProperty("--position", `${position}%`);
     };
     document.querySelectorAll(".comparison-range").forEach((range) => {
@@ -169,11 +173,11 @@
         modalBefore.alt = before.alt;
         modalAfter.src = after.src;
         modalAfter.alt = after.alt;
-        modalRange.setAttribute("aria-label", `${card.dataset.title}前后对比，向左查看原版，向右查看更新版`);
+        modalRange.setAttribute("aria-label", t("legacy.ppt.comparison.rangeAria", { title: card.dataset.title }));
         document.getElementById("comparison-before-link").href = before.src;
         document.getElementById("comparison-after-link").href = after.src;
-        comparisonDialog.querySelector('[data-compare-position="0"]').textContent = `← 原版 · 第 ${card.dataset.beforePage} 页`;
-        comparisonDialog.querySelector('[data-compare-position="100"]').textContent = `更新版 · 第 ${card.dataset.afterPage} 页 →`;
+        comparisonDialog.querySelector('[data-compare-position="0"]').textContent = t("legacy.ppt.comparison.beforePage", { page: card.dataset.beforePage });
+        comparisonDialog.querySelector('[data-compare-position="100"]').textContent = t("legacy.ppt.comparison.afterPage", { page: card.dataset.afterPage });
         updateComparison(modalRange, card.querySelector(".comparison-range").value);
         openDialog(comparisonDialog, button, comparisonClose);
       });

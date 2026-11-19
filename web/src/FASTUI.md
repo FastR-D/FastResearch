@@ -24,6 +24,8 @@
 
 ## 产品页
 
-产品总页位于 `/`，各应用介绍位于 `/intro/短名称`。`PromoPage.tsx` 按需加载 `styles/promo.css`，工作台不加载宣传页 CSS。`JourneyTrail.tsx` 与 `use-screen-journey.ts` 提供中文整屏切换与连续缓弯路线；品牌叙事、线路、产品截图与内容属于 Research。`products.ts` 维护应用内容和入口，`copy.ts` 维护工作台中文，不包含 i18n。
+产品总页位于 `/`，各应用介绍位于 `/intro/短名称`。`PromoPage.tsx` 按需加载 `styles/promo.css`，工作台不加载宣传页 CSS。`JourneyTrail.tsx` 与 `use-screen-journey.ts` 提供中文整屏切换与连续缓弯路线；品牌叙事、线路、产品截图与内容属于 Research。`products.ts` 维护应用结构和入口，所有前端展示文案统一在 `web/src/i18n.json` 修改，`copy.ts` 提供读取和插值。
+
+文案按 `products.*`、`promo.*`、`workspace.*`、`auth.*`、`activity.*`、`tasks.*`、`team.*`、`routing.*`、`insight.*` 等键分组，HTML 标题和旧 FastPPT 静态页面使用同一份文件。修改 JSON 中的值即可，保留键名与 `{{name}}`、`{{count}}` 等占位符，修改后重新构建发布。接口返回的错误、用户数据和用于解析接口内容的固定标记不属于可编辑展示文案。
 
 当前页面结构与浏览器验收命令见 `docs/FASTRESEARCH-STYLE.md`。早期 `FASTRESEARCH-PROMO-PAGE.md` 为历史规划，当前路由和内容以现行规范及实现为准。

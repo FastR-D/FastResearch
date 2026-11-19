@@ -1,3 +1,4 @@
+import { text as t } from '../../shared/copy'
 import { hasCASSessionHint, markCASRenewalFailed, rememberCASSession, renewCASIfNeeded, renewCASLogin } from '../../shared/auth/cas-renewal'
 import { useEffect,useState } from 'react';
 import { APIError, request } from '../../shared/api/client';
@@ -34,13 +35,13 @@ export function useIdentity(notice: (value: string) => void) {
       if (cancelled) return
       setMember({ token: '', person: value.person, keyId: value.keyId, accountId: value.accountId, source: value.source, expiresAt: value.expiresAt, role: value.role })
       if (value.role === 'admin') setSession({ token: '', username: value.person, expiresAt: value.expiresAt })
-      if (marker === 'complete') notice('FastCAS 登录成功')
+      if (marker === 'complete') notice(t('auth.loginSuccess'))
     }).catch(async error => {
       if (cancelled) return
       if (error instanceof APIError && error.status === 401 && previousCAS && marker !== 'failed' && await available && !cancelled && renewCASLogin()) return
-      if (marker === 'complete') notice('会话已失效，请重新登录')
+      if (marker === 'complete') notice(t('auth.sessionExpired'))
     }).finally(() => { if (!cancelled) setRestored(true) })
-    if (marker === 'failed') notice('FastCAS 登录未完成，请重试或联系管理员')
+    if (marker === 'failed') notice(t('auth.loginFailed'))
     return () => { cancelled = true }
   }, [notice])
   useEffect(() => {

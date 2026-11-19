@@ -1,3 +1,4 @@
+import { text as t } from '../copy'
 import type { BearerSession } from '../types'
 export const apiUrl = (path: string) => `${(import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '')}${path}`
 export class APIError extends Error {
@@ -14,6 +15,6 @@ export async function request<T>(path: string, init: RequestInit = {}, session?:
   if (session?.token) headers.set('Authorization', `Bearer ${session.token}`)
   const response = await fetch(apiUrl(path), { ...init, headers, credentials: 'include' })
   const payload = await response.json().catch(() => ({} as { error?: string }))
-  if (!response.ok) throw new APIError(payload.error ?? '请求失败', response.status)
+  if (!response.ok) throw new APIError(payload.error ?? t('error.failed'), response.status)
   return payload as T
 }
