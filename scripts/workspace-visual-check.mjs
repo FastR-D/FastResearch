@@ -11,6 +11,11 @@ const browser = await chromium.launch({ executablePath: process.env.EDGE_PATH ??
 const errors = []
 const longText = '科研项目与协作进展'.repeat(15)
 const today = { received: true, date: '2026-11-12', progress: { total: 3, completed: 1, inProgress: 1, planned: 1, skipped: 0 }, items: ['satisfied', 'in_progress', 'planned'].map((status, i) => ({ id: `today-${i}`, title: `今日任务 ${i + 1} ${longText}`, status, minimumAction: '阅读并记录研究发现', targetMinutes: 30 })) }
+const team = [
+  { keyId: 'key-1', person: '测试管理员', workflow: { doneCount: 1, total: 15, tasks: Array.from({ length: 15 }, (_, i) => ({ id: String(i), title: `我的流程任务 ${i + 1} ${longText}`, status: i === 0 ? 'done' : 'pending' })) }, apps: { planner: { accountState: 'active', tasks: today } } },
+  { keyId: 'key-2', person: '成员乙', workflow: { doneCount: 0, total: 1, tasks: [{ id: 'other-task', title: '成员乙的专属任务', status: 'active' }] } },
+  ...Array.from({ length: 24 }, (_, i) => ({ keyId: `member-${i}`, person: `研究员 ${i + 1}`, workflow: null })),
+]
 const items = Array.from({ length: 20 }, (_, i) => ({ id: `paper-${i}`, title: `论文 ${i + 1} ${longText}`, summary: '研究摘要与关键发现', url: 'https://example.test/' + 'paper'.repeat(50), authors: longText, venue: '研究会议', direction: '安全', receivedAt: '2026-11-12T00:00:00Z' }))
 try {
   for (const colorScheme of ['light', 'dark']) for (const width of [320, 390, 768, 1440]) {
@@ -34,7 +39,7 @@ try {
         case '/api/admin/keys': json = { keys: Array.from({ length: 60 }, (_, i) => ({ id: `key-${i}`, person: `研究员 ${i} ${longText}` })) }; break
         case '/api/auth/fastcas/status': json = { role: 'admin' }; break
         case '/api/workspace/apps': json = { apps: ['fast-news', 'fast-read', 'fast-write', 'fast-ppt', 'fast-lab', 'planner'].map(id => ({ id, name: id === 'planner' ? '任务规划器' : id, configured: id !== 'fast-lab', auth: 'cas', capabilities: id === 'planner' ? ['activity','tasks'] : ['fast-news','fast-read','fast-write'].includes(id) ? ['activity'] : [], launchPath: `/api/workspace/apps/${id}/launch` })) }; break
-        case '/api/workflow/team': json = { members: emptyTeam ? [] : [{ keyId: 'key-1', person: '测试管理员', workflow: { doneCount: 1, total: 3, tasks: ['done', 'active', 'pending'].map((status, i) => ({ id: String(i), title: longText, status })) }, apps: { planner: { accountState: 'active', tasks: today } } }] }; break
+        case '/api/workflow/team': json = { members: emptyTeam ? [] : team }; break
         case '/api/admin/fastinsight/roster':
           if (route.request().method() === 'PUT') {
             saved = route.request().postDataJSON()
@@ -56,7 +61,7 @@ try {
         const heading = await page.locator('h1').boundingBox()
         const action = await page.getByRole('button', { name: /使用 CAS 进入|打开 Fast|正在读取/ }).boundingBox()
         assert.ok(action.x >= heading.x + heading.width - 1, 'launch action must sit beside the title')
-        assert.ok(Math.abs(action.y + action.height / 2 - heading.y - heading.height / 2) <= 1, 'title/action should align vertically')
+        assert.ok(Math.abs(action.y + action.height / 2 - heading.y - heading.height / 2) <= 1, 'title and launch action should align vertically')
       }
       assert.equal(await page.locator('footer').count(), 0)
       const layout = await page.evaluate(() => {
@@ -83,6 +88,11 @@ try {
     await page.goto(origin + '/workspace?tool=fast-news', { waitUntil: 'networkidle' })
     await page.getByRole('region', { name: 'FastNews 个人动态', exact: true }).getByText(longText, { exact: true }).first().waitFor()
     await assertLayout()
+    const brandRadius = () => page.locator('.story-brand-mark').evaluate(mark => getComputedStyle(mark).borderRadius)
+    assert.equal(await brandRadius(), '6px')
+    const accountName = page.locator('header strong').getByText('测试管理员', { exact: true })
+    assert.ok(await accountName.evaluate(name => Number(getComputedStyle(name).fontWeight) >= 700))
+    assert.equal(await accountName.locator('xpath=preceding-sibling::*').innerText(), '测')
     const metric = page.getByRole('region', { name: 'FastNews 个人动态', exact: true }).locator('dl > div').first()
     const metricStyle = await metric.evaluate(el => {
       const label = el.querySelector('dt'), number = el.querySelector('dd')
@@ -92,7 +102,8 @@ try {
     assert.ok(Math.abs(metricStyle.number.y + metricStyle.number.height/2 - metricStyle.label.y - metricStyle.label.height/2) < 1)
     assert.ok(metricStyle.fontSize >= 30 && metricStyle.weight >= 700)
     assert.equal(await page.getByText('从这里开始', { exact: true }).count(), 0)
-    assert.equal(await page.getByRole('link', { name: '了解 FastNews', exact: true }).count(), 0)
+    assert.equal(await page.getByRole('link', { name: /了解 Fast/ }).count(), 0)
+    assert.equal(await page.locator('header').getByRole('link', { name: 'FastNews', exact: true }).getAttribute('href'), '/intro/news')
     assert.equal(await page.locator('#workspace-content ol').count(), 0)
     assert.equal(await page.getByRole('button', { name: '使用 CAS 进入', exact: true }).isEnabled(), true)
     assert.equal(await page.locator('link[rel=stylesheet]').evaluateAll(links => links.some(link => link.href.includes('PromoPage'))), false)
@@ -100,11 +111,12 @@ try {
     for (const name of ['FastRead', 'FastWrite', 'FastPPT', 'FastLab']) {
       await nav(name)
       await page.getByRole('heading', { name, exact: true, level: 1 }).waitFor()
+      assert.equal(await page.locator('header').getByRole('link', { name, exact: true }).getAttribute('href'), `/intro/${name.slice(4).toLowerCase()}`)
       await assertLayout()
     }
     assert.equal(await page.getByRole('button', { name: '使用 CAS 进入', exact: true }).isDisabled(), true)
-    assert.equal(await page.getByText('从这里开始', { exact: true }).count(), 1)
-    assert.equal(await page.getByRole('link', { name: '了解 FastLab', exact: true }).count(), 1)
+    await page.getByText('当前部署尚未配置该工具入口。', { exact: true }).waitFor()
+    assert.equal(await page.locator('#workspace-content ul, #workspace-content ol').count(), 0)
     await nav('今日任务')
     await page.getByRole('button', { name: '打开 任务规划器', exact: true }).waitFor()
     await page.getByRole('progressbar').waitFor()
@@ -118,43 +130,120 @@ try {
     await assertLayout()
     await page.screenshot({ path: path.join(output, `${colorScheme}-${width}-insight.png`), fullPage: true })
     await nav('团队进度')
-    await page.getByRole('progressbar').waitFor()
+    const memberNav = page.getByRole('navigation', { name: '团队成员' })
+    const memberDetail = page.locator('#team-member-detail')
+    const memberHeading = name => memberDetail.getByRole('heading', { name, level: 2, exact: true })
+    await memberHeading('测试管理员').waitFor()
+    assert.equal(await memberNav.getByRole('button').count(), team.length)
+    assert.equal(await memberDetail.getByRole('progressbar').count(), 1)
+    assert.equal(await memberDetail.getByText('成员乙的专属任务').count(), 0)
+    assert.ok((await memberNav.boundingBox()).x < (await memberDetail.boundingBox()).x)
+    assert.equal(await memberDetail.evaluate(el => el.scrollWidth > el.clientWidth), false)
+    const sidebarHeader = await memberNav.locator(':scope > div').first().boundingBox()
+    const detailHeader = await memberDetail.locator(':scope > div').first().boundingBox()
+    assert.ok(sidebarHeader.height >= 64)
+    assert.equal(sidebarHeader.y, detailHeader.y)
+    assert.equal(sidebarHeader.height, detailHeader.height)
+    await memberDetail.hover()
+    await page.mouse.wheel(0, 240)
+    await page.waitForFunction(() => document.getElementById('team-member-detail').scrollTop > 0)
+    await memberHeading('测试管理员').waitFor()
+    await memberDetail.evaluate(el => { el.scrollTop = el.scrollHeight })
+    await page.mouse.wheel(0, 220)
+    await memberHeading('成员乙').waitFor()
+    assert.equal(await memberDetail.getByText('成员乙的专属任务').count(), 1)
+    assert.equal(await memberDetail.getByText('我的流程任务', { exact: false }).count(), 0)
+    assert.equal(await memberNav.getByRole('button', { name: '成员乙' }).getAttribute('aria-current'), 'true')
+    const primaryColor = await accountName.locator('xpath=preceding-sibling::*').evaluate(el => getComputedStyle(el).backgroundColor)
+    await page.waitForFunction(color => {
+      const active = document.querySelector('button[aria-controls="team-member-detail"][aria-current="true"]')
+      return active && getComputedStyle(active).backgroundColor === color
+    }, primaryColor)
+    await page.mouse.wheel(0, -220)
+    await memberHeading('测试管理员').waitFor()
+    await memberNav.hover()
+    await page.mouse.wheel(0, 220)
+    await memberHeading('成员乙').waitFor()
+    await page.mouse.wheel(0, -220)
+    await memberHeading('测试管理员').waitFor()
+    await memberNav.getByRole('button', { name: '研究员 24', exact: true }).click()
+    await memberHeading('研究员 24').waitFor()
+    await memberDetail.getByRole('button', { name: '上一位成员' }).click()
+    await memberHeading('研究员 23').waitFor()
+    await memberDetail.getByRole('button', { name: '下一位成员' }).click()
+    await memberHeading('研究员 24').waitFor()
+    assert.equal(await memberDetail.getByRole('button', { name: '下一位成员' }).isDisabled(), true)
+    if (colorScheme === 'light' && width === 390) {
+      const touch = await context.newCDPSession(page)
+      const swipe = async (pane, delta) => {
+        const box = await pane.boundingBox()
+        const x = Math.round(box.x + box.width / 2)
+        const y = Math.round(box.y + box.height / 2)
+        await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] })
+        for (const fraction of [0.25, 0.5, 0.75, 1]) {
+          await touch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y + delta * fraction }] })
+        }
+        await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+      }
+      await swipe(memberDetail, 120)
+      await memberHeading('研究员 23').waitFor()
+      await swipe(memberNav, -120)
+      await memberHeading('研究员 24').waitFor()
+      await touch.detach()
+    }
+    await memberNav.getByRole('button', { name: '测试管理员', exact: true }).click()
+    await memberHeading('测试管理员').waitFor()
     await assertLayout()
     await page.screenshot({ path: path.join(output, `${colorScheme}-${width}-team.png`), fullPage: true })
     await page.goBack()
     await page.getByRole('navigation', { name: '信箱条目' }).waitFor()
     await nav('论文分发设置')
-    const dialog = page.getByRole('dialog')
-    await dialog.getByLabel('研究方向', { exact: true }).fill('新方向')
-    const modalHeaderHeight = await dialog.locator(':scope > .fastui-panel-header').evaluate(el => el.getBoundingClientRect().height)
-    assert.ok(modalHeaderHeight <= (width < 768 ? 58 : 42), `modal header is too tall: ${modalHeaderHeight}`)
+    assert.equal(new URL(page.url()).searchParams.get('view'), 'routing')
+    const routing = page.getByRole('region', { name: '论文分发设置', exact: true })
+    await routing.getByLabel('研究方向', { exact: true }).fill('新方向')
     // The direction name previously formed its React key and lost focus on edits.
-    assert.equal(await dialog.getByLabel('研究方向', { exact: true }).evaluate(el => el === document.activeElement), true)
-    await dialog.getByLabel('匹配关键词', { exact: false }).fill('Agent\nSecurity')
-    await dialog.getByRole('button', { name: '保存设置', exact: true }).click()
+    assert.equal(await routing.getByLabel('研究方向', { exact: true }).evaluate(el => el === document.activeElement), true)
+    await routing.getByLabel('匹配关键词', { exact: false }).fill('Agent\nSecurity')
+    await routing.getByRole('button', { name: '保存设置', exact: true }).click()
     await page.getByText('FastInsight分发设置已保存', { exact: true }).waitFor()
     assert.equal(saved.roster.directions[0].name, '新方向')
     assert.deepEqual(saved.roster.directions[0].keywords, ['Agent', 'Security'])
-    assert.equal(await dialog.evaluate(el => el.scrollWidth > el.clientWidth), false)
+    assert.equal(await routing.evaluate(el => el.scrollWidth > el.clientWidth), false)
+    assert.equal(await page.getByRole('dialog').count(), 0)
+    await assertLayout()
     await page.screenshot({ path: path.join(output, `${colorScheme}-${width}-roster.png`) })
-    await page.keyboard.press('Escape')
-    if (width < 768 && await page.getByRole('button', { name: '工具导航', exact: true }).getAttribute('aria-expanded') === 'false') await page.getByRole('button', { name: '工具导航', exact: true }).click()
-    await page.getByRole('button', { name: '管理员登录', exact: true }).click()
-    await dialog.getByText('研究员 59', { exact: false }).waitFor()
-    assert.equal(await dialog.evaluate(el => el.scrollWidth > el.clientWidth), false)
+    await nav('管理账号')
+    assert.equal(new URL(page.url()).searchParams.get('view'), 'admin')
+    const admin = page.getByRole('region', { name: '管理账号', exact: true })
+    await admin.getByText('研究员 59', { exact: false }).waitFor()
+    assert.equal(await admin.evaluate(el => el.scrollWidth > el.clientWidth), false)
+    assert.equal(await page.getByRole('dialog').count(), 0)
+    await assertLayout()
     await page.screenshot({ path: path.join(output, `${colorScheme}-${width}-admin.png`) })
-    await page.keyboard.press('Escape')
+    await page.goBack()
+    await routing.getByLabel('研究方向', { exact: true }).waitFor()
+    await page.goForward()
+    await admin.getByText('研究员 59', { exact: false }).waitFor()
     emptyTeam = true
     await page.goto(origin + '/workspace?view=team', { waitUntil: 'networkidle' })
     await page.getByText('暂无团队任务数据', { exact: false }).waitFor()
     signedIn = false
+    await page.goto(origin + '/workspace?view=routing', { waitUntil: 'networkidle' })
+    await page.getByRole('button', { name: '打开管理员登录' }).click()
+    const login = await admin.getByRole('link', { name: /FastCAS/ }).getAttribute('href')
+    assert.equal(new URL(login, origin).searchParams.get('next'), '/workspace?view=admin')
     await page.goto(origin + '/workspace?tool=fast-news', { waitUntil: 'networkidle' })
-    await page.getByRole('link', { name: '了解 FastNews', exact: true }).waitFor()
-    assert.equal(await page.getByText('从这里开始', { exact: true }).count(), 1)
+    await page.getByRole('heading', { name: '让注意力，落在值得研究的问题上。', exact: true }).waitFor()
+    await page.getByText('把学术动态、顶会论文与领域导读放到一处。从一个关键词出发，发现值得继续追踪的研究线索。', { exact: true }).waitFor()
+    assert.equal(await page.getByText('当前部署尚未配置该工具入口。', { exact: true }).count(), 0)
+    assert.equal(await page.locator('#workspace-content ul, #workspace-content ol').count(), 0)
     await assertLayout()
     await page.screenshot({ path: path.join(output, `${colorScheme}-${width}-guest.png`), fullPage: true })
+    await page.locator('header .story-brand-mark').click()
+    await page.waitForURL('**/intro/news')
+    assert.equal(await brandRadius(), '6px')
     await context.close()
   }
   assert.deepEqual(errors, [])
-  console.log('Workspace checks passed: 4 widths × 2 themes, tool navigation/history, tasks, mailbox/read state, team/empty state, long admin list, roster editing and revision save, full-height sidebar/scrolling, comfortable spacing, compact modal headers, member/deployment-specific content')
+  console.log('Workspace checks passed: 4 widths × 2 themes, product intro links, task and mailbox navigation, aligned team headers and member switching, account and roster pages, history, and revision save')
 } finally { await browser.close() }

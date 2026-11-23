@@ -1,9 +1,9 @@
 import { MetricBlock } from '../../shared/ui/MetricBlock'
 import { Alert, Badge, Button, EmptyState, Loading, Section, TextArea, TextField, Toolbar } from '@fastrd/ui-react'
-import { PanelHeading } from '../../shared/ui/WorkspaceLayout'
+import { PanelBody, PanelHeading } from '../../shared/ui/WorkspaceLayout'
 import { Plus,Save,ShieldCheck,Trash2,UsersRound,X } from 'lucide-react'
 import { FormEvent,useEffect,useRef,useState } from 'react'
-import { request } from '../../shared/api/client'
+import { APIError, request } from '../../shared/api/client'
 import { type Copy } from '../../shared/copy'
 import type { AdminSession,FastInsightRoster,RosterDirection,RosterOwner } from '../../shared/types'
 export function FastInsightRosterEditor({ session, onAdminOpen, onSessionExpired, onToast, t }: {
@@ -49,7 +49,7 @@ export function FastInsightRosterEditor({ session, onAdminOpen, onSessionExpired
         if (cancelled) return
         const message = err instanceof Error ? err.message : t('routing.loadFailed')
         setError(message)
-        if (message.includes('管理员登录已过期') || message.includes('管理员登录已失效')) sessionExpiredRef.current()
+        if (err instanceof APIError && (err.status === 401 || err.status === 403)) sessionExpiredRef.current()
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -139,7 +139,7 @@ export function FastInsightRosterEditor({ session, onAdminOpen, onSessionExpired
     } catch (err) {
       const message = err instanceof Error ? err.message : t('routing.saveFailed')
       setError(message)
-      if (message.includes('管理员登录已过期') || message.includes('管理员登录已失效')) sessionExpiredRef.current()
+      if (err instanceof APIError && (err.status === 401 || err.status === 403)) sessionExpiredRef.current()
     } finally {
       setSaving(false)
     }
@@ -162,7 +162,7 @@ export function FastInsightRosterEditor({ session, onAdminOpen, onSessionExpired
       {!roster.directions.length && <EmptyState title={t('routing.empty')} />}
       {roster.directions.map((direction, directionIndex) => <Section key={directionIndex}>
         <PanelHeading><h3>{t('routing.directionTitle', { index: directionIndex + 1 })}</h3><Button variant="icon" aria-label={t('routing.removeDirection')} onClick={() => changeRoster(current => ({ ...current, directions: current.directions.filter((_, index) => index !== directionIndex) }))}><Trash2 size={15} /></Button></PanelHeading>
-        <div className="fastui-modal-body">
+        <PanelBody>
           <div className="grid sm:grid-cols-2 gap-4">
             <label className="fastui-field">{t('routing.directionName')}<TextField value={direction.name} onChange={event => changeDirection(directionIndex, { name: event.target.value })} placeholder={t('routing.directionPlaceholder')} required /></label>
             <label className="fastui-field">{t('routing.priority')}<TextField type="number" value={direction.priority ?? ''} onChange={event => changeDirection(directionIndex, { priority: event.target.value === '' ? undefined : Number(event.target.value) })} min="0" /></label>
@@ -174,14 +174,14 @@ export function FastInsightRosterEditor({ session, onAdminOpen, onSessionExpired
             <label className="fastui-field">{t('routing.feishuOpenId')}<TextField value={owner.feishu_open_id ?? ''} onChange={event => changeOwner(directionIndex, ownerIndex, { feishu_open_id: event.target.value })} placeholder={t('routing.feishuPlaceholder')} /></label>
             <Button variant="secondary" aria-label={t('routing.removeOwner')} onClick={() => changeDirection(directionIndex, { owners: direction.owners.filter((_, index) => index !== ownerIndex) })}><X size={15} />{t('routing.removeOwner')}</Button>
           </div>)}
-        </div>
+        </PanelBody>
       </Section>)}
       <Section>
         <PanelHeading><ShieldCheck size={16} /><h3>{t('routing.defaultOwner')}</h3></PanelHeading>
-        <div className="fastui-modal-body"><p>{t('routing.defaultOwnerHint')}</p><div className="grid sm:grid-cols-2 gap-4">
+        <PanelBody><p>{t('routing.defaultOwnerHint')}</p><div className="grid sm:grid-cols-2 gap-4">
           <label className="fastui-field">{t('routing.ownerName')}<TextField value={roster.default_owner?.name ?? ''} onChange={event => changeDefaultOwner({ name: event.target.value })} placeholder={t('routing.ownerNamePlaceholder')} /></label>
           <label className="fastui-field">{t('routing.feishuOpenId')}<TextField value={roster.default_owner?.feishu_open_id ?? ''} onChange={event => changeDefaultOwner({ feishu_open_id: event.target.value })} placeholder={t('routing.feishuPlaceholder')} /></label>
-        </div></div>
+        </div></PanelBody>
       </Section>
     </>}
   </form>

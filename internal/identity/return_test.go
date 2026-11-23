@@ -6,6 +6,8 @@ func TestWorkspaceReturnTo(t *testing.T) {
 	for input, want := range map[string]string{
 		"/workspace?tool=fast-read": "/workspace?tool=fast-read",
 		"/workspace?view=insight":   "/workspace?view=insight",
+		"/workspace?view=admin":     "/workspace?view=admin",
+		"/workspace?view=routing":   "/workspace?view=routing",
 		"/workspace?view=team&tool=fast-read&fastcas=failed&next=https://other.test": "/workspace?view=team",
 		"/workspace?tool=unknown":                "/workspace",
 		"https://other.test/workspace?view=team": "/workspace",

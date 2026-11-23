@@ -313,7 +313,7 @@ func WorkspaceReturnTo(raw string) string {
 	}
 	q := url.Values{}
 	switch view := u.Query().Get("view"); view {
-	case "today", "insight", "team":
+	case "today", "insight", "team", "routing", "admin":
 		q.Set("view", view)
 	default:
 		switch tool := u.Query().Get("tool"); tool {
