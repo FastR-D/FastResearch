@@ -11,8 +11,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
+	"github.com/FastR-D/FastDeploy/pgstore"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -36,6 +38,29 @@ type Session struct {
 	CredentialVersion float64 `json:"credentialVersion,omitempty"`
 }
 type Store struct{ DB *sql.DB }
+
+const accountSchema = `CREATE TABLE IF NOT EXISTS fr_accounts(id TEXT PRIMARY KEY,key_id TEXT UNIQUE NOT NULL,content TEXT NOT NULL,credential TEXT NOT NULL);
+ CREATE TABLE IF NOT EXISTS fr_identities(issuer TEXT NOT NULL,client_id TEXT NOT NULL,subject TEXT NOT NULL,account_id TEXT NOT NULL REFERENCES fr_accounts(id),PRIMARY KEY(issuer,client_id,subject),UNIQUE(issuer,client_id,account_id));
+ CREATE TABLE IF NOT EXISTS fr_sessions(hash TEXT PRIMARY KEY,payload TEXT NOT NULL,expires INTEGER NOT NULL);
+ CREATE TABLE IF NOT EXISTS fr_transactions(state TEXT PRIMARY KEY,payload TEXT NOT NULL,expires INTEGER NOT NULL);
+ CREATE TABLE IF NOT EXISTS fr_events(issuer TEXT NOT NULL,id TEXT NOT NULL,PRIMARY KEY(issuer,id));
+ CREATE TABLE IF NOT EXISTS fr_migrations(id TEXT PRIMARY KEY);
+ CREATE TABLE IF NOT EXISTS fr_limits(id TEXT PRIMARY KEY,attempts INTEGER NOT NULL,expires INTEGER NOT NULL);
+ CREATE TABLE IF NOT EXISTS fastcas_links(issuer TEXT NOT NULL,id TEXT NOT NULL,client_id TEXT NOT NULL,account_id TEXT NOT NULL REFERENCES fr_accounts(id),subject TEXT NOT NULL,state TEXT NOT NULL CHECK(state IN ('prepared','active','revoked')),version INTEGER NOT NULL,payload TEXT NOT NULL,PRIMARY KEY(issuer,id));
+ CREATE INDEX IF NOT EXISTS fr_legacy_links_subject ON fastcas_links(issuer,client_id,subject);`
+
+func OpenPostgres(dsn string) (*Store, error) {
+	db, err := pgstore.Open(dsn)
+	if err != nil {
+		return nil, err
+	}
+	schema := strings.NewReplacer(" INTEGER", " BIGINT", "content TEXT", "content JSONB", "payload TEXT", "payload JSONB").Replace(accountSchema)
+	if _, err = db.Exec(schema); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	return &Store{db}, nil
+}
 
 func Hash(s string) string { v := sha256.Sum256([]byte(s)); return hex.EncodeToString(v[:]) }
 func Random() string {
@@ -74,13 +99,7 @@ func Open(file string) (*Store, error) {
 	}
 	db.SetMaxOpenConns(1)
 	s := &Store{db}
-	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS fr_accounts(id TEXT PRIMARY KEY,key_id TEXT UNIQUE NOT NULL,content TEXT NOT NULL,credential TEXT NOT NULL);
- CREATE TABLE IF NOT EXISTS fr_identities(issuer TEXT NOT NULL,client_id TEXT NOT NULL,subject TEXT NOT NULL,account_id TEXT NOT NULL REFERENCES fr_accounts(id),PRIMARY KEY(issuer,client_id,subject),UNIQUE(issuer,client_id,account_id));
- CREATE TABLE IF NOT EXISTS fr_sessions(hash TEXT PRIMARY KEY,payload TEXT NOT NULL,expires INTEGER NOT NULL);
- CREATE TABLE IF NOT EXISTS fr_transactions(state TEXT PRIMARY KEY,payload TEXT NOT NULL,expires INTEGER NOT NULL);
- CREATE TABLE IF NOT EXISTS fr_events(issuer TEXT NOT NULL,id TEXT NOT NULL,PRIMARY KEY(issuer,id));
- CREATE TABLE IF NOT EXISTS fr_migrations(id TEXT PRIMARY KEY);
- CREATE TABLE IF NOT EXISTS fr_limits(id TEXT PRIMARY KEY,attempts INTEGER NOT NULL,expires INTEGER NOT NULL);`)
+	_, err = db.Exec(accountSchema)
 	if err == nil {
 		err = s.importLegacy(filepath.Join(filepath.Dir(file), "access.json"))
 	}
@@ -219,7 +238,7 @@ func (s *Store) Account(id string) (*Account, error) {
 	return scanAccount(s.DB.QueryRow(`SELECT id,key_id,content,credential FROM fr_accounts WHERE id=?`, id))
 }
 func (s *Store) Accounts() ([]Account, error) {
-	rows, e := s.DB.Query(`SELECT id,key_id,content,credential FROM fr_accounts ORDER BY json_extract(content,'$.person')`)
+	rows, e := s.DB.Query(`SELECT id,key_id,content,credential FROM fr_accounts ORDER BY content ->> 'person'`)
 	if e != nil {
 		return nil, e
 	}
@@ -279,10 +298,7 @@ func (s *Store) Provision(issuer, client, subject, name string) (*Account, error
 			return nil, errors.New("legacy FastCAS link is not active")
 		}
 		if e != nil && e != sql.ErrNoRows {
-			var exists int
-			if check := tx.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='table' AND name='fastcas_links'`).Scan(&exists); check != nil || exists != 0 {
-				return nil, e
-			}
+			return nil, e
 		}
 		if e != nil {
 			id = "account_" + Random()[:32]

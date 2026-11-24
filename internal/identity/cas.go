@@ -280,7 +280,7 @@ func (a *CAS) Logout(ctx context.Context, id, subject, sid string, link *fastcas
 		return e
 	}
 	defer tx.Rollback()
-	r, e := tx.Exec(`INSERT OR IGNORE INTO fr_events VALUES(?,?)`, a.Config.Issuer, id)
+	r, e := tx.Exec(`INSERT INTO fr_events VALUES(?,?) ON CONFLICT DO NOTHING`, a.Config.Issuer, id)
 	if e != nil {
 		return e
 	}
@@ -291,13 +291,10 @@ func (a *CAS) Logout(ctx context.Context, id, subject, sid string, link *fastcas
 	if link != nil {
 		_, e = tx.Exec(`UPDATE fastcas_links SET state='revoked',version=?,payload=? WHERE issuer=? AND id=? AND account_id=? AND subject=? AND version<=?`, link.Version, store.JSON(link), a.Config.Issuer, link.ID, link.LocalRef, link.Subject, link.Version)
 		if e != nil {
-			var exists int
-			if err := tx.QueryRow(`SELECT count(*) FROM sqlite_master WHERE name='fastcas_links'`).Scan(&exists); err != nil || exists != 0 {
-				return e
-			}
+			return e
 		}
 	}
-	_, e = tx.Exec(`DELETE FROM fr_sessions WHERE json_extract(payload,'$.authSource')='fastcas' AND json_extract(payload,'$.casIssuer')=? AND json_extract(payload,'$.casSubject')=? AND (?='' OR json_extract(payload,'$.casSid')=?)`, a.Config.Issuer, subject, sid, sid)
+	_, e = tx.Exec(`DELETE FROM fr_sessions WHERE payload ->> 'authSource'='fastcas' AND payload ->> 'casIssuer'=? AND payload ->> 'casSubject'=? AND (?='' OR payload ->> 'casSid'=?)`, a.Config.Issuer, subject, sid, sid)
 	if e != nil {
 		return e
 	}

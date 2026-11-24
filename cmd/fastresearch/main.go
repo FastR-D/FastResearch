@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"os"
@@ -29,7 +30,17 @@ func run() error {
 	if e != nil {
 		return e
 	}
-	s, e := store.Open(c.Database)
+	dsn := os.Getenv("FASTRESEARCH_DATABASE_URL")
+	migrate := len(os.Args) == 2 && os.Args[1] == "migrate-postgres"
+	if migrate && dsn == "" {
+		return errors.New("FASTRESEARCH_DATABASE_URL is required")
+	}
+	var s *store.Store
+	if dsn != "" {
+		s, e = store.OpenPostgres(dsn)
+	} else {
+		s, e = store.Open(c.Database)
+	}
 	if e != nil {
 		return e
 	}
@@ -38,11 +49,19 @@ func run() error {
 	if e != nil {
 		return e
 	}
-	wf, e := workflow.Open(c.DataDir)
+	var wf *workflow.Store
+	if dsn != "" {
+		wf, e = workflow.OpenPostgres(dsn)
+	} else {
+		wf, e = workflow.Open(c.DataDir)
+	}
 	if e != nil {
 		return e
 	}
 	defer wf.DB.Close()
+	if migrate {
+		return nil
+	}
 	writeProvider, e := integrations.ServiceClient("FASTWRITE_FASTCAS_SERVICE")
 	if e != nil {
 		return e

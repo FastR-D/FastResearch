@@ -18,7 +18,8 @@
     "FASTRESEARCH_FASTCAS_ISSUER",
     "FASTRESEARCH_FASTCAS_CLIENT_ID",
     "FASTRESEARCH_FASTCAS_CLIENT_SECRET",
-    "FASTRESEARCH_FASTCAS_REDIRECT_URI"
+    "FASTRESEARCH_FASTCAS_REDIRECT_URI",
+    "FASTRESEARCH_DATABASE_URL"
   ],
   "fixed_env": {
     "HOST": "127.0.0.1",
@@ -47,5 +48,6 @@
     "/usr/bin/python3",
     "-c",
     "import sys; assert sys.version_info >= (3,12)"
-  ]
+  ],
+  "postgres_env": "FASTRESEARCH_DATABASE_URL"
 }

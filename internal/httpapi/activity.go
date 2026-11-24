@@ -25,13 +25,6 @@ func (a *Server) activitySubject(ctx context.Context, p *principal) (string, err
 	var subject string
 	e := a.Store.DB.QueryRowContext(ctx, `SELECT subject FROM fr_identities WHERE issuer=? AND client_id=? AND account_id=?`, a.Config.Issuer, a.Config.ClientID, p.Account.ID).Scan(&subject)
 	if e == sql.ErrNoRows {
-		var exists int
-		if e = a.Store.DB.QueryRowContext(ctx, `SELECT count(*) FROM sqlite_master WHERE name='fastcas_links'`).Scan(&exists); e != nil {
-			return "", e
-		}
-		if exists == 0 {
-			return "", nil
-		}
 		e = a.Store.DB.QueryRowContext(ctx, `SELECT subject FROM fastcas_links WHERE issuer=? AND client_id=? AND account_id=? AND state='active'`, a.Config.Issuer, a.Config.ClientID, p.Account.ID).Scan(&subject)
 	}
 	if e == sql.ErrNoRows {
