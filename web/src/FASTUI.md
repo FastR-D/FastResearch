@@ -6,7 +6,7 @@
 
 ## Workspace
 
-工作台位于 `/workspace`。框架、工具页、个人动态、今日任务、信箱、团队进度、Key / FastCAS 登录、管理账号和分发设置统一使用 FastUI 组件及官方 `fastui-*` HTML 类：
+工作台位于 `/workspace`。框架、工具页、个人动态、今日任务、信箱、团队进度、FastCAS 登录、管理账号和分发设置统一使用 FastUI 组件及官方 `fastui-*` HTML 类：
 
 - 控件使用 Button、TextField、TextArea；弹窗使用原生 FastUI Dialog，标题栏使用紧凑的 PanelHeader，正文保留 modal-body 结构与独立的舒适触摸密度。
 - 内容使用 Section、PanelHeader、Toolbar、ListRow、Divider；提示、状态、空内容和加载使用 Alert、Badge、EmptyState、Loading。
@@ -20,7 +20,7 @@
 
 已登录且当前应用入口已配置时，隐藏该应用的宣传标题、介绍、能力要点、使用步骤、介绍页链接和通用认证说明，仅保留应用跳转按钮与联动信息。未登录或应用未部署时继续显示介绍和配置说明。
 
-移动端由菜单按钮展开有高度限制的可滚动导航，Escape 收起；选择页面后聚焦主内容并复位主区域滚动。`?tool=fast-read` 选中工具，`?view=today|insight|team` 打开辅助页面，支持刷新、前进和返回。个人 Key、管理员、FastCAS、分发名册和信箱保留认证边界；应用动态与任务统一读取 `/api/workspace/apps/{id}/activity`。目录的 `capabilities` 控制动态和任务展示，`AppTasksPanel` 不包含 FastTask 专用 API。工具标题和进入按钮同排，统计块统一左侧标签、右侧大号粗体蓝色数字。CAS 会话在到期前自动续签，保留工具、视图和任务应用选择。
+工作台顶栏保持单行，访客通过顶栏「登录」打开弹框，弹框只提供 FastCAS 登录。移动端由菜单按钮打开左侧可滚动抽屉，可通过关闭按钮、遮罩或 Escape 关闭；选择页面后聚焦主内容并复位主区域滚动。团队进度在移动端纵向展示所有成员的任务，在桌面端使用可切换成员的双栏。`?tool=fast-read` 选中工具，`?view=today|insight|team` 打开辅助页面，支持刷新、前进和返回。个人 Key、管理员、FastCAS、分发名册和信箱保留认证边界；应用动态与任务统一读取 `/api/workspace/apps/{id}/activity`。目录的 `capabilities` 控制动态和任务展示，`AppTasksPanel` 不包含 FastTask 专用 API。工具标题和进入按钮同排，统计块统一左侧标签、右侧大号粗体蓝色数字。CAS 会话在到期前自动续签，保留工具、视图和任务应用选择。
 
 ## 产品页
 

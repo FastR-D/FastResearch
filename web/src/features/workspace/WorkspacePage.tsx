@@ -1,25 +1,27 @@
 import { AppActivityPanel } from './AppActivityPanel'
-import { Alert, Badge, Button, Divider, Section, Toolbar } from '@fastrd/ui-react'
-import { ArrowUpRight,CalendarCheck,Inbox,LogIn,LogOut,Menu,Moon,Settings2,ShieldCheck,Sunrise,UsersRound } from 'lucide-react'
+import { Alert, Badge, Button, Dialog, Divider, PanelHeader, Section, Toolbar } from '@fastrd/ui-react'
+import { ArrowUpRight,CalendarCheck,Inbox,LogIn,LogOut,Menu,Moon,Settings2,ShieldCheck,Sunrise,UsersRound,X } from 'lucide-react'
 import { Fragment,useCallback,useEffect,useMemo,useState } from 'react'
 import { APIError,apiUrl,request } from '../../shared/api/client'
 import { renewCASIfNeeded, renewCASLogin } from '../../shared/auth/cas-renewal'
 import { useColorMode } from '../../shared/auth/color-mode'
 import { text as t } from '../../shared/copy'
 import { productHref, products } from '../../shared/products'
-import type { AdminSession,Entry,EntryId,InsightItem,MemberSession,TeamWorkflow,Workflow,WorkflowModule,WorkspaceApp,WorkspaceView } from '../../shared/types'
+import type { AdminSession,Entry,EntryId,InsightItem,TeamWorkflow,Workflow,WorkflowModule,WorkspaceApp,WorkspaceView } from '../../shared/types'
 import { BrandLink } from '../../shared/ui/BrandLink'
 import { PanelBody } from '../../shared/ui/WorkspaceLayout'
 import { AdminPanel } from '../admin/AdminPanel'
 import { FastInsightRosterEditor } from '../admin/FastInsightRosterEditor'
 import { FastCASDialog } from '../auth/FastCASDialog'
-import { KeyDialog } from '../auth/KeyDialog'
+import { LoginDialog } from '../auth/LoginDialog'
 import { useIdentity } from '../auth/use-identity'
 import { InsightMailbox } from '../insight/InsightMailbox'
 import { TeamProgressPanel } from '../team/TeamProgressPanel'
 import { AppTasksPanel } from '../today/AppTasksPanel'
 import { MODULE_HUB_ORDER,createEntries } from './entries'
 const personalKeyStorage = 'fastresearch-personal-key'
+const desktopViewport = '(min-width: 768px)'
+
 function readWorkspaceView(): WorkspaceView {
   const view = new URLSearchParams(window.location.search).get('view')
   return view === 'today' || view === 'insight' || view === 'team' || view === 'routing' || view === 'admin' ? view : 'workflow'
@@ -39,13 +41,13 @@ function saveReadKey(memberKeyId: string, ids: Set<string>) {
 
 function WorkspacePage() {
   const { dark, toggle: toggleColorMode } = useColorMode()
-  const [keyOpen, setKeyOpen] = useState(false)
+  const [loginOpen, setLoginOpen] = useState(false)
   const [casOpen, setCasOpen] = useState(false)
   const [insightItems, setInsightItems] = useState<InsightItem[]>([])
   const [selectedInsight, setSelectedInsight] = useState<string | null>(null)
   const [readIds, setReadIds] = useState<Set<string>>(() => new Set())
   const [toast, setToast] = useState('')
-  const { member, setMember, session, setSession, casEnabled, casLoginEnabled, legacyKeyEnabled } = useIdentity(setToast)
+  const { member, setMember, session, setSession, casEnabled } = useIdentity(setToast)
   const [teamLoading, setTeamLoading] = useState(false)
   const [teamWorkflows, setTeamWorkflows] = useState<TeamWorkflow[]>([])
   const [selectedModule, setSelectedModule] = useState<WorkflowModule>(() => {
@@ -54,6 +56,7 @@ function WorkspacePage() {
   })
   const [workspaceView, setWorkspaceView] = useState(readWorkspaceView)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [desktop, setDesktop] = useState(() => window.matchMedia(desktopViewport).matches)
   const [appCatalog, setAppCatalog] = useState<WorkspaceApp[] | null>(null)
   const [catalogError, setCatalogError] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
@@ -90,16 +93,15 @@ function WorkspacePage() {
   }, [])
 
   useEffect(() => {
-    if (!sidebarOpen) return
-    const escape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !document.querySelector('dialog[open]')) {
-        setSidebarOpen(false)
-        document.getElementById('workspace-menu')?.focus()
-      }
+    const viewport = window.matchMedia(desktopViewport)
+    const update = () => {
+      setDesktop(viewport.matches)
+      if (viewport.matches) setSidebarOpen(false)
     }
-    document.addEventListener('keydown', escape)
-    return () => document.removeEventListener('keydown', escape)
-  }, [sidebarOpen])
+    update()
+    viewport.addEventListener('change', update)
+    return () => viewport.removeEventListener('change', update)
+  }, [])
 
   useEffect(() => {
     if (workspaceView !== 'admin' || !member || member.role === 'admin') return
@@ -177,6 +179,11 @@ function WorkspacePage() {
     })
   }
 
+  const closeSidebar = () => {
+    setSidebarOpen(false)
+    requestAnimationFrame(() => document.getElementById('workspace-menu')?.focus({ preventScroll: true }))
+  }
+
   const logout = async () => {
     setLoggingOut(true)
     try {
@@ -209,16 +216,6 @@ function WorkspacePage() {
   }
   const openEntry = (entry: Entry) => openApp(entry.id)
 
-  const unlock = async (key: string) => {
-    const result = await request<{ session: string; person: string; keyId: string; expiresAt: number; insightItems?: InsightItem[]; workflow?: Workflow | null }>('/api/content/unlock', { method: 'POST', body: JSON.stringify({ key: key.trim() }) })
-    const value: MemberSession = { token: result.session, person: result.person, keyId: result.keyId, expiresAt: result.expiresAt, source: 'key' }
-    sessionStorage.removeItem(personalKeyStorage)
-    setMember(value)
-    setInsightItems(result.insightItems ?? [])
-    setKeyOpen(false)
-    setToast(t('toast.unlocked', { person: result.person }))
-  }
-
   const markRead = (id: string) => {
     if (!member) return
     setSelectedInsight(id)
@@ -229,10 +226,6 @@ function WorkspacePage() {
       saveReadKey(member.keyId, next)
       return next
     })
-  }
-
-  const closeKeyDialog = () => {
-    setKeyOpen(false)
   }
 
   const selectedEntry = entries[selectedModule]
@@ -252,57 +245,82 @@ function WorkspacePage() {
     { view: 'admin', label: t('admin.manageAccount'), Icon: ShieldCheck },
   ] as const
   const activeProduct = workspaceView === 'workflow' ? product : undefined
+  const navigation = (
+    <div className="flex flex-col flex-1 gap-7 px-4 pt-7 pb-4">
+      <div>
+        <div className="flex items-center justify-between px-3 mb-3"><h2 className="fastui-heading">{t('workspace.workflow')}</h2><Badge>{MODULE_HUB_ORDER.length}</Badge></div>
+        <nav className="grid gap-2" aria-label={t('workspace.workflow')}>
+          {MODULE_HUB_ORDER.map(id => {
+            const entry = entries[id]
+            const Icon = entry.Icon
+            const active = workspaceView === 'workflow' && selectedModule === id
+            return <Button variant="navigation" size="md" key={id} aria-pressed={active} aria-current={active ? 'page' : undefined} onClick={() => navigateWorkspace('workflow', id)}><span className="flex w-full items-center gap-3 px-2 text-sm"><Icon size={18} />{entry.name}</span></Button>
+          })}
+        </nav>
+      </div>
+      <div>
+        <h2 className="fastui-heading px-3 mb-3">{t('workspace.personalAndTeam')}</h2>
+        <nav className="grid gap-2" aria-label={t('workspace.personalAndTeam')}>
+          {auxiliaryViews.map(({ view, label, Icon }) => <Button variant="navigation" size="md" key={view} aria-pressed={workspaceView === view} aria-current={workspaceView === view ? 'page' : undefined} onClick={() => navigateWorkspace(view)}><span className="flex w-full items-center gap-3 px-2 text-sm"><Icon size={18} className="shrink-0" /><span>{label}</span>{view === 'insight' && member && insightItems.some(item => !readIds.has(item.id)) && <Badge className="ml-auto">{insightItems.filter(item => !readIds.has(item.id)).length}</Badge>}</span></Button>)}
+        </nav>
+      </div>
+      <div className="mt-auto pt-4 grid gap-2">
+        <Divider />
+        {administrationViews.filter(item => item.view === 'admin' || session).map(({ view, label, Icon }) => (
+          <Button key={view} variant="navigation" size="md" aria-pressed={workspaceView === view} aria-current={workspaceView === view ? 'page' : undefined} onClick={() => navigateWorkspace(view)}>
+            <span className="flex w-full items-center gap-3 px-2 text-sm"><Icon size={18} className="shrink-0" />{label}</span>
+          </Button>
+        ))}
+      </div>
+    </div>
+  )
 
   return (
     <div className="h-dvh flex flex-col overflow-hidden bg-[var(--fastui-page)] text-[var(--fastui-text)] font-[var(--fastui-font)] text-sm leading-6">
       <a className="fastui-link sr-only focus:not-sr-only" href="#workspace-content">{t('workspace.skip')}</a>
       <header className="shrink-0 z-20 bg-[var(--fastui-surface)]">
-        <Toolbar label={t('workspace.toolbarAria')} className="min-h-14 px-4">
-          <Button id="workspace-menu" variant="icon" className="md:hidden" aria-label={t('workspace.toolsAria')} aria-expanded={sidebarOpen} aria-controls="workspace-sidebar" onClick={() => setSidebarOpen(!sidebarOpen)}><Menu size={18} /></Button>
-          <BrandLink href={activeProduct ? productHref(activeProduct.id) : `${import.meta.env.BASE_URL}intro/`} name={activeProduct?.name} Icon={activeProduct?.Icon} />
-          {member && <div className="ml-auto flex min-w-0 items-center gap-2 rounded-full border border-[var(--fastui-border)] py-1 pl-1 pr-2 md:pr-3" title={member.person}>
-            <span aria-hidden="true" className="grid h-6 w-6 md:h-7 md:w-7 shrink-0 place-items-center rounded-full bg-[var(--fastui-primary)] text-xs font-bold text-[var(--fastui-on-primary)]">{Array.from(member.person.trim())[0]}</span>
-            <strong className="max-w-16 truncate font-bold md:max-w-32">{member.person}</strong>
-          </div>}
-          <nav className={`flex basis-full md:basis-auto flex-wrap items-center justify-between md:justify-end gap-2 min-w-0 ${member ? '' : 'md:ml-auto'}`} aria-label={t('workspace.accountAria')}>
-            {member ? <Button variant="quiet" onClick={() => void logout()} loading={loggingOut} aria-label={t('auth.logout')}><LogOut size={15} /><span className="sr-only md:not-sr-only">{t('auth.logoutShort')}</span></Button> : <Button variant="quiet" onClick={() => setKeyOpen(true)}><LogIn size={15} />{t('auth.login')}</Button>}
-            <Button variant="quiet" aria-label={t('auth.certification')} onClick={() => { if (!casEnabled) setToast(t('auth.casNotEnabled')); else if (member) setCasOpen(true); else setKeyOpen(true) }} title={casEnabled ? t('auth.viewAccount') : t('auth.casNotEnabled')}><ShieldCheck size={15} /><span className="hidden sm:inline">{t('auth.certification')}</span><span className="sm:hidden">{t('auth.providerShortName')}</span></Button>
+        <Toolbar label={t('workspace.toolbarAria')} className="min-h-14 !flex-nowrap !gap-1 !px-2 !py-1 sm:!gap-2 sm:!px-4" data-fastui-density="touch">
+          {!desktop && <Button id="workspace-menu" variant="icon" className="shrink-0" aria-label={t('workspace.toolsAria')} aria-haspopup="dialog" aria-expanded={sidebarOpen} aria-controls="workspace-sidebar" onClick={() => setSidebarOpen(true)}><Menu size={18} /></Button>}
+          <BrandLink href={activeProduct ? productHref(activeProduct.id) : `${import.meta.env.BASE_URL}intro/`} name={activeProduct?.name} Icon={activeProduct?.Icon} className="min-w-0 !shrink max-[359px]:text-xs" />
+          <nav className="ml-auto flex shrink-0 items-center sm:gap-2" aria-label={t('workspace.accountAria')}>
+            {member ? <>
+              <div className="flex items-center gap-2 rounded-full border border-[var(--fastui-border)] p-1 min-[460px]:pr-2" role="img" aria-label={member.person} title={member.person}>
+                <span aria-hidden="true" className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[var(--fastui-primary)] text-xs font-bold text-[var(--fastui-on-primary)] md:h-7 md:w-7">{Array.from(member.person.trim())[0]}</span>
+                <strong aria-hidden="true" className="hidden max-w-16 truncate font-bold min-[460px]:block md:max-w-32">{member.person}</strong>
+              </div>
+              <Button variant="quiet" className="aspect-square sm:aspect-auto" onClick={() => void logout()} loading={loggingOut} aria-label={t('auth.logout')} title={t('auth.logout')}><LogOut size={18} /><span className="hidden sm:inline">{t('auth.logoutShort')}</span></Button>
+              <Button variant="quiet" className="aspect-square sm:aspect-auto" aria-label={t('auth.certification')} onClick={() => { if (casEnabled) setCasOpen(true); else setToast(t('auth.casNotEnabled')) }} title={casEnabled ? t('auth.viewAccount') : t('auth.casNotEnabled')}><ShieldCheck size={18} /><span className="hidden sm:inline">{t('auth.certification')}</span></Button>
+            </> : <Button variant="quiet" onClick={() => setLoginOpen(true)}><LogIn size={18} />{t('auth.login')}</Button>}
             <Button variant="icon" onClick={toggleColorMode} aria-label={dark ? t('theme.light') : t('theme.dark')}>{dark ? <Sunrise size={18} /> : <Moon size={18} />}</Button>
           </nav>
         </Toolbar>
       </header>
-      <div className="flex-1 min-h-0 flex flex-col md:flex-row overflow-hidden">
-        <aside className={`${sidebarOpen ? 'flex' : 'hidden'} md:flex flex-col w-full md:w-64 shrink-0 min-h-0 max-h-[65dvh] md:max-h-none md:h-full overflow-y-auto border-r border-[var(--fastui-border)] bg-[var(--fastui-surface)]`} id="workspace-sidebar" aria-label={t('workspace.navigationAria')} data-fastui-density="touch">
-          <div className="flex flex-col flex-1 gap-7 px-4 pt-7 pb-4">
-            <div>
-              <div className="flex items-center justify-between px-3 mb-3"><h2 className="fastui-heading">{t('workspace.workflow')}</h2><Badge>{MODULE_HUB_ORDER.length}</Badge></div>
-              <nav className="grid gap-2" aria-label={t('workspace.workflow')}>
-                {MODULE_HUB_ORDER.map(id => {
-                  const entry = entries[id]
-                  const Icon = entry.Icon
-                  const active = workspaceView === 'workflow' && selectedModule === id
-                  return <Button variant="navigation" size="md" key={id} aria-pressed={active} aria-current={active ? 'page' : undefined} onClick={() => navigateWorkspace('workflow', id)}><span className="flex w-full items-center gap-3 px-2 text-sm"><Icon size={18} />{entry.name}</span></Button>
-                })}
-              </nav>
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        {desktop ? (
+          <aside id="workspace-sidebar" aria-label={t('workspace.navigationAria')} data-fastui-density="touch" className="flex h-full w-64 shrink-0 flex-col overflow-y-auto overscroll-contain border-r border-[var(--fastui-border)] bg-[var(--fastui-surface)]">
+            {navigation}
+          </aside>
+        ) : (
+          <Dialog
+            id="workspace-sidebar"
+            open={sidebarOpen}
+            onClose={closeSidebar}
+            label={t('workspace.toolsAria')}
+            className="!fixed !inset-y-0 !left-0 !right-auto !m-0 !h-dvh !max-h-none !w-72 !max-w-[85vw] !overflow-hidden !rounded-none !border-y-0 !border-l-0 motion-safe:animate-slide-in-left animate-duration-200"
+          >
+            <div className="flex h-full min-h-0 flex-col" data-fastui-density="touch">
+              <PanelHeader className="shrink-0">
+                <h2 className="fastui-heading flex-1">{t('workspace.toolsAria')}</h2>
+                <Button variant="icon" autoFocus onClick={closeSidebar} aria-label={t('dialog.close')}><X size={18} /></Button>
+              </PanelHeader>
+              <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
+                {navigation}
+              </div>
             </div>
-            <div>
-              <h2 className="fastui-heading px-3 mb-3">{t('workspace.personalAndTeam')}</h2>
-              <nav className="grid gap-2" aria-label={t('workspace.personalAndTeam')}>
-                {auxiliaryViews.map(({ view, label, Icon }) => <Button variant="navigation" size="md" key={view} aria-pressed={workspaceView === view} aria-current={workspaceView === view ? 'page' : undefined} onClick={() => navigateWorkspace(view)}><span className="flex w-full items-center gap-3 px-2 text-sm"><Icon size={18} className="shrink-0" /><span>{label}</span>{view === 'insight' && member && insightItems.some(item => !readIds.has(item.id)) && <Badge className="ml-auto">{insightItems.filter(item => !readIds.has(item.id)).length}</Badge>}</span></Button>)}
-              </nav>
-            </div>
-            <div className="mt-auto pt-4 grid gap-2">
-              <Divider />
-              {administrationViews.filter(item => item.view === 'admin' || session).map(({ view, label, Icon }) => (
-                <Button key={view} variant="navigation" size="md" aria-pressed={workspaceView === view} aria-current={workspaceView === view ? 'page' : undefined} onClick={() => navigateWorkspace(view)}>
-                  <span className="flex w-full items-center gap-3 px-2 text-sm"><Icon size={18} className="shrink-0" />{label}</span>
-                </Button>
-              ))}
-            </div>
-          </div>
-        </aside>
+          </Dialog>
+        )}
         <main className="flex-1 min-h-0 min-w-0 overflow-y-auto overscroll-contain p-5 md:p-8 lg:p-10" id="workspace-content" tabIndex={-1}>
-          <div className={`mx-auto max-w-6xl gap-6 md:gap-8 ${workspaceView === 'team' ? 'flex h-full flex-col' : 'grid'}`}>
+          <div className={`mx-auto max-w-6xl gap-6 md:gap-8 ${workspaceView === 'team' && desktop ? 'flex h-full flex-col' : 'grid'}`}>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h1 className="fastui-heading min-w-0 text-2xl">{workspaceView === 'workflow' ? selectedEntry.name : [...auxiliaryViews, ...administrationViews].find(item => item.view === workspaceView)?.label}</h1>
               {(workspaceView === 'workflow' || workspaceView === 'today') && (
@@ -324,11 +342,11 @@ function WorkspacePage() {
                   </PanelBody>
                 </Section>
               )}
-              {app?.capabilities?.includes('activity') && <AppActivityPanel appId={selectedModule} name={product.name} member={member} onLogin={() => setKeyOpen(true)} />}
+              {app?.capabilities?.includes('activity') && <AppActivityPanel appId={selectedModule} name={product.name} member={member} onLogin={() => setLoginOpen(true)} />}
             </Fragment> : <>
-              {workspaceView === 'today' && <AppTasksPanel app={taskApp} catalogLoading={appCatalog === null && !catalogError} member={member} onUnlock={() => setKeyOpen(true)} t={t} />}
-              {workspaceView === 'insight' && <InsightMailbox member={member} items={insightItems} selectedId={selectedInsight} readIds={readIds} onSelect={markRead} onUnlock={() => setKeyOpen(true)} onOpenFastRead={() => openEntry(entries['fast-read'])} t={t} />}
-              {workspaceView === 'team' && <TeamProgressPanel members={teamWorkflows} currentKeyId={member?.keyId ?? null} loading={teamLoading} app={taskApp} t={t} />}
+              {workspaceView === 'today' && <AppTasksPanel app={taskApp} catalogLoading={appCatalog === null && !catalogError} member={member} onUnlock={() => setLoginOpen(true)} t={t} />}
+              {workspaceView === 'insight' && <InsightMailbox member={member} items={insightItems} selectedId={selectedInsight} readIds={readIds} onSelect={markRead} onUnlock={() => setLoginOpen(true)} onOpenFastRead={() => openEntry(entries['fast-read'])} t={t} />}
+              {workspaceView === 'team' && <TeamProgressPanel members={teamWorkflows} currentKeyId={member?.keyId ?? null} loading={teamLoading} desktop={desktop} app={taskApp} t={t} />}
               {workspaceView === 'routing' && <Section aria-label={t('workspace.routing')}><PanelBody>
                 <FastInsightRosterEditor session={session} onAdminOpen={() => navigateWorkspace('admin')} onSessionExpired={expireAdminSession} onToast={setToast} t={t} />
               </PanelBody></Section>}
@@ -342,7 +360,7 @@ function WorkspacePage() {
       </div>
 
       {casOpen && member && <FastCASDialog member={member} onClose={() => setCasOpen(false)} t={t} />}
-      {keyOpen && <KeyDialog onClose={closeKeyDialog} onUnlock={unlock} casAvailable={casLoginEnabled} legacyKeyEnabled={legacyKeyEnabled} t={t} />}
+      {loginOpen && <LoginDialog onClose={() => setLoginOpen(false)} casAvailable={casEnabled} t={t} />}
       {toast && <div className="fixed bottom-4 right-4 left-4 md:left-auto z-30"><Alert>{toast}</Alert></div>}
     </div>
   )

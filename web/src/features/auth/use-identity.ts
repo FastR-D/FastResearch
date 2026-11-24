@@ -9,7 +9,6 @@ export function useIdentity(notice: (value: string) => void) {
   const [member, setMember] = useState<MemberSession | null>(null)
   const [session, setSession] = useState<AdminSession | null>(null)
   const [casEnabled, setCasEnabled] = useState(false)
-  const [legacyKeyEnabled, setLegacyKeyEnabled] = useState(true)
   useEffect(() => {
     let cancelled = false
     // Older versions stored a separate administrator bearer token in the browser.
@@ -27,8 +26,8 @@ export function useIdentity(notice: (value: string) => void) {
       url.searchParams.delete('fastcas')
       window.history.replaceState(null, '', url.pathname + url.search + url.hash)
     }
-    const available = request<{ enabled: boolean; login_enabled: boolean; legacy_key_enabled: boolean }>('/api/auth/fastcas/available').then(value => {
-      if (!cancelled) { setCasEnabled(value.enabled && value.login_enabled); setLegacyKeyEnabled(value.legacy_key_enabled !== false) }
+    const available = request<{ enabled: boolean; login_enabled: boolean }>('/api/auth/fastcas/available').then(value => {
+      if (!cancelled) setCasEnabled(value.enabled && value.login_enabled)
       return value.enabled && value.login_enabled
     }).catch(() => false)
     void request<Identity>('/api/content/me').then(value => {
@@ -63,5 +62,5 @@ export function useIdentity(notice: (value: string) => void) {
       window.removeEventListener('focus', check)
     }
   }, [member, casEnabled, restored])
-  return { member, setMember, session, setSession, casEnabled, casLoginEnabled: casEnabled, legacyKeyEnabled }
+  return { member, setMember, session, setSession, casEnabled }
 }

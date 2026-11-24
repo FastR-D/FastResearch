@@ -9,7 +9,7 @@
   "activity.loading": "正在读取个人动态…",
   "activity.lockedHint": "登录后，查看此账号在 {{name}} 的最新进展。",
   "activity.lockedTitle": "登录后查看个人动态",
-  "activity.login": "使用 Key 或 FastCAS 登录",
+  "activity.login": "使用 FastCAS 登录",
   "activity.loginLinkedCAS": "使用关联的 FastCAS 账号登录",
   "activity.refreshAria": "刷新 {{name}} 动态",
   "activity.regionAria": "{{name}} 个人动态",
