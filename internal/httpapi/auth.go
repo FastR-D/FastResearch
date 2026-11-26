@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -27,8 +28,8 @@ func (a *Server) authRoutes() {
 		if a.CAS.Client == nil {
 			return fail(503, "FastCAS 尚未配置")
 		}
-		if !a.Store.AllowAttempt("login:"+remoteIP(r), 60) {
-			return fail(429, "登录尝试过多")
+		if err := a.checkAuthAttempt(w, r, "login:", 60, "登录尝试过多"); err != nil {
+			return err
 		}
 		location, binding, e := a.CAS.Begin(r.Context(), r.URL.Query().Get("next"))
 		if e != nil {
@@ -148,8 +149,8 @@ func (a *Server) authRoutes() {
 		if !a.Config.LegacyKeys {
 			return fail(403, "个人 Key 登录已关闭，请使用 FastCAS")
 		}
-		if !a.Store.AllowAttempt("key:"+remoteIP(r), 12) {
-			return fail(429, "认证尝试过多")
+		if err := a.checkAuthAttempt(w, r, "key:", 12, "认证尝试过多"); err != nil {
+			return err
 		}
 		b, e := body(r)
 		if e != nil {
@@ -178,4 +179,18 @@ func (a *Server) authRoutes() {
 		}
 		return fail(401, "个人 Key 无效")
 	})
+}
+
+func (a *Server) checkAuthAttempt(w http.ResponseWriter, r *http.Request, prefix string, limit int, message string) error {
+	allowed, err := a.Store.AllowAttempt(prefix+remoteIP(r), limit)
+	if err != nil {
+		slog.Error("authentication rate limit unavailable", "path", r.URL.Path, "error", err)
+		return fail(http.StatusServiceUnavailable, "认证服务暂时不可用，请稍后重试")
+	}
+	if !allowed {
+		// The fixed window lasts at most 15 minutes; rejected requests do not extend it.
+		w.Header().Set("Retry-After", "900")
+		return fail(http.StatusTooManyRequests, message)
+	}
+	return nil
 }

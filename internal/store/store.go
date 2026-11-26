@@ -336,10 +336,21 @@ func (s *Store) DeleteSession(raw string) error {
 	_, e := s.DB.Exec(`DELETE FROM fr_sessions WHERE hash=?`, Hash(raw))
 	return e
 }
-func (s *Store) AllowAttempt(id string, limit int) bool {
+
+// AllowAttempt keeps the fixed-window counter atomic on both database backends.
+// Storage failures must not be reported as an exhausted login allowance.
+func (s *Store) AllowAttempt(id string, limit int) (bool, error) {
+	now := time.Now()
 	var count int
-	e := s.DB.QueryRow(`INSERT INTO fr_limits VALUES(?,1,?) ON CONFLICT(id) DO UPDATE SET attempts=CASE WHEN expires>? THEN attempts+1 ELSE 1 END,expires=CASE WHEN expires>? THEN expires ELSE excluded.expires END RETURNING attempts`, Hash(id), time.Now().Add(15*time.Minute).UnixMilli(), time.Now().UnixMilli(), time.Now().UnixMilli()).Scan(&count)
-	return e == nil && count <= limit
+	err := s.DB.QueryRow(`INSERT INTO fr_limits(id,attempts,expires) VALUES(?,1,?)
+ ON CONFLICT(id) DO UPDATE SET
+ attempts=CASE WHEN fr_limits.expires>? THEN fr_limits.attempts+1 ELSE 1 END,
+ expires=CASE WHEN fr_limits.expires>? THEN fr_limits.expires ELSE excluded.expires END
+ RETURNING attempts`, Hash(id), now.Add(15*time.Minute).UnixMilli(), now.UnixMilli(), now.UnixMilli()).Scan(&count)
+	if err != nil {
+		return false, fmt.Errorf("update authentication rate limit: %w", err)
+	}
+	return count <= limit, nil
 }
 
 // Refresh only an existing session. A concurrent logout/event must never be
