@@ -1,3 +1,4 @@
+import { AccountMenu } from '../../shared/ui/AccountMenu'
 import { AppActivityPanel } from './AppActivityPanel'
 import { Alert, Badge, Button, Dialog, Divider, PanelHeader, Section, Toolbar } from '@fastrd/ui-react'
 import { ArrowUpRight,CalendarCheck,Inbox,LogIn,LogOut,Menu,Moon,Settings2,ShieldCheck,Sunrise,UsersRound,X } from 'lucide-react'
@@ -284,12 +285,10 @@ function WorkspacePage() {
           <BrandLink href={activeProduct ? productHref(activeProduct.id) : `${import.meta.env.BASE_URL}intro/`} name={activeProduct?.name} Icon={activeProduct?.Icon} className="min-w-0 !shrink max-[359px]:text-xs" />
           <nav className="ml-auto flex shrink-0 items-center sm:gap-2" aria-label={t('workspace.accountAria')}>
             {member ? <>
-              <div className="flex items-center gap-2 rounded-full border border-[var(--fastui-border)] p-1 min-[460px]:pr-2" role="img" aria-label={member.person} title={member.person}>
-                <span aria-hidden="true" className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[var(--fastui-primary)] text-xs font-bold text-[var(--fastui-on-primary)] md:h-7 md:w-7">{Array.from(member.person.trim())[0]}</span>
-                <strong aria-hidden="true" className="hidden max-w-16 truncate font-bold min-[460px]:block md:max-w-32">{member.person}</strong>
-              </div>
-              <Button variant="quiet" className="aspect-square sm:aspect-auto" onClick={() => void logout()} loading={loggingOut} aria-label={t('auth.logout')} title={t('auth.logout')}><LogOut size={18} /><span className="hidden sm:inline">{t('auth.logoutShort')}</span></Button>
-              <Button variant="quiet" className="aspect-square sm:aspect-auto" aria-label={t('auth.certification')} onClick={() => { if (casEnabled) setCasOpen(true); else setToast(t('auth.casNotEnabled')) }} title={casEnabled ? t('auth.viewAccount') : t('auth.casNotEnabled')}><ShieldCheck size={18} /><span className="hidden sm:inline">{t('auth.certification')}</span></Button>
+              <AccountMenu name={member.person} label={t('workspace.accountAria')} actions={[
+                { label: t('auth.certification'), icon: <ShieldCheck size={18} />, onSelect: () => { if (casEnabled) setCasOpen(true); else setToast(t('auth.casNotEnabled')) } },
+                { label: t('auth.logout'), icon: <LogOut size={18} />, danger: true, disabled: loggingOut, onSelect: () => void logout() },
+              ]} />
             </> : <Button variant="quiet" onClick={() => setLoginOpen(true)}><LogIn size={18} />{t('auth.login')}</Button>}
             <Button variant="icon" onClick={toggleColorMode} aria-label={dark ? t('theme.light') : t('theme.dark')}>{dark ? <Sunrise size={18} /> : <Moon size={18} />}</Button>
           </nav>
