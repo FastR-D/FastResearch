@@ -138,6 +138,11 @@ func newProvider(t *testing.T) *providerFixture {
 	mux.HandleFunc("POST /introspect", func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		defer f.mu.Unlock()
+		clientID, secret, ok := r.BasicAuth()
+		if !ok || clientID != "research-api" || secret != "resource-secret" {
+			write(w, 401, store.Object{"error": "invalid_client"})
+			return
+		}
 		_ = r.ParseForm()
 		signed, e := jose.ParseSigned(r.Form.Get("token"), []jose.SignatureAlgorithm{jose.RS256})
 		if e != nil {
@@ -163,6 +168,7 @@ func setup(t *testing.T) (*Server, *httptest.Server, *providerFixture) {
 		t.Fatal(e)
 	}
 	c := config.Config{DataDir: data, Database: filepath.Join(data, "accounts.sqlite"), StaticDir: static, CookieName: "fr_session", Issuer: provider.URL, ClientID: "research", ClientSecret: "client-secret", AllowLoopbackHTTP: true, Origins: map[string]bool{}}
+	c.ResourceClientID, c.ResourceClientSecret = "research-api", "resource-secret"
 	server := httptest.NewUnstartedServer(nil)
 	c.PublicURL = "http://" + server.Listener.Addr().String()
 	c.RedirectURI = c.PublicURL + "/api/auth/fastcas/callback"

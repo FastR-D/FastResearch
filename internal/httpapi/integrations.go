@@ -25,7 +25,7 @@ func (a *Server) serviceClient(r *http.Request, scope string) (string, error) {
 	if e != nil || !claims.Service || claims.Subject != claims.ClientID {
 		return "", fail(401, "服务令牌无效")
 	}
-	live, e := a.CAS.Client.IntrospectToken(r.Context(), raw)
+	live, e := a.CAS.ResourceClient.IntrospectToken(r.Context(), raw)
 	if e != nil || !live.Active || live.Subject != claims.Subject || live.ClientID != claims.ClientID || !slices.Contains(live.Audience, "research-api") || !slices.Contains(strings.Fields(live.Scope), scope) {
 		return "", fail(401, "服务令牌已失效")
 	}
@@ -253,7 +253,7 @@ func (a *Server) newsProfile(w http.ResponseWriter, r *http.Request) error {
 	if e = verified.Claims(&extra); e != nil || !extra.Delegated || extra.Actor.Subject != "news" {
 		return fail(403, "委托权限不足")
 	}
-	live, e := a.CAS.Client.IntrospectToken(r.Context(), raw)
+	live, e := a.CAS.ResourceClient.IntrospectToken(r.Context(), raw)
 	if e != nil || !live.Active || live.Subject != claims.Subject || live.ClientID != "news" || !slices.Contains(live.Audience, "research-api") || !slices.Contains(strings.Fields(live.Scope), "research:read") {
 		return fail(401, "委托已失效")
 	}

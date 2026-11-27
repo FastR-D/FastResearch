@@ -106,6 +106,10 @@ func TestServiceRosterUsesDatabaseAndLiveServiceAuthorization(t *testing.T) {
 	if actual := get(token, "", 200); store.JSON(actual) != store.JSON(saved) {
 		t.Fatal("service did not read the admin's database snapshot")
 	}
+	resourceClient := a.CAS.ResourceClient
+	a.CAS.ResourceClient = a.CAS.Client
+	get(token, "", 401) // Browser login credentials cannot introspect this resource.
+	a.CAS.ResourceClient = resourceClient
 	for _, change := range []store.Object{{"scope": "research:read"}, {"aud": []string{"another-api"}}, {"service": false}, {"sub": "member"}} {
 		changed := store.Decode(store.JSON(claims))
 		for k, v := range change {

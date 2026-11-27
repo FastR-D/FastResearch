@@ -14,6 +14,7 @@ import (
 type Config struct {
 	CASSessionTTL                                                                                                           time.Duration
 	Address, DataDir, Database, StaticDir, PublicURL, CookieName, CookieDomain, Issuer, ClientID, ClientSecret, RedirectURI string
+	ResourceClientID, ResourceClientSecret                                                                                  string
 	AllowLoopbackHTTP, LegacyKeys, OfflineAccess                                                                            bool
 	Origins                                                                                                                 map[string]bool
 }
@@ -35,11 +36,15 @@ func Load() (Config, error) {
 		return c, fmt.Errorf("FASTRESEARCH_CAS_SESSION_TTL must be a positive duration")
 	}
 	c.Database = Env("FASTRESEARCH_ACCOUNT_DATABASE", filepath.Join(c.DataDir, "accounts.sqlite"))
+	c.ResourceClientID = os.Getenv("FASTRESEARCH_FASTCAS_RESOURCE_CLIENT_ID")
+	c.ResourceClientSecret = os.Getenv("FASTRESEARCH_FASTCAS_RESOURCE_CLIENT_SECRET")
 	if os.Getenv("FASTRESEARCH_FASTCAS_ENABLED") == "false" {
 		c.Issuer = ""
 		c.ClientID = ""
 		c.ClientSecret = ""
 		c.RedirectURI = ""
+		c.ResourceClientID = ""
+		c.ResourceClientSecret = ""
 	}
 	n := 0
 	for _, v := range []string{c.Issuer, c.ClientID, c.ClientSecret, c.RedirectURI} {
@@ -49,6 +54,9 @@ func Load() (Config, error) {
 	}
 	if n != 0 && n != 4 {
 		return c, fmt.Errorf("FastCAS requires issuer, client ID, secret and redirect URI")
+	}
+	if (c.ResourceClientID == "") != (c.ResourceClientSecret == "") || (c.ResourceClientID != "" && n == 0) {
+		return c, fmt.Errorf("FastCAS resource introspection requires issuer and both resource client ID and secret")
 	}
 	u, e := url.Parse(c.PublicURL)
 	if e != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {

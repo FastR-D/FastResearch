@@ -28,14 +28,15 @@ import (
 )
 
 type CAS struct {
-	Config    config.Config
-	Store     *store.Store
-	Client    *fastcas.Client
-	HTTP      *http.Client
-	cipher    cipher.AEAD
-	mu        sync.Mutex
-	provider  *oidc.Provider
-	refreshMu sync.Mutex
+	Config         config.Config
+	Store          *store.Store
+	Client         *fastcas.Client
+	ResourceClient *fastcas.Client
+	HTTP           *http.Client
+	cipher         cipher.AEAD
+	mu             sync.Mutex
+	provider       *oidc.Provider
+	refreshMu      sync.Mutex
 }
 
 func New(c config.Config, s *store.Store) (*CAS, error) {
@@ -47,6 +48,18 @@ func New(c config.Config, s *store.Store) (*CAS, error) {
 	a.Client, err = fastcas.New(fastcas.Config{Issuer: c.Issuer, ClientID: c.ClientID, ClientSecret: c.ClientSecret, RedirectURI: c.RedirectURI, AllowLoopbackHTTP: c.AllowLoopbackHTTP, HTTPClient: a.HTTP}, a)
 	if err != nil {
 		return nil, err
+	}
+	// Resource audience credentials are independent from browser login credentials.
+	// Existing installations whose login client owns the audience can reuse it.
+	a.ResourceClient = a.Client
+	if c.ResourceClientID != "" || c.ResourceClientSecret != "" {
+		if c.ResourceClientID == "" || c.ResourceClientSecret == "" {
+			return nil, errors.New("resource client ID and secret must be configured together")
+		}
+		a.ResourceClient, err = fastcas.New(fastcas.Config{Issuer: c.Issuer, ClientID: c.ResourceClientID, ClientSecret: c.ResourceClientSecret, RedirectURI: c.RedirectURI, AllowLoopbackHTTP: c.AllowLoopbackHTTP, HTTPClient: a.HTTP}, a)
+		if err != nil {
+			return nil, err
+		}
 	}
 	// The key is persisted separately from SQLite and backed up with the data volume.
 	if err := os.MkdirAll(c.DataDir, 0700); err != nil {

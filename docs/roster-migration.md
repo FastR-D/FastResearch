@@ -44,4 +44,6 @@
 
 数据库回读成功后，仍需使用 FastInsight 的实际服务身份运行 `scripts/validate_roster.py`。配置读接口要求 `research-api` audience、`insight:publish` scope 和有效服务身份。Research 的实时令牌校验凭据必须具有 FastCAS 对该 audience 的 introspection 权限；登录客户端 `research` 的凭据不能因此自动校验 `research-api` 的服务令牌。401 不能通过关闭实时校验或回退 YAML 解决。
 
+生产配置使用 `FASTRESEARCH_FASTCAS_RESOURCE_CLIENT_ID=research-api` 和独立的 `FASTRESEARCH_FASTCAS_RESOURCE_CLIENT_SECRET`，后者通过同名 GitHub Secret 部署。该客户端必须在 FastCAS 注册且启用。浏览器登录继续使用 `FASTRESEARCH_FASTCAS_CLIENT_ID=research` 及原有登录密钥。资源身份只用于在线检查令牌；签名、audience、scope、服务客户端和收件人授权仍分别校验。未单独配置资源凭据时沿用登录凭据，适用于登录客户端本身就是目标 audience 的部署。
+
 只有服务接口读取验证通过，才能确认执行端切换完成。
