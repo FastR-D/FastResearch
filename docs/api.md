@@ -86,8 +86,9 @@ Base URL：`http://127.0.0.1:8787`（`PORT` / `FASTRESEARCH_PUBLIC_URL`）。
 | POST | `/api/admin/keys` | 管理员 | 201 | 生成 Key，**完整 `key` 只出现一次** |
 | DELETE | `/api/admin/keys/:id` | 管理员 | 200 `{ "ok": true }` | 撤销 Key，保留账号与个人内容（并删除对应 FastTask 账户） |
 | POST | `/api/admin/keys/:id/rotate` | 管理员 | 200 | 轮换 Key，保留对应 FastTask 账户和任务 |
-| GET | `/api/admin/fastinsight/roster` | 管理员 | 200 | 读取 FastInsight `colleagues.yaml` 与版本号 |
+| GET | `/api/admin/fastinsight/roster` | 管理员 | 200 | 读取数据库中的 FastInsight 分发配置与版本号 |
 | PUT | `/api/admin/fastinsight/roster` | 管理员 | 200 | 校验并原子保存 FastInsight 分发名册 |
+| GET | `/api/fastinsight/roster` | FastInsight 服务身份 | 200 | 读取当前数据库分发快照（只读） |
 | POST | `/api/content/unlock` | 无 | 200 | 个人 Key → 成员会话 + 内容 |
 | POST | `/api/content/logout` | 无（清 Cookie） | 200 `{ "ok": true }` | 清 `fr_session` |
 | GET | `/api/content/me` | 成员 | 200 | 身份 + 作者 / 标签 / 研究印象 / 未读私信 |
@@ -282,7 +283,17 @@ Body：`{ "person": "张三", "fasttask_user_id": "user_…", "expiresAt": null 
 **列出** 只返回 `id / person / keyPreview / createdAt / expiresAt / active`，不含完整 Key。  
 **删除** 不存在则 `404 个人 Key 不存在`。删除后 unlock / 出票 / consume 均失败。
 
-**FastInsight 分发名册** `GET /api/admin/fastinsight/roster` 返回 `{ "roster", "revision", "file" }`。`PUT` 请求提交 `{ "roster", "revision" }`，服务端校验研究领域、关键词、`owners` 与 `default_owner`，保存前将旧文件写入 `colleagues.yaml.bak`。`revision` 不一致返回 `409`，要求前端刷新后再合并修改。
+**FastInsight 分发配置** `GET /api/admin/fastinsight/roster` 返回 `{ "roster", "revision", "storage": "database" }`。配置存储在当前 Research 数据库的 `fr_settings` 表中，支持 SQLite / PostgreSQL，不再读取或写入 YAML 文件。首次读取返回空配置，可直接开始添加节点。
+
+`roster` 包含独立的 `keywords: string[]`、`members: { id, name, feishu_open_id?, receiver_ref? }[]`、`directions: { id, name, priority?, keywords, owners }[]` 和可选的 `default_owner`。成员、方向使用稳定 ID；方向的 `owners` 和 `default_owner` 引用成员目录中的 ID，返回时携带规范化的成员信息。未连接的关键词、方向和成员也会保留。没有任何关键词匹配时使用 `default_owner`；未设置默认接收人表示尚未配置兜底接收。
+
+`PUT` 请求提交 `{ "roster", "revision" }`，服务端验证目录、名称、优先级、重复项和关系引用，并在数据库中原子比较版本后更新。版本不一致返回 `409`，前端保留本地修改，提供明确的“放弃本地修改并加载最新配置”操作。空配置和仅默认接收人的配置均可保存。旧版只包含 `directions/owners/default_owner` 的 JSON 请求仍可通过此接口导入，服务端会生成稳定 ID 和节点目录；旧 YAML 文件不会被自动导入或修改。
+
+**执行端读取** `GET /api/fastinsight/roster` 返回相同的数据库快照，但只允许指定 FastInsight 服务读取。FastCAS 令牌必须包含 `insight:publish` scope、`research-api` audience、服务身份且 client ID 等于 `FASTRESEARCH_FASTCAS_INGEST_CLIENT_ID`；接口同时检查令牌实时有效状态。可选旧密钥仅在 `FASTRESEARCH_ALLOW_LEGACY_FASTINSIGHT_KEY=true` 时接受 `X-FastInsight-Key`。无效 Bearer 令牌不会降级为密钥鉴权。该服务读取权限不放宽投递限制，`POST /api/insight/publish` 仍校验 `receiver_ref` 和账号授权范围。
+
+FastInsight 每篇论文读取一次配置，记录 `roster_revision`，不再读取 `FASTINSIGHT_ROSTER` 或 YAML。无关键词命中直接使用默认接收人；命中方向但没有接收成员时不投递，不自动添加默认关系。配置接口错误会阻止本次分发。旧配置通过 FastInsight 的 `scripts/import_roster.py` 使用管理员会话一次性导入空数据库，旧文件不修改，后续运行无需旧文件。成员 `receiver_ref` 必须指向实际 Research 收件账号，不能按显示姓名猜测。
+
+工作台按关键词、方向、成员三列展示，各列独立滚动。拖动圆点或依次点击两个圆点建立关系，点击连线解除关系；点击节点打开弹窗，方向与关键词通过标签复选框选择。关键词输入一次创建一个完整标签，不按空格、逗号或换行拆分。
 
 ### 3.4 成员会话与内容
 
@@ -772,7 +783,6 @@ FastResearch 旧版 `App.tsx` 中的 `/api/guest/verify` 等同样未使用（`m
 | `FASTRESEARCH_PUBLIC_URL` | `http://127.0.0.1:8787` | ticket 响应里的 `apiUrl` |
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` | `admin` / `admin123456` | 首次写入 `data/access.json` |
 | `FASTINSIGHT_INGEST_KEY` | （必填才允许发布） | 服务号写入 |
-| `FASTINSIGHT_ROSTER` | `../fastinsight/assets/colleagues.yaml` | 工作台编辑的 FastInsight 分发名册 |
 | `FASTRESEARCH_JWT_SECRET` | 数据文件内随机值 | 成员 JWT |
 | `VITE_FASTNEWS_URL` / `VITE_READ_URL` | `:4173` / `:3015` | launch 回退目标 |
 

@@ -22,7 +22,7 @@ try {
     const context = await browser.newContext({ colorScheme, viewport: { width, height: 960 }, isMobile: width < 768, hasTouch: width < 768 })
     const page = await context.newPage()
     page.on('pageerror', error => errors.push(error.message))
-    let roster = { directions: [{ name: '原方向', keywords: ['Agent'], owners: [{ name: '研究员', feishu_open_id: 'ou_test' }] }] }
+    let roster = { keywords: ['Agent', 'Security'], members: [{ id: 'm1', name: '研究员', feishu_open_id: 'ou_test' }], directions: [{ id: 'd1', name: '原方向', keywords: ['Agent'], owners: [{ id: 'm1', name: '研究员', feishu_open_id: 'ou_test' }] }] }
     let revision = 'v1'
     let saved = null
     let emptyTeam = false
@@ -47,7 +47,7 @@ try {
             roster = saved.roster
             revision = 'v2'
           }
-          json = { roster, revision, file: 'colleagues.yaml' }; break
+          json = { roster, revision, storage: 'database' }; break
         default:
           if (url.pathname.endsWith('/activity')) json = { tasks: url.pathname.includes('/planner/') ? today : undefined, appId: url.pathname.split('/')[4], accountState: 'active', metrics: [{ id: 'updates', label: '未读动态', value: 3 }], items: [{ id: 'update', title: longText, description: longText, kind: 'comment', path: 'https://example.test/update' }] }
           else throw new Error(`Unexpected fixture request: ${route.request().method()} ${url.pathname}`)
@@ -244,10 +244,12 @@ try {
     await nav('论文分发设置')
     assert.equal(new URL(page.url()).searchParams.get('view'), 'routing')
     const routing = page.getByRole('region', { name: '论文分发设置', exact: true })
-    await routing.getByLabel('研究方向', { exact: true }).fill('新方向')
-    // The direction name previously formed its React key and lost focus on edits.
-    assert.equal(await routing.getByLabel('研究方向', { exact: true }).evaluate(el => el === document.activeElement), true)
-    await routing.getByLabel('匹配关键词', { exact: false }).fill('Agent\nSecurity')
+    await routing.getByRole('button', { name: /^原方向/ }).click()
+    const directionDialog = page.getByRole('dialog', { name: '编辑研究方向' })
+    await directionDialog.getByLabel('研究方向', { exact: true }).fill('新方向')
+    assert.equal(await directionDialog.getByLabel('研究方向', { exact: true }).evaluate(el => el === document.activeElement), true)
+    await directionDialog.getByRole('checkbox', { name: 'Security', exact: true }).check()
+    await directionDialog.getByRole('button', { name: '应用修改' }).click()
     await routing.getByRole('button', { name: '保存设置', exact: true }).click()
     await page.getByText('FastInsight分发设置已保存', { exact: true }).waitFor()
     assert.equal(saved.roster.directions[0].name, '新方向')
@@ -265,7 +267,7 @@ try {
     await assertLayout()
     await page.screenshot({ path: path.join(output, `${colorScheme}-${width}-admin.png`) })
     await page.goBack()
-    await routing.getByLabel('研究方向', { exact: true }).waitFor()
+    await routing.getByRole('button', { name: /^新方向/ }).waitFor()
     await page.goForward()
     await admin.getByText('研究员 59', { exact: false }).waitFor()
     emptyTeam = true

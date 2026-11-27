@@ -44,6 +44,7 @@ const accountSchema = `CREATE TABLE IF NOT EXISTS fr_accounts(id TEXT PRIMARY KE
  CREATE TABLE IF NOT EXISTS fr_sessions(hash TEXT PRIMARY KEY,payload TEXT NOT NULL,expires INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS fr_transactions(state TEXT PRIMARY KEY,payload TEXT NOT NULL,expires INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS fr_events(issuer TEXT NOT NULL,id TEXT NOT NULL,PRIMARY KEY(issuer,id));
+ CREATE TABLE IF NOT EXISTS fr_settings(id TEXT PRIMARY KEY,payload TEXT NOT NULL,revision TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS fr_migrations(id TEXT PRIMARY KEY);
  CREATE TABLE IF NOT EXISTS fr_limits(id TEXT PRIMARY KEY,attempts INTEGER NOT NULL,expires INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS fastcas_links(issuer TEXT NOT NULL,id TEXT NOT NULL,client_id TEXT NOT NULL,account_id TEXT NOT NULL REFERENCES fr_accounts(id),subject TEXT NOT NULL,state TEXT NOT NULL CHECK(state IN ('prepared','active','revoked')),version INTEGER NOT NULL,payload TEXT NOT NULL,PRIMARY KEY(issuer,id));

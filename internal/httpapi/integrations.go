@@ -15,28 +15,37 @@ import (
 	"github.com/FastR-D/FastResearch/internal/store"
 )
 
-func (a *Server) serviceTarget(r *http.Request, b store.Object, scope string) (*store.Account, error) {
+// serviceClient validates both the signed claims and live service-token state.
+func (a *Server) serviceClient(r *http.Request, scope string) (string, error) {
 	raw := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if a.CAS.Client == nil || raw == "" || raw == r.Header.Get("Authorization") {
+		return "", fail(401, "需要服务令牌")
+	}
+	claims, e := a.CAS.Client.VerifyAccessToken(r.Context(), raw, "research-api", scope)
+	if e != nil || !claims.Service || claims.Subject != claims.ClientID {
+		return "", fail(401, "服务令牌无效")
+	}
+	live, e := a.CAS.Client.IntrospectToken(r.Context(), raw)
+	if e != nil || !live.Active || live.Subject != claims.Subject || live.ClientID != claims.ClientID || !slices.Contains(live.Audience, "research-api") || !slices.Contains(strings.Fields(live.Scope), scope) {
+		return "", fail(401, "服务令牌已失效")
+	}
+	return claims.ClientID, nil
+}
+
+func (a *Server) serviceTarget(r *http.Request, b store.Object, scope string) (*store.Account, error) {
 	ref := store.String(b["receiver_ref"])
 	if r.Header.Get("Authorization") != "" {
-		if a.CAS.Client == nil || raw == r.Header.Get("Authorization") {
-			return nil, fail(401, "需要服务令牌")
-		}
-		claims, e := a.CAS.Client.VerifyAccessToken(r.Context(), raw, "research-api", scope)
-		if e != nil || !claims.Service || claims.Subject != claims.ClientID {
-			return nil, fail(401, "服务令牌无效")
-		}
-		live, e := a.CAS.Client.IntrospectToken(r.Context(), raw)
-		if e != nil || !live.Active || live.Subject != claims.Subject || live.ClientID != claims.ClientID || !slices.Contains(live.Audience, "research-api") || !slices.Contains(strings.Fields(live.Scope), scope) {
-			return nil, fail(401, "服务令牌已失效")
+		clientID, e := a.serviceClient(r, scope)
+		if e != nil {
+			return nil, e
 		}
 		allowed := false
-		if scope == "insight:publish" && claims.ClientID == os.Getenv("FASTRESEARCH_FASTCAS_INGEST_CLIENT_ID") {
+		if scope == "insight:publish" && clientID == os.Getenv("FASTRESEARCH_FASTCAS_INGEST_CLIENT_ID") {
 			allowed = slices.Contains(strings.Split(os.Getenv("FASTRESEARCH_FASTCAS_INGEST_ALLOWED_ACCOUNT_IDS"), ","), ref)
 		} else {
 			policy := map[string][]string{}
 			_ = json.Unmarshal([]byte(os.Getenv("FASTRESEARCH_FASTCAS_ALLOWED_TARGETS")), &policy)
-			allowed = slices.Contains(policy[claims.ClientID], ref)
+			allowed = slices.Contains(policy[clientID], ref)
 		}
 		if !allowed || ref == "" {
 			return nil, fail(403, "收件人不在服务授权范围")
@@ -60,7 +69,34 @@ func (a *Server) serviceTarget(r *http.Request, b store.Object, scope string) (*
 	}
 	return account, nil
 }
+
+// The designated FastInsight service may read routing configuration; the
+// existing per-account grant is still independently enforced on every delivery.
+func (a *Server) insightRoster(w http.ResponseWriter, r *http.Request) error {
+	if r.Header.Get("Authorization") != "" {
+		clientID, e := a.serviceClient(r, "insight:publish")
+		if e != nil {
+			return e
+		}
+		if expected := os.Getenv("FASTRESEARCH_FASTCAS_INGEST_CLIENT_ID"); expected == "" || clientID != expected {
+			return fail(403, "此服务无权读取分发配置")
+		}
+	} else {
+		expected := os.Getenv("FASTINSIGHT_INGEST_KEY")
+		if os.Getenv("FASTRESEARCH_ALLOW_LEGACY_FASTINSIGHT_KEY") != "true" || expected == "" || subtle.ConstantTimeCompare([]byte(expected), []byte(r.Header.Get("X-FastInsight-Key"))) != 1 {
+			return fail(401, "需要 FastInsight 服务身份")
+		}
+	}
+	snapshot, e := a.Store.Roster()
+	if e != nil {
+		return e
+	}
+	write(w, 200, snapshot)
+	return nil
+}
+
 func (a *Server) integrationRoutes() {
+	a.endpoint("GET /api/fastinsight/roster", a.insightRoster)
 	for _, path := range []string{"/api/insight/publish", "/api/content/reading/publish", "/api/fastinsight/case"} {
 		a.endpoint("POST "+path, func(w http.ResponseWriter, r *http.Request) error {
 			b, e := body(r)

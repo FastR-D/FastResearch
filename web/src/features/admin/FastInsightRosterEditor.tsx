@@ -1,188 +1,102 @@
-import { MetricBlock } from '../../shared/ui/MetricBlock'
-import { Alert, Badge, Button, EmptyState, Loading, Section, TextArea, TextField, Toolbar } from '@fastrd/ui-react'
-import { PanelBody, PanelHeading } from '../../shared/ui/WorkspaceLayout'
-import { Plus,Save,ShieldCheck,Trash2,UsersRound,X } from 'lucide-react'
-import { FormEvent,useEffect,useRef,useState } from 'react'
+import { Alert, Badge, Button, EmptyState, Loading, Toolbar } from '@fastrd/ui-react'
+import { RotateCcw, Save, ShieldCheck } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { APIError, request } from '../../shared/api/client'
-import { type Copy } from '../../shared/copy'
-import type { AdminSession,FastInsightRoster,RosterDirection,RosterOwner } from '../../shared/types'
+import type { Copy } from '../../shared/copy'
+import type { AdminSession, FastInsightRoster } from '../../shared/types'
+import { DEFAULT, RosterGraph, type RosterEdge, type RosterNode } from './RosterGraph'
+import { RosterNodeDialog } from './RosterNodeDialog'
+
+type Snapshot = { roster: FastInsightRoster; revision: string; storage: 'database' }
 export function FastInsightRosterEditor({ session, onAdminOpen, onSessionExpired, onToast, t }: {
-  session: AdminSession | null
-  onAdminOpen: () => void
-  onSessionExpired: () => void
-  onToast: (message: string) => void
-  t: Copy
+  session: AdminSession | null; onAdminOpen: () => void; onSessionExpired: () => void; onToast: (message: string) => void; t: Copy
 }) {
+  const [snapshot, setSnapshot] = useState<Snapshot | null>(null)
   const [roster, setRoster] = useState<FastInsightRoster | null>(null)
-  const [revision, setRevision] = useState('')
-  const [fileName, setFileName] = useState('colleagues.yaml')
   const [loading, setLoading] = useState(Boolean(session))
   const [saving, setSaving] = useState(false)
   const [dirty, setDirty] = useState(false)
   const [error, setError] = useState('')
+  const [conflict, setConflict] = useState(false)
+  const [reload, setReload] = useState(0)
+  const [editing, setEditing] = useState<RosterNode | null>(null)
   const sessionExpiredRef = useRef(onSessionExpired)
-
+  const generation = useRef(0)
+  useEffect(() => { sessionExpiredRef.current = onSessionExpired }, [onSessionExpired])
   useEffect(() => {
-    sessionExpiredRef.current = onSessionExpired
-  }, [onSessionExpired])
-
-  useEffect(() => {
-    if (!session) {
-      setRoster(null)
-      setRevision('')
-      setDirty(false)
-      setLoading(false)
-      return
-    }
+    const current = ++generation.current
+    setEditing(null); setSaving(false); setError(''); setConflict(false)
+    if (!session) { setRoster(null); setSnapshot(null); setDirty(false); setLoading(false); return }
     let cancelled = false
-    setLoading(true)
-    setError('')
-    void request<{ roster: FastInsightRoster; revision: string; file: string }>('/api/admin/fastinsight/roster', {}, session)
-      .then((result) => {
+    setRoster(null); setSnapshot(null); setDirty(false); setLoading(true)
+    void request<Snapshot>('/api/admin/fastinsight/roster', {}, session)
+      .then(result => { if (!cancelled) { setSnapshot(result); setRoster(result.roster); setDirty(false) } })
+      .catch(err => {
         if (cancelled) return
-        setRoster(result.roster)
-        setRevision(result.revision)
-        setFileName(result.file)
-        setDirty(false)
-      })
-      .catch((err) => {
-        if (cancelled) return
-        const message = err instanceof Error ? err.message : t('routing.loadFailed')
-        setError(message)
+        setError(err instanceof Error ? err.message : t('routing.loadFailed'))
         if (err instanceof APIError && (err.status === 401 || err.status === 403)) sessionExpiredRef.current()
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-    return () => { cancelled = true }
-  }, [session, t])
-
-  const changeRoster = (change: (value: FastInsightRoster) => FastInsightRoster) => {
-    setRoster((current) => current ? change(current) : current)
-    setDirty(true)
-    setError('')
-  }
-
-  const changeDirection = (index: number, patch: Partial<RosterDirection>) => {
-    changeRoster((current) => ({
-      ...current,
-      directions: current.directions.map((direction, itemIndex) => itemIndex === index ? { ...direction, ...patch } : direction),
-    }))
-  }
-
-  const changeOwner = (directionIndex: number, ownerIndex: number, patch: Partial<RosterOwner>) => {
-    changeRoster((current) => ({
-      ...current,
-      directions: current.directions.map((direction, itemIndex) => itemIndex !== directionIndex ? direction : {
-        ...direction,
-        owners: direction.owners.map((owner, index) => index === ownerIndex ? { ...owner, ...patch } : owner),
-      }),
-    }))
-  }
-
-  const addDirection = () => {
-    changeRoster((current) => ({
-      ...current,
-      directions: [...current.directions, { name: '', keywords: [], owners: [{ name: '', feishu_open_id: '' }] }],
-    }))
-  }
-
-  const addOwner = (directionIndex: number) => {
-    changeRoster((current) => ({
-      ...current,
-      directions: current.directions.map((direction, index) => index === directionIndex ? {
-        ...direction,
-        owners: [...direction.owners, { name: '', feishu_open_id: '' }],
-      } : direction),
-    }))
-  }
-
-  const changeDefaultOwner = (patch: Partial<RosterOwner>) => {
-    changeRoster((current) => {
-      const next = {
-        ...(current.default_owner ?? { name: '', feishu_open_id: '' }),
-        ...patch,
-        name: patch.name ?? current.default_owner?.name ?? '',
-        feishu_open_id: patch.feishu_open_id ?? current.default_owner?.feishu_open_id ?? '',
+      }).finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true; generation.current = current + 1 }
+  }, [session, t, reload])
+  const change = (value: FastInsightRoster) => { setRoster(value); setDirty(true); if (!conflict) setError('') }
+  const connect = (a: RosterNode, b: RosterNode) => {
+    if (!roster || saving) return
+    const rank = { keyword: 0, direction: 1, member: 2 }
+    const [from, to] = rank[a.kind] < rank[b.kind] ? [a, b] : [b, a]
+    const next = structuredClone(roster)
+    if (from.kind === 'keyword' && to.kind === 'direction' && from.id !== DEFAULT && to.id !== DEFAULT) {
+      const d = next.directions.find(d => d.id === to.id)
+      if (!d || d.keywords.includes(from.id)) return
+      d.keywords.push(from.id)
+    } else if (from.kind === 'direction' && to.kind === 'member') {
+      const member = next.members.find(m => m.id === to.id)
+      if (!member) return
+      if (from.id === DEFAULT) next.default_owner = member
+      else {
+        const d = next.directions.find(d => d.id === from.id)
+        if (!d || d.owners.some(m => m.id === member.id)) return
+        d.owners.push(member)
       }
-      const value = { ...current }
-      if (!next.name.trim() && !next.feishu_open_id.trim()) delete value.default_owner
-      else value.default_owner = next
-      return value
-    })
+    } else { onToast(t('routing.invalidConnection')); return }
+    change(next)
   }
-
-  const save = async (event: FormEvent) => {
-    event.preventDefault()
-    if (!session || !roster) return
-    setSaving(true)
-    setError('')
+  const remove = (edge: RosterEdge) => {
+    if (!roster || saving || edge.fixed) return
+    const next = structuredClone(roster)
+    if (edge.from.kind === 'keyword') next.directions.forEach(d => { if (d.id === edge.to.id) d.keywords = d.keywords.filter(k => k !== edge.from.id) })
+    else if (edge.from.id === DEFAULT) delete next.default_owner
+    else next.directions.forEach(d => { if (d.id === edge.from.id) d.owners = d.owners.filter(m => m.id !== edge.to.id) })
+    change(next)
+  }
+  const save = async () => {
+    if (!session || !roster || !snapshot || saving) return
+    const current = generation.current
+    setSaving(true); setError('')
     try {
-      const result = await request<{ roster: FastInsightRoster; revision: string; file: string }>('/api/admin/fastinsight/roster', {
-        method: 'PUT',
-        body: JSON.stringify({
-          roster: {
-            ...roster,
-            directions: roster.directions.map((direction) => ({
-              ...direction,
-              keywords: direction.keywords.filter(Boolean),
-            })),
-          },
-          revision,
-        }),
-      }, session)
-      setRoster(result.roster)
-      setRevision(result.revision)
-      setFileName(result.file)
-      setDirty(false)
-      onToast(t('routing.saved'))
+      const result = await request<Snapshot>('/api/admin/fastinsight/roster', { method: 'PUT', body: JSON.stringify({ roster, revision: snapshot.revision }) }, session)
+      if (generation.current !== current) return
+      setSnapshot(result); setRoster(result.roster); setDirty(false); setConflict(false); onToast(t('routing.saved'))
     } catch (err) {
-      const message = err instanceof Error ? err.message : t('routing.saveFailed')
-      setError(message)
+      if (generation.current !== current) return
+      setError(err instanceof Error ? err.message : t('routing.saveFailed'))
+      if (err instanceof APIError && err.status === 409) setConflict(true)
       if (err instanceof APIError && (err.status === 401 || err.status === 403)) sessionExpiredRef.current()
-    } finally {
-      setSaving(false)
-    }
+    } finally { if (generation.current === current) setSaving(false) }
   }
-
   if (!session) return <EmptyState title={t('routing.adminRequired')} action={<Button variant="secondary" onClick={onAdminOpen}><ShieldCheck size={15} />{t('routing.openAdmin')}</Button>}><p>{t('routing.adminRequiredHint')}</p></EmptyState>
-
-  const ownerCount = roster?.directions.reduce((count, direction) => count + direction.owners.length, 0) ?? 0
-  const keywordCount = roster?.directions.reduce((count, direction) => count + direction.keywords.filter(Boolean).length, 0) ?? 0
-  return <form onSubmit={save} aria-label={t('routing.title')} className="grid gap-6">
-    <p>{t('routing.description')} <code className="break-all">{fileName}</code></p>
+  return <div aria-label={t('routing.title')} className="grid gap-3 min-w-0">
     <Toolbar label={t('routing.actionsAria')}>
+      <span className="text-sm">{t('routing.description')}</span>
       {dirty && <Badge tone="warning">{t('routing.unsaved')}</Badge>}
-      <Button variant="secondary" onClick={addDirection} disabled={loading || !roster}><Plus size={15} />{t('routing.addDirection')}</Button>
-      <Button variant="primary" type="submit" disabled={loading || !roster} loading={saving}><Save size={15} />{saving ? t('routing.saving') : t('routing.save')}</Button>
+      <Button variant="quiet" onClick={() => { if (snapshot) { setRoster(snapshot.roster); setDirty(false); setError('') } }} disabled={!dirty || saving || loading || conflict}><RotateCcw size={14} />{t('routing.reset')}</Button>
+      <Button variant="primary" onClick={() => void save()} disabled={loading || !roster || !dirty || conflict} loading={saving}><Save size={15} />{saving ? t('routing.saving') : t('routing.save')}</Button>
     </Toolbar>
-    <dl className="grid sm:grid-cols-3 gap-4"><MetricBlock label={t('routing.directionCount')} value={roster?.directions.length ?? 0} /><MetricBlock label={t('routing.ownerCount')} value={ownerCount} /><MetricBlock label={t('routing.keywordCount')} value={keywordCount} /></dl>
     {error && <Alert tone="danger">{error}</Alert>}
+    {(conflict || error && !roster) && <Button variant="secondary" onClick={() => setReload(v => v + 1)}>{t(conflict ? 'routing.reloadConflict' : 'routing.retry')}</Button>}
     {loading ? <Loading label={t('routing.loading')} /> : roster && <>
-      {!roster.directions.length && <EmptyState title={t('routing.empty')} />}
-      {roster.directions.map((direction, directionIndex) => <Section key={directionIndex}>
-        <PanelHeading><h3>{t('routing.directionTitle', { index: directionIndex + 1 })}</h3><Button variant="icon" aria-label={t('routing.removeDirection')} onClick={() => changeRoster(current => ({ ...current, directions: current.directions.filter((_, index) => index !== directionIndex) }))}><Trash2 size={15} /></Button></PanelHeading>
-        <PanelBody>
-          <div className="grid sm:grid-cols-2 gap-4">
-            <label className="fastui-field">{t('routing.directionName')}<TextField value={direction.name} onChange={event => changeDirection(directionIndex, { name: event.target.value })} placeholder={t('routing.directionPlaceholder')} required /></label>
-            <label className="fastui-field">{t('routing.priority')}<TextField type="number" value={direction.priority ?? ''} onChange={event => changeDirection(directionIndex, { priority: event.target.value === '' ? undefined : Number(event.target.value) })} min="0" /></label>
-          </div>
-          <label className="fastui-field">{t('routing.keywords')}<small>{t('routing.keywordsHint')}</small><TextArea value={direction.keywords.join('\n')} onChange={event => changeDirection(directionIndex, { keywords: event.target.value.split(/\r?\n/).map(keyword => keyword.trim()) })} placeholder={t('routing.keywordsPlaceholder')} rows={4} /></label>
-          <Toolbar label={t('routing.ownersAria')}><UsersRound size={15} />{t('routing.owners')}<Button variant="quiet" onClick={() => addOwner(directionIndex)}><Plus size={14} />{t('routing.addOwner')}</Button></Toolbar>
-          {direction.owners.map((owner, ownerIndex) => <div className="grid sm:grid-cols-2 gap-4 items-end" key={ownerIndex}>
-            <label className="fastui-field">{t('routing.ownerName')}<TextField value={owner.name} onChange={event => changeOwner(directionIndex, ownerIndex, { name: event.target.value })} placeholder={t('routing.ownerNamePlaceholder')} required /></label>
-            <label className="fastui-field">{t('routing.feishuOpenId')}<TextField value={owner.feishu_open_id ?? ''} onChange={event => changeOwner(directionIndex, ownerIndex, { feishu_open_id: event.target.value })} placeholder={t('routing.feishuPlaceholder')} /></label>
-            <Button variant="secondary" aria-label={t('routing.removeOwner')} onClick={() => changeDirection(directionIndex, { owners: direction.owners.filter((_, index) => index !== ownerIndex) })}><X size={15} />{t('routing.removeOwner')}</Button>
-          </div>)}
-        </PanelBody>
-      </Section>)}
-      <Section>
-        <PanelHeading><ShieldCheck size={16} /><h3>{t('routing.defaultOwner')}</h3></PanelHeading>
-        <PanelBody><p>{t('routing.defaultOwnerHint')}</p><div className="grid sm:grid-cols-2 gap-4">
-          <label className="fastui-field">{t('routing.ownerName')}<TextField value={roster.default_owner?.name ?? ''} onChange={event => changeDefaultOwner({ name: event.target.value })} placeholder={t('routing.ownerNamePlaceholder')} /></label>
-          <label className="fastui-field">{t('routing.feishuOpenId')}<TextField value={roster.default_owner?.feishu_open_id ?? ''} onChange={event => changeDefaultOwner({ feishu_open_id: event.target.value })} placeholder={t('routing.feishuPlaceholder')} /></label>
-        </div></PanelBody>
-      </Section>
+      <RosterGraph roster={roster} disabled={saving} onEdit={setEditing} onAdd={kind => setEditing({ kind, id: '' })} onConnect={connect} onRemove={remove} t={t} />
+      {!roster.default_owner && <p className="text-xs">{t('routing.noDefault')}</p>}
+      {editing && <RosterNodeDialog node={editing} roster={roster} onApply={value => { change(value); setEditing(null) }} onClose={() => setEditing(null)} t={t} />}
     </>}
-  </form>
+  </div>
 }

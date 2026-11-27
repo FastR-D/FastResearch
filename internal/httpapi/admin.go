@@ -1,19 +1,13 @@
 package httpapi
 
 import (
+	"encoding/json"
+	"errors"
 	"net/http"
-	"os"
-	"path/filepath"
-	"sync"
 	"time"
 
-	"gopkg.in/yaml.v3"
-
-	"github.com/FastR-D/FastResearch/internal/config"
 	"github.com/FastR-D/FastResearch/internal/store"
 )
-
-var rosterMu sync.Mutex
 
 func keyView(a store.Account) store.Object {
 	return store.Object{"id": a.KeyID, "accountId": a.ID, "person": a.Content["person"], "keyPreview": a.Credential["keyPreview"], "createdAt": a.Content["createdAt"], "expiresAt": a.Credential["expiresAt"], "active": active(&a)}
@@ -117,62 +111,37 @@ func (a *Server) adminRoutes() {
 		if r.Method != "GET" && r.Method != "PUT" {
 			return fail(405, "不支持的操作")
 		}
-		rosterMu.Lock()
-		defer rosterMu.Unlock()
-		file := config.Env("FASTINSIGHT_ROSTER", "../FastInsight/assets/colleagues.yaml")
-		raw, e := os.ReadFile(file)
-		if e != nil {
-			return fail(503, "FastInsight 名册不可用")
+		if r.Method == "GET" {
+			snapshot, e := a.Store.Roster()
+			if e != nil {
+				return e
+			}
+			write(w, 200, snapshot)
+			return nil
 		}
-		var roster store.Object
-		if e = yaml.Unmarshal(raw, &roster); e != nil {
+		b, e := body(r)
+		if e != nil {
 			return e
 		}
-		revision := store.Hash(string(raw))
-		if r.Method == "PUT" {
-			b, e := body(r)
-			if e != nil {
-				return e
-			}
-			if store.String(b["revision"]) != revision {
-				return fail(409, "名册已更新，请刷新后重试")
-			}
-			roster = object(b["roster"])
-			directions := array(roster["directions"])
-			if len(directions) == 0 || len(directions) > 100 {
-				return fail(400, "研究方向不能为空且不能超过 100 项")
-			}
-			for _, v := range directions {
-				d := object(v)
-				if store.String(d["name"]) == "" || len(array(d["keywords"])) == 0 {
-					return fail(400, "每个方向需要名称和关键词")
-				}
-			}
-			raw, e = yaml.Marshal(roster)
-			if e != nil {
-				return e
-			}
-			tmp, e := os.CreateTemp(filepath.Dir(file), ".roster-*")
-			if e != nil {
-				return e
-			}
-			defer os.Remove(tmp.Name())
-			if _, e = tmp.Write(raw); e == nil {
-				e = tmp.Sync()
-			}
-			closeErr := tmp.Close()
-			if e != nil {
-				return e
-			}
-			if closeErr != nil {
-				return closeErr
-			}
-			if e = os.Rename(tmp.Name(), file); e != nil {
-				return e
-			}
-			revision = store.Hash(string(raw))
+		raw, e := json.Marshal(b["roster"])
+		if e != nil {
+			return fail(400, "分发配置格式无效")
 		}
-		write(w, 200, store.Object{"roster": roster, "revision": revision, "file": filepath.Base(file)})
+		var roster store.Roster
+		if len(object(b["roster"])) == 0 || json.Unmarshal(raw, &roster) != nil {
+			return fail(400, "分发配置格式无效")
+		}
+		if e = store.NormalizeRoster(&roster); e != nil {
+			return fail(400, e.Error())
+		}
+		snapshot, e := a.Store.SaveRoster(roster, store.String(b["revision"]))
+		if errors.Is(e, store.ErrRosterConflict) {
+			return fail(409, "配置已被其他管理员更新，请重新加载后修改")
+		}
+		if e != nil {
+			return e
+		}
+		write(w, 200, snapshot)
 		return nil
 	})
 }

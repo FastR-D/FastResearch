@@ -20,7 +20,8 @@
     "start": "./bin/fastresearch",
     "test:session": "node scripts/session-browser.mjs",
     "test:workspace": "node scripts/workspace-visual-check.mjs",
-    "test:activity": "node scripts/activity-browser.mjs"
+    "test:activity": "node scripts/activity-browser.mjs",
+    "test:roster": "node scripts/roster-browser.mjs"
   },
   "engines": {
     "node": ">=22.13"
