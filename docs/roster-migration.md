@@ -10,7 +10,7 @@
 
    ```bash
    umask 077
-   uv run --locked python -c 'import json,sys,yaml; json.dump(yaml.safe_load(open(sys.argv[1])),sys.stdout,ensure_ascii=False)' /path/to/colleagues.yaml > /protected/roster.json
+   uv run --locked python -c 'import json,sys; from scripts.import_roster import read_legacy; json.dump(read_legacy(sys.argv[1]),sys.stdout,ensure_ascii=False)' /path/to/colleagues.yaml > /protected/roster.json
    ```
 
 2. 在 FastResearch 仓库构建命令：
