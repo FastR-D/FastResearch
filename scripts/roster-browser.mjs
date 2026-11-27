@@ -42,9 +42,18 @@ try {
     await page.goto(origin + '/workspace?view=routing', { waitUntil: 'networkidle' })
     const graph = page.getByRole('region', { name: '论文分发设置', exact: true })
     const col = kind => page.locator(`[data-roster-column="${kind}"]`)
-    const save = async () => { await graph.getByRole('button', { name: '保存设置', exact: true }).click(); await page.getByText('FastInsight分发设置已保存', { exact: true }).waitFor(); await page.waitForFunction(() => ![...document.querySelectorAll('button')].some(b => b.textContent.includes('正在保存'))) }
+    const save = async () => { await graph.getByRole('button', { name: '保存', exact: true }).click(); await page.getByText('FastInsight分发设置已保存', { exact: true }).waitFor(); await page.waitForFunction(() => ![...document.querySelectorAll('button')].some(b => b.textContent.includes('正在保存'))) }
     const openNode = async (kind, name) => { await col(kind).getByRole('button', { name, exact: false }).filter({ hasNot: page.locator('svg') }).click() }
     await col('keyword').getByText('未匹配任何关键词').waitFor()
+    assert.equal(await page.getByText('关键词 → 研究方向 → 接收成员', { exact: true }).count(), 0)
+    assert.equal(await page.getByText('拖动圆点连接相邻列；也可依次点击两个圆点。点击连线解除关系，点击节点编辑。', { exact: true }).count(), 0)
+    assert.equal(await graph.getByRole('button', { name: /：向[上下]滚动/ }).count(), 0)
+    {
+      const heading = await graph.getByRole('heading', { name: '论文分发设置', exact: true }).boundingBox()
+      const reset = await graph.getByRole('button', { name: '撤销', exact: true }).boundingBox()
+      assert.ok(Math.abs(heading.y + heading.height / 2 - reset.y - reset.height / 2) < 3)
+      assert.ok(reset.x - heading.x - heading.width < 40)
+    }
     assert.equal(await page.locator('textarea').count(), 0)
     await openNode('member', '李同学')
     let dialog = page.getByRole('dialog', { name: '编辑接收成员' })
@@ -115,7 +124,7 @@ try {
     await page.getByRole('dialog').getByLabel('关键词', { exact: true }).fill('本地修改')
     await page.getByRole('dialog').getByRole('button', { name: '应用修改' }).click()
     forceConflict = true
-    await graph.getByRole('button', { name: '保存设置', exact: true }).click()
+    await graph.getByRole('button', { name: '保存', exact: true }).click()
     await graph.getByRole('button', { name: '放弃本地修改并加载最新配置' }).waitFor()
     await col('keyword').getByText('本地修改', { exact: true }).waitFor()
     forceConflict = false
@@ -157,10 +166,24 @@ try {
     await col('keyword').getByText('关键词 39', { exact: true }).waitFor({ state: 'attached' })
     assert.equal(await page.locator('[data-roster-column]').count(), 3)
     for (const kind of ['keyword', 'direction', 'member']) {
+      const title = { keyword: '关键词', direction: '研究方向', member: '接收成员' }[kind]
+      const up = graph.getByRole('button', { name: `${title}：向上滚动`, exact: true })
+      const down = graph.getByRole('button', { name: `${title}：向下滚动`, exact: true })
       assert.ok(await col(kind).evaluate(el => el.scrollHeight > el.clientHeight))
+      assert.equal(await col(kind).evaluate(el => getComputedStyle(el).scrollbarWidth), 'none')
+      assert.equal(await up.count(), 0)
+      await down.click()
+      await up.waitFor()
+      assert.ok(await col(kind).evaluate(el => el.scrollTop > 0))
+      for (const other of ['keyword', 'direction', 'member'].filter(k => k !== kind)) assert.equal(await col(other).evaluate(el => el.scrollTop), 0)
+      await col(kind).evaluate(el => { el.scrollTop = el.scrollHeight })
+      await down.waitFor({ state: 'detached' })
+      await up.click()
+      await down.waitFor()
       await col(kind).evaluate(el => { el.scrollTop = 150 })
       for (const other of ['keyword', 'direction', 'member'].filter(k => k !== kind)) assert.equal(await col(other).evaluate(el => el.scrollTop), 0)
       await col(kind).evaluate(el => { el.scrollTop = 0 })
+      await up.waitFor({ state: 'detached' })
     }
     if (width === 1440) {
       const line = graph.getByRole('button', { name: '解除关系：关键词 0 → 方向 0', exact: true })

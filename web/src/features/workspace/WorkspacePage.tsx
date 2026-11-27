@@ -320,7 +320,7 @@ function WorkspacePage() {
         )}
         <main className="flex-1 min-h-0 min-w-0 overflow-y-auto overscroll-contain p-5 md:p-8 lg:p-10" id="workspace-content" tabIndex={-1}>
           <div className={`mx-auto max-w-6xl gap-6 md:gap-8 ${workspaceView === 'team' && desktop ? 'flex h-full flex-col' : 'grid'}`}>
-            <div className="flex flex-wrap items-center justify-between gap-3">
+            {workspaceView !== 'routing' && <div className="flex flex-wrap items-center justify-between gap-3">
               <h1 className="fastui-heading min-w-0 text-2xl">{workspaceView === 'workflow' ? selectedEntry.name : [...auxiliaryViews, ...administrationViews].find(item => item.view === workspaceView)?.label}</h1>
               {(workspaceView === 'workflow' || workspaceView === 'today') && (
                 <div className="ml-auto flex items-center gap-2" data-fastui-density="touch">
@@ -330,7 +330,7 @@ function WorkspacePage() {
                   </Button>
                 </div>
               )}
-            </div>
+            </div>}
             {workspaceView === 'workflow' ? <Fragment key={selectedModule}>
               {showOverview && (
                 <Section>
@@ -346,9 +346,9 @@ function WorkspacePage() {
               {workspaceView === 'today' && <AppTasksPanel app={taskApp} catalogLoading={appCatalog === null && !catalogError} member={member} onUnlock={() => setLoginOpen(true)} t={t} />}
               {workspaceView === 'insight' && <InsightMailbox member={member} items={insightItems} selectedId={selectedInsight} readIds={readIds} onSelect={markRead} onUnlock={() => setLoginOpen(true)} onOpenFastRead={() => openEntry(entries['fast-read'])} t={t} />}
               {workspaceView === 'team' && <TeamProgressPanel members={teamWorkflows} currentKeyId={member?.keyId ?? null} loading={teamLoading} desktop={desktop} app={taskApp} t={t} />}
-              {workspaceView === 'routing' && <Section aria-label={t('workspace.routing')}><PanelBody>
+              {workspaceView === 'routing' &&
                 <FastInsightRosterEditor session={session} onAdminOpen={() => navigateWorkspace('admin')} onSessionExpired={expireAdminSession} onToast={setToast} t={t} />
-              </PanelBody></Section>}
+              }
               {workspaceView === 'admin' && <AdminPanel session={session} onSessionExpired={expireAdminSession} onLogout={() => {
                 setSession(null)
                 setMember(null)

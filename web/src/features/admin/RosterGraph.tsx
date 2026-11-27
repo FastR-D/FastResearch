@@ -1,5 +1,5 @@
 import { Badge, Button, PanelHeader, Section } from '@fastrd/ui-react'
-import { Circle, Plus } from 'lucide-react'
+import { ChevronDown, ChevronUp, Circle, Plus } from 'lucide-react'
 import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 import type { PointerEvent, ReactNode } from 'react'
 import type { Copy } from '../../shared/copy'
@@ -20,6 +20,8 @@ export function RosterGraph({ roster, disabled, onEdit, onAdd, onConnect, onRemo
 }) {
   const canvas = useRef<HTMLDivElement>(null)
   const nodes = useRef(new Map<string, HTMLDivElement>())
+  const columns = useRef(new Map<RosterNode['kind'], HTMLDivElement>())
+  const [overflow, setOverflow] = useState<Record<string, { up: boolean; down: boolean }>>({})
   const [lines, setLines] = useState<Line[]>([])
   const [source, setSource] = useState<RosterNode | null>(null)
   const [preview, setPreview] = useState<{ start: Point; end: Point } | null>(null)
@@ -27,6 +29,11 @@ export function RosterGraph({ roster, disabled, onEdit, onAdd, onConnect, onRemo
   const measure = useCallback(() => {
     const root = canvas.current?.getBoundingClientRect()
     if (!root) return
+    const nextOverflow = Object.fromEntries([...columns.current].map(([kind, el]) => [kind, {
+      up: el.scrollTop > 1,
+      down: el.scrollHeight - el.clientHeight - el.scrollTop > 1,
+    }]))
+    setOverflow(previous => Object.keys(nextOverflow).every(kind => previous[kind]?.up === nextOverflow[kind].up && previous[kind]?.down === nextOverflow[kind].down) ? previous : nextOverflow)
     const edges: RosterEdge[] = [{ from: { kind: 'keyword', id: DEFAULT }, to: { kind: 'direction', id: DEFAULT }, label: t('routing.defaultRule'), fixed: true }]
     for (const d of roster.directions) {
       for (const k of d.keywords) edges.push({ from: { kind: 'keyword', id: k }, to: { kind: 'direction', id: d.id }, label: `${k} → ${d.name}` })
@@ -57,6 +64,7 @@ export function RosterGraph({ roster, disabled, onEdit, onAdd, onConnect, onRemo
     const observer = new ResizeObserver(measure)
     if (canvas.current) {
       observer.observe(canvas.current)
+      for (const column of columns.current.values()) observer.observe(column)
       for (const node of nodes.current.values()) observer.observe(node)
     }
     window.addEventListener('resize', measure)
@@ -105,12 +113,22 @@ export function RosterGraph({ roster, disabled, onEdit, onAdd, onConnect, onRemo
     </Button>
     {node.kind !== 'member' && port(node, 'right', label)}
   </div>
-  const column = (kind: RosterNode['kind'], title: string, count: number, children: ReactNode) => <Section className="flex flex-col min-w-0 overflow-hidden">
-    <PanelHeader><div className="flex w-full items-center justify-between gap-2"><h3 className="text-sm">{title} <Badge>{count}</Badge></h3><Button variant="icon" aria-label={t(`routing.add.${kind}`)} onClick={() => onAdd(kind)} disabled={disabled}><Plus size={15} /></Button></div></PanelHeader>
-    <div role="region" aria-label={title} tabIndex={0} className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1" data-roster-column={kind}>{children}</div>
+  const scrollColumn = (kind: RosterNode['kind'], direction: number) => {
+    const el = columns.current.get(kind)
+    if (el) el.scrollBy({ top: direction * Math.max(40, el.clientHeight * 0.75) })
+  }
+  const column = (kind: RosterNode['kind'], title: string, count: number, children: ReactNode) => <Section className="flex flex-col min-w-0 min-h-0 overflow-hidden">
+    <PanelHeader className="shrink-0"><div className="flex w-full items-center justify-between gap-2"><h3 className="text-sm">{title} <Badge>{count}</Badge></h3><Button variant="icon" aria-label={t(`routing.add.${kind}`)} onClick={() => onAdd(kind)} disabled={disabled}><Plus size={15} /></Button></div></PanelHeader>
+    <div className="h-7 shrink-0 flex justify-center">
+      {overflow[kind]?.up && <Button variant="icon" size="xs" aria-label={t('routing.scrollUp', { name: title })} onClick={() => scrollColumn(kind, -1)}><ChevronUp size={16} aria-hidden="true" /></Button>}
+    </div>
+    <div ref={el => { if (el) columns.current.set(kind, el); else columns.current.delete(kind) }} role="region" aria-label={title} tabIndex={0} className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" data-roster-column={kind}>{children}</div>
+    <div className="h-7 shrink-0 flex justify-center">
+      {overflow[kind]?.down && <Button variant="icon" size="xs" aria-label={t('routing.scrollDown', { name: title })} onClick={() => scrollColumn(kind, 1)}><ChevronDown size={16} aria-hidden="true" /></Button>}
+    </div>
   </Section>
   return <div className="grid gap-2" onKeyDown={event => { if (event.key === 'Escape') { setSource(null); setPreview(null); drag.current = null } }}>
-    <p className="text-xs" aria-live="polite">{source ? t('routing.connectNext') : t('routing.graphHint')}</p>
+    <span className="sr-only" aria-live="polite">{source ? t('routing.connectNext') : ''}</span>
     <div className="overflow-x-auto max-w-full">
       <div ref={canvas} onScrollCapture={measure} className="relative grid grid-cols-3 gap-10 min-w-160 h-[min(60vh,640px)] min-h-64" data-fastui-density="compact">
         <svg className="absolute inset-0 w-full h-full pointer-events-none z-10 overflow-hidden" aria-label={t('routing.relationships')}>

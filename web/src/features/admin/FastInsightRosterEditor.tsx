@@ -1,9 +1,10 @@
-import { Alert, Badge, Button, EmptyState, Loading, Toolbar } from '@fastrd/ui-react'
+import { Alert, Badge, Button, EmptyState, Loading, Section, Toolbar } from '@fastrd/ui-react'
 import { RotateCcw, Save, ShieldCheck } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { APIError, request } from '../../shared/api/client'
 import type { Copy } from '../../shared/copy'
 import type { AdminSession, FastInsightRoster } from '../../shared/types'
+import { PanelBody } from '../../shared/ui/WorkspaceLayout'
 import { DEFAULT, RosterGraph, type RosterEdge, type RosterNode } from './RosterGraph'
 import { RosterNodeDialog } from './RosterNodeDialog'
 
@@ -83,20 +84,25 @@ export function FastInsightRosterEditor({ session, onAdminOpen, onSessionExpired
       if (err instanceof APIError && (err.status === 401 || err.status === 403)) sessionExpiredRef.current()
     } finally { if (generation.current === current) setSaving(false) }
   }
-  if (!session) return <EmptyState title={t('routing.adminRequired')} action={<Button variant="secondary" onClick={onAdminOpen}><ShieldCheck size={15} />{t('routing.openAdmin')}</Button>}><p>{t('routing.adminRequiredHint')}</p></EmptyState>
-  return <div aria-label={t('routing.title')} className="grid gap-3 min-w-0">
-    <Toolbar label={t('routing.actionsAria')}>
-      <span className="text-sm">{t('routing.description')}</span>
+  return <section aria-label={t('workspace.routing')} className="grid gap-6 md:gap-8 min-w-0">
+    <div className="flex flex-wrap items-center gap-3">
+      <h1 className="fastui-heading min-w-0 text-2xl">{t('workspace.routing')}</h1>
+      {session && <Toolbar label={t('routing.actionsAria')}>
+        <Button variant="quiet" onClick={() => { if (snapshot) { setRoster(snapshot.roster); setDirty(false); setError('') } }} disabled={!dirty || saving || loading || conflict}><RotateCcw size={14} />{t('routing.reset')}</Button>
+        <Button variant="primary" onClick={() => void save()} disabled={loading || !roster || !dirty || conflict} loading={saving}><Save size={15} />{saving ? t('routing.saving') : t('routing.save')}</Button>
+      </Toolbar>}
       {dirty && <Badge tone="warning">{t('routing.unsaved')}</Badge>}
-      <Button variant="quiet" onClick={() => { if (snapshot) { setRoster(snapshot.roster); setDirty(false); setError('') } }} disabled={!dirty || saving || loading || conflict}><RotateCcw size={14} />{t('routing.reset')}</Button>
-      <Button variant="primary" onClick={() => void save()} disabled={loading || !roster || !dirty || conflict} loading={saving}><Save size={15} />{saving ? t('routing.saving') : t('routing.save')}</Button>
-    </Toolbar>
-    {error && <Alert tone="danger">{error}</Alert>}
-    {(conflict || error && !roster) && <Button variant="secondary" onClick={() => setReload(v => v + 1)}>{t(conflict ? 'routing.reloadConflict' : 'routing.retry')}</Button>}
-    {loading ? <Loading label={t('routing.loading')} /> : roster && <>
-      <RosterGraph roster={roster} disabled={saving} onEdit={setEditing} onAdd={kind => setEditing({ kind, id: '' })} onConnect={connect} onRemove={remove} t={t} />
-      {!roster.default_owner && <p className="text-xs">{t('routing.noDefault')}</p>}
-      {editing && <RosterNodeDialog node={editing} roster={roster} onApply={value => { change(value); setEditing(null) }} onClose={() => setEditing(null)} t={t} />}
-    </>}
-  </div>
+    </div>
+    <Section><PanelBody>
+      {!session ? <EmptyState title={t('routing.adminRequired')} action={<Button variant="secondary" onClick={onAdminOpen}><ShieldCheck size={15} />{t('routing.openAdmin')}</Button>}><p>{t('routing.adminRequiredHint')}</p></EmptyState> : <div className="grid gap-3 min-w-0">
+        {error && <Alert tone="danger">{error}</Alert>}
+        {(conflict || error && !roster) && <Button variant="secondary" onClick={() => setReload(v => v + 1)}>{t(conflict ? 'routing.reloadConflict' : 'routing.retry')}</Button>}
+        {loading ? <Loading label={t('routing.loading')} /> : roster && <>
+          <RosterGraph roster={roster} disabled={saving} onEdit={setEditing} onAdd={kind => setEditing({ kind, id: '' })} onConnect={connect} onRemove={remove} t={t} />
+          {!roster.default_owner && <p className="text-xs">{t('routing.noDefault')}</p>}
+          {editing && <RosterNodeDialog node={editing} roster={roster} onApply={value => { change(value); setEditing(null) }} onClose={() => setEditing(null)} t={t} />}
+        </>}
+      </div>}
+    </PanelBody></Section>
+  </section>
 }
