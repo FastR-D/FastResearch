@@ -90,3 +90,53 @@ func TestRosterCatalogsAndValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestLegacyRosterImportPreservesRelationsAndNeverOverwrites(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "accounts.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	for _, account := range []Account{{ID: "a", KeyID: "old-a", Content: Object{"person": "同名"}, Credential: Object{}}, {ID: "b", KeyID: "old-b", Content: Object{"person": "同名"}, Credential: Object{}}} {
+		if err = s.Save(&account); err != nil {
+			t.Fatal(err)
+		}
+	}
+	source := Roster{Directions: []RosterDirection{{Name: "D1", Keywords: []string{"IoT", "firmware"}, Owners: []RosterOwner{{Name: "同名", ReceiverRef: "old-a"}}}, {Name: "D2", Keywords: []string{"IoT"}, Owners: []RosterOwner{{Name: "同名", ReceiverRef: "b"}}}}, DefaultOwner: &RosterOwner{Name: "同名", ReceiverRef: "old-a"}}
+	roster, err := s.PrepareRosterImport(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(roster.Keywords) != 2 || len(roster.Members) != 2 || roster.DefaultOwner.ReceiverRef != "a" || roster.DefaultOwner.ID != roster.Directions[0].Owners[0].ID || roster.Directions[1].Owners[0].ReceiverRef != "b" {
+		t.Fatalf("lost graph/reference: %#v", roster)
+	}
+	before, err := s.Roster()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err = s.ImportRoster(roster, "stale"); !errors.Is(err, ErrRosterConflict) {
+		t.Fatal("stale import allowed", err)
+	}
+	saved, changed, err := s.ImportRoster(roster, before.Revision)
+	if err != nil || !changed {
+		t.Fatal("import failed", err)
+	}
+	again, changed, err := s.ImportRoster(roster, before.Revision)
+	if err != nil || changed || again.Revision != saved.Revision {
+		t.Fatal("repeat import was not idempotent", err)
+	}
+	savedJSON := JSON(saved.Roster)
+	roster.Directions[0].Name = "modified"
+	if _, _, err = s.ImportRoster(roster, saved.Revision); err == nil {
+		t.Fatal("existing config overwritten")
+	}
+	current, _ := s.Roster()
+	if JSON(current.Roster) != savedJSON {
+		t.Fatal("failed import changed config")
+	}
+	for _, member := range []RosterOwner{{Name: "同名"}, {Name: "同名", ReceiverRef: "missing"}} {
+		if _, err = s.PrepareRosterImport(Roster{DefaultOwner: &member}); err == nil {
+			t.Fatal("missing reference inferred from display name")
+		}
+	}
+}

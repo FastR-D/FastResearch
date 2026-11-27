@@ -293,6 +293,8 @@ Body：`{ "person": "张三", "fasttask_user_id": "user_…", "expiresAt": null 
 
 FastInsight 每篇论文读取一次配置，记录 `roster_revision`，不再读取 `FASTINSIGHT_ROSTER` 或 YAML。无关键词命中直接使用默认接收人；命中方向但没有接收成员时不投递，不自动添加默认关系。配置接口错误会阻止本次分发。旧配置通过 FastInsight 的 `scripts/import_roster.py` 使用管理员会话一次性导入空数据库，旧文件不修改，后续运行无需旧文件。成员 `receiver_ref` 必须指向实际 Research 收件账号，不能按显示姓名猜测。
 
+拥有数据库运维权限时，也可以使用 `cmd/fastresearch-roster` 预览、导入并回读旧配置；具体步骤及上线验证见[旧配置迁移说明](roster-migration.md)。升级代码本身不会完成已有 YAML 数据的迁移。
+
 工作台按关键词、方向、成员三列展示，各列独立滚动。拖动圆点或依次点击两个圆点建立关系，点击连线解除关系；点击节点打开弹窗，方向与关键词通过标签复选框选择。关键词输入一次创建一个完整标签，不按空格、逗号或换行拆分。
 
 ### 3.4 成员会话与内容
